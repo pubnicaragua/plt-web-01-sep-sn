@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   assignTrip,
   createTrip,
@@ -15,6 +15,7 @@ import {
   getTrips,
   updateDeliverableStatus,
 } from './lib/api'
+import { googleStatusColor, loadGoogleMaps, MANAGUA_CENTER } from './lib/googleMaps'
 import type { Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, ReportsSummary, Section, TrackingOverview, Trip, TripStatus } from './types'
 
 const emptySummary: DashboardSummary = {
@@ -195,7 +196,7 @@ function App() {
           {section === 'packages' && <PackagesView trips={trips} />}
           {section === 'tracking' && <TrackingView tracking={tracking} />}
           {section === 'history' && <HistoryView history={history} />}
-          {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} />}
+          {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
           {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} />}
         </div>
       </main>
@@ -256,10 +257,7 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
       <section className="panel map-panel">
         <PanelHeader title="Mapa de operaciones" action="Ver mapa completo" onAction={() => onNavigate('tracking')} />
         <div className="operations-map">
-          <div className="map-glow glow-one" /><div className="map-glow glow-two" />
-          <span className="map-road road-one" /><span className="map-road road-two" /><span className="map-road road-three" />
-          {drivers.slice(0, 6).map((driver, index) => <MapPin key={driver.id} x={`${17 + (index * 13) % 68}%`} y={`${29 + (index * 17) % 42}%`} tone={driver.status === 'Fuera de servicio' ? 'red' : driver.status === 'Disponible' ? 'mint' : 'blue'} />)}
-          <div className="map-label label-one">Conductores en ruta</div><div className="map-label label-two">Recogidas</div><div className="map-label label-three">Alertas</div>
+          <GoogleMap drivers={drivers} />
           <div className="map-legend"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponibles</span><span><i className="legend gold" />Pendientes</span><span><i className="legend red" />Alertas</span></div>
         </div>
       </section>
@@ -290,8 +288,71 @@ function Activity({ time, color, title, detail }: { time: string; color: string;
   return <div className="activity-row"><span className="activity-time">{time}</span><span className={`activity-marker ${color}`} /><div><strong>{title}</strong><small>{detail}</small></div><span className="activity-arrow">›</span></div>
 }
 
-function MapPin({ x, y, tone }: { x: string; y: string; tone: string }) {
-  return <span className={`map-pin ${tone}`} style={{ left: x, top: y }} />
+function GoogleMap({ drivers }: { drivers: Driver[] }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const markersRef = useRef<any[]>([])
+  const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
+
+  useEffect(() => {
+    let cancelled = false
+    loadGoogleMaps()
+      .then((maps) => {
+        if (cancelled || !containerRef.current) return
+        if (!maps) throw new Error('maps-unavailable')
+        mapRef.current = new maps.Map(containerRef.current, {
+          center: MANAGUA_CENTER,
+          zoom: 12,
+          disableDefaultUI: false,
+        })
+        setMapState('ready')
+      })
+      .catch(() => {
+        if (!cancelled) setMapState('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const maps = window.google?.maps
+    const map = mapRef.current
+    if (!maps || !map || mapState !== 'ready') return
+    markersRef.current.forEach((marker) => marker.setMap(null))
+    markersRef.current = drivers
+      .filter((driver) => Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude))
+      .map((driver) => {
+        const marker = new maps.Marker({
+          position: { lat: driver.latitude, lng: driver.longitude },
+          map,
+          title: `${driver.name} · ${driver.status}`,
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 9,
+            fillColor: googleStatusColor(driver.status),
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+          },
+        })
+        marker.addListener('click', () => {
+          new maps.InfoWindow({
+            content: `<strong>${driver.name}</strong><br/>${driver.vehicle} · ${driver.plate}<br/>Estado: ${driver.status}`,
+          }).open({ anchor: marker, map })
+        })
+        return marker
+      })
+    return () => markersRef.current.forEach((marker) => marker.setMap(null))
+  }, [drivers, mapState])
+
+  return (
+    <div className="google-map-wrap">
+      <div ref={containerRef} className="google-map-canvas" />
+      {mapState === 'loading' && <div className="map-status"><span className="pulse-dot" /> Cargando Google Maps…</div>}
+      {mapState === 'error' && <div className="map-status error">No se pudo cargar Google Maps. Verifica la API key o la conexión.</div>}
+    </div>
+  )
 }
 
 function NewTripDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
@@ -380,12 +441,12 @@ function PackagesView({ trips }: { trips: Trip[] }) { return <section className=
 
 function TrackingView({ tracking }: { tracking: TrackingOverview | null }) {
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · API</span><h2>Mapa de flota · Managua</h2></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</div></div><div className="large-map"><div className="map-grid-lines" />{tracking.drivers.slice(0, 8).map((driver, index) => <MapPin key={driver.id} x={`${12 + (index * 11) % 76}%`} y={`${23 + (index * 17) % 57}%`} tone={driver.status === 'Fuera de servicio' ? 'red' : driver.status === 'Disponible' ? 'mint' : index % 3 === 0 ? 'violet' : 'blue'} />)}<div className="route route-blue" /><div className="route route-mint" /><div className="route route-violet" /><div className="tracking-card"><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></div><div className="tracking-card second"><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span></div></div></section>
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} /><div className="tracking-card"><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></div><div className="tracking-card second"><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span></div></div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) { return <section className="panel history-panel"><PanelHeader title="Historial de operaciones" action="API" /><div className="timeline">{history.map((event) => <div className="timeline-row" key={event.id}><span className="timeline-time">{event.time}<small>{event.date}</small></span><span className={`timeline-dot ${event.color}`} /><div className="timeline-event"><strong>{event.title}</strong><span>{event.detail}</span></div></div>)}</div></section> }
 
-function DeliverablesView({ deliverables, summary, onStatusChange }: { deliverables: Deliverable[]; summary: DeliverableSummary; onStatusChange: (id: string, status: DeliverableStatus) => Promise<void> }) {
+function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: { deliverables: Deliverable[]; summary: DeliverableSummary; onStatusChange: (id: string, status: DeliverableStatus) => Promise<void>; onNotice: (message: string) => void }) {
   const columns: Array<{ status: DeliverableStatus; label: string; detail: string }> = [
     { status: 'done', label: 'Verificado', detail: 'Evidencia tangible en el repositorio' },
     { status: 'in_progress', label: 'En implementación', detail: 'Trabajo iniciado en esta base local' },
@@ -393,6 +454,20 @@ function DeliverablesView({ deliverables, summary, onStatusChange }: { deliverab
     { status: 'backlog', label: 'Pendiente', detail: 'Requisito contractual aún no implementado' },
   ]
   const areas = Array.from(new Set(deliverables.map((item) => item.area)))
+  const launchCommands = [
+    { id: 'api', step: '01', title: 'Levantar API + SQLite', detail: 'Terminal 1 · NestJS en el puerto 3000', command: 'cd .\\api-incoex\nnpm install\n$env:INCOEX_DB_PATH = "$PWD\\data\\incoex-local.sqlite"\nnpm run start:dev' },
+    { id: 'web', step: '02', title: 'Levantar panel web', detail: 'Terminal 2 · Vite en el puerto 5173', command: 'cd .\\web\nnpm install\n$env:VITE_API_URL = "http://localhost:3000/api"\nnpm run dev' },
+    { id: 'flutter', step: '03', title: 'Levantar app Flutter', detail: 'Terminal 3 · emulador Android', command: 'cd .\\apps\nflutter pub get\nflutter run --dart-define=INCOEX_API_URL=http://10.0.2.2:3000/api' },
+    { id: 'check', step: '04', title: 'Comprobar conexión', detail: 'Navegador · salud y Swagger', command: 'Invoke-RestMethod http://localhost:3000/api/health\nStart-Process http://localhost:3000/api/docs\nStart-Process http://localhost:5173' },
+  ]
+  async function copyCommand(command: string, title: string) {
+    try {
+      await navigator.clipboard.writeText(command)
+      onNotice(`${title} copiado al portapapeles`)
+    } catch {
+      onNotice('El navegador no permitió copiar; selecciona el comando manualmente')
+    }
+  }
   return <>
     <div className="deliverable-summary-grid">
       <DeliverableMetric label="Alcance rastreado" value={summary.total} detail="tarjetas persistidas" tone="blue" />
@@ -401,9 +476,14 @@ function DeliverablesView({ deliverables, summary, onStatusChange }: { deliverab
       <DeliverableMetric label="Brecha pendiente" value={summary.review + summary.backlog} detail="QA, producto o producción" tone="red" />
     </div>
     <section className="panel scope-panel">
-      <div className="panel-header"><div><span className="eyebrow">ALCANCE VISIBLE · SQLITE LOCAL</span><h2>Estado real frente al alcance contratado</h2></div><span className="source-badge">Actualizado desde la API</span></div>
-      <p className="scope-intro">Cada tarjeta representa una capacidad o entregable verificable. El panel distingue lo que ya tiene evidencia en código de lo que continúa siendo una referencia de Figma, una maqueta visual o una puerta de producción.</p>
+      <div className="panel-header"><div><span className="eyebrow">EDXEL · CONTROL DE ENTREGA</span><h2>Yo dejo visible el estado real del proyecto</h2></div><span className="source-badge">Actualizado desde la API</span></div>
+      <p className="scope-intro">Soy Edxel y aquí te dejo una lectura directa: cada tarjeta representa algo que puedo señalar en el repositorio, algo que estoy integrando o algo que todavía debemos construir. No maquillo los pendientes con números bonitos; los dejo visibles para que sepamos exactamente dónde estamos.</p>
       <div className="scope-area-grid">{areas.map((area) => { const areaItems = deliverables.filter((item) => item.area === area); return <div className="scope-area" key={area}><span className="scope-area-count">{areaItems.length}</span><div><strong>{area}</strong><small>{areaItems.filter((item) => item.status === 'done').length} verificados · {areaItems.filter((item) => item.status !== 'done').length} por cerrar</small></div></div> })}</div>
+    </section>
+    <section className="launch-panel">
+      <div className="launch-heading"><div><span className="eyebrow">ARRANQUE LOCAL · POWERSHELL</span><h2>Yo lo levanto así, paso a paso</h2><p>Abre tres terminales en la raíz de <code>INCOEX APPS</code>. Copia cada bloque con un clic y deja la API encendida antes de abrir la web o Flutter.</p></div><span className="launch-badge"><span className="pulse-dot" /> Local listo</span></div>
+      <div className="command-grid">{launchCommands.map((item) => <article className="command-card" key={item.id}><div className="command-card-head"><span className="command-step">{item.step}</span><div><h3>{item.title}</h3><small>{item.detail}</small></div><button className="copy-button" onClick={() => void copyCommand(item.command, item.title)} aria-label={`Copiar ${item.title}`}>⧉ Copiar</button></div><pre><code>{item.command}</code></pre></article>)}</div>
+      <div className="launch-footnote"><strong>Ruta que debes abrir:</strong> <span>http://localhost:5173</span><b>·</b><strong>API:</strong> <span>http://localhost:3000/api</span><b>·</b><strong>Kanban:</strong> <span>menú Entregables</span></div>
     </section>
     <section className="kanban-shell">
       <div className="kanban-heading"><div><span className="eyebrow">CONTROL DE AVANCE</span><h2>Kanban de entregables</h2></div><span className="kanban-note">Los cambios se guardan en SQLite local</span></div>
@@ -414,7 +494,7 @@ function DeliverablesView({ deliverables, summary, onStatusChange }: { deliverab
 
 function DeliverableMetric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) { return <div className={`deliverable-metric ${tone}`}><span className="metric-label">{label}</span><strong>{value}</strong><small>{detail}</small></div> }
 
-function SettingsView({ apiBase, connection }: { apiBase: string; connection: ConnectionState }) { return <div className="settings-grid"><section className="panel settings-card"><span className="setting-icon">⌁</span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend NestJS.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'API conectada' : connection === 'loading' ? 'Conectando…' : 'API no disponible'}</div></section><section className="panel settings-card"><span className="setting-icon">⌖</span><h2>Mapas y tracking</h2><p>El contrato contempla tracking por eventos y posiciones GPS del conductor.</p><div className="setting-status muted-status">Proveedor de mapas pendiente</div></section><section className="panel settings-card"><span className="setting-icon">⛨</span><h2>Roles y seguridad</h2><p>Empresa, conductor y superadministrador se aislarán mediante JWT y permisos.</p><div className="setting-status muted-status">JWT/RBAC pendiente de producción</div></section></div> }
+function SettingsView({ apiBase, connection }: { apiBase: string; connection: ConnectionState }) { return <div className="settings-grid"><section className="panel settings-card"><span className="setting-icon">⌁</span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend NestJS.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'API conectada' : connection === 'loading' ? 'Conectando…' : 'API no disponible'}</div></section><section className="panel settings-card"><span className="setting-icon">⌖</span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps JavaScript API y posiciones GPS de los conductores.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section><section className="panel settings-card"><span className="setting-icon">⛨</span><h2>Roles y seguridad</h2><p>Empresa, conductor y superadministrador se aislarán mediante JWT y permisos.</p><div className="setting-status muted-status">JWT/RBAC pendiente de producción</div></section></div> }
 
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon">⌁</div><h2>{title}</h2><p>{detail}</p></section> }
 function DataTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="table-scroll"><table><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
