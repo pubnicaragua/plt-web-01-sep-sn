@@ -41,7 +41,7 @@ const navItems: Array<{ id: Section; label: string; icon: string; group?: string
   { id: 'history', label: 'Historial', icon: '↺' },
   { id: 'incidents', label: 'Incidencias', icon: '△' },
   { id: 'reports', label: 'Reportes', icon: '▥' },
-  { id: 'deliverables', label: 'Entregables', icon: '✦' },
+  { id: 'deliverables', label: 'Entregables', icon: '▤' },
   { id: 'settings', label: 'Configuración', icon: '⚙' },
 ]
 
@@ -179,6 +179,7 @@ function App() {
               {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}>＋ Nuevo viaje</button>}
               {section === 'drivers' && <button className="primary-button" onClick={() => setNotice('El alta de conductores se conectará al endpoint de administración')}>＋ Agregar conductor</button>}
               {(section === 'reports' || section === 'history') && <button className="secondary-button" onClick={() => setNotice('La exportación usará los datos recibidos de la API')}>↧ Exportar</button>}
+              {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}>↧ Exportar PDF</button>}
             </div>
           </div>
 
@@ -454,6 +455,20 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     { status: 'backlog', label: 'Pendiente', detail: 'Requisito contractual aún no implementado' },
   ]
   const areas = Array.from(new Set(deliverables.map((item) => item.area)))
+  const verifiedPercent = summary.total ? Math.round((summary.done / summary.total) * 100) : 0
+  const reportDate = new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
+  const referenceScreens = [
+    { src: '/reference/figma-01.png', title: 'Onboarding y bienvenida', detail: 'Aplicación móvil · Introducción al servicio' },
+    { src: '/reference/figma-02.png', title: 'Acceso, registro y creación de envío', detail: 'Aplicación móvil · Empresa' },
+    { src: '/reference/figma-03.png', title: 'Seguimiento, entrega, resumen y perfil', detail: 'Aplicación móvil · Operación del cliente' },
+    { src: '/reference/figma-04.png', title: 'Consulta pública de paquete', detail: 'Web responsive · Tracking por guía' },
+    { src: '/reference/figma-05.png', title: 'Centro de comando y viajes recientes', detail: 'Web superadministrador · Dashboard y viajes' },
+    { src: '/reference/figma-06.png', title: 'Solicitudes y conductores', detail: 'Web superadministrador · Operaciones' },
+    { src: '/reference/figma-07.png', title: 'Clientes y asignación', detail: 'Web superadministrador · Gestión y despacho' },
+    { src: '/reference/figma-08.png', title: 'Paquetes y mapa operativo', detail: 'Web superadministrador · Tracking' },
+    { src: '/reference/figma-09.png', title: 'Incidencias y reportes', detail: 'Web superadministrador · Control y analítica' },
+    { src: '/reference/figma-10.png', title: 'Historial de operaciones', detail: 'Web superadministrador · Trazabilidad' },
+  ]
   const launchCommands = [
     { id: 'api', step: '01', title: 'Levantar API + SQLite', detail: 'Terminal 1 · NestJS en el puerto 3000', command: 'cd .\\api-incoex\nnpm install\n$env:INCOEX_DB_PATH = "$PWD\\data\\incoex-local.sqlite"\nnpm run start:dev' },
     { id: 'web', step: '02', title: 'Levantar panel web', detail: 'Terminal 2 · Vite en el puerto 5173', command: 'cd .\\web\nnpm install\n$env:VITE_API_URL = "http://localhost:3000/api"\nnpm run dev' },
@@ -469,6 +484,15 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     }
   }
   return <>
+    <section className="report-hero panel">
+      <div className="report-hero-main">
+        <span className="eyebrow">INFORME DE AVANCE · ENTREGA LOCAL</span>
+        <h2>Estado de implementación de INCOEX Apps</h2>
+        <p>Este informe reúne el alcance definido, las pantallas de referencia y la evidencia disponible en el repositorio. Está preparado para que el cliente lo revise directamente en la plataforma o lo guarde como PDF.</p>
+        <div className="report-meta-row"><span><b>Fecha de corte</b>{reportDate}</span><span><b>Fuente</b>Figma + repositorio local</span><span><b>Modalidad</b>Revisión colaborativa</span></div>
+      </div>
+      <div className="report-hero-side"><span className="review-badge"><i /> Disponible para revisión</span><div className="report-progress"><strong>{verifiedPercent}%</strong><span>avance verificado</span><div><i style={{ width: `${verifiedPercent}%` }} /></div></div><button className="primary-button" onClick={() => { onNotice('Selecciona “Guardar como PDF” para compartir el informe'); window.print() }}>Imprimir / guardar PDF</button></div>
+    </section>
     <div className="deliverable-summary-grid">
       <DeliverableMetric label="Alcance rastreado" value={summary.total} detail="tarjetas persistidas" tone="blue" />
       <DeliverableMetric label="Verificado" value={summary.done} detail="evidencia reproducible" tone="mint" />
@@ -476,17 +500,22 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
       <DeliverableMetric label="Brecha pendiente" value={summary.review + summary.backlog} detail="QA, producto o producción" tone="red" />
     </div>
     <section className="panel scope-panel">
-      <div className="panel-header"><div><span className="eyebrow">EDXEL · CONTROL DE ENTREGA</span><h2>Yo dejo visible el estado real del proyecto</h2></div><span className="source-badge">Actualizado desde la API</span></div>
-      <p className="scope-intro">Soy Edxel y aquí te dejo una lectura directa: cada tarjeta representa algo que puedo señalar en el repositorio, algo que estoy integrando o algo que todavía debemos construir. No maquillo los pendientes con números bonitos; los dejo visibles para que sepamos exactamente dónde estamos.</p>
+      <div className="panel-header"><div><span className="eyebrow">ALCANCE Y TRAZABILIDAD</span><h2>Figma frente al avance tangible</h2></div><span className="source-badge">Sincronizado con la API</span></div>
+      <p className="scope-intro">La lectura del avance separa lo que ya puede reproducirse en el código, lo que está en implementación y lo que requiere una decisión o validación adicional. Así el cliente puede revisar cada punto con evidencia, sin confundir una pantalla visual con una funcionalidad terminada.</p>
       <div className="scope-area-grid">{areas.map((area) => { const areaItems = deliverables.filter((item) => item.area === area); return <div className="scope-area" key={area}><span className="scope-area-count">{areaItems.length}</span><div><strong>{area}</strong><small>{areaItems.filter((item) => item.status === 'done').length} verificados · {areaItems.filter((item) => item.status !== 'done').length} por cerrar</small></div></div> })}</div>
+      <div className="report-legend"><span><i className="legend-dot verified" />Verificado: reproducible con evidencia</span><span><i className="legend-dot review" />Revisión: requiere QA o validación</span><span><i className="legend-dot pending" />Pendiente: aún no implementado</span></div>
     </section>
-    <section className="launch-panel">
-      <div className="launch-heading"><div><span className="eyebrow">ARRANQUE LOCAL · POWERSHELL</span><h2>Yo lo levanto así, paso a paso</h2><p>Abre tres terminales en la raíz de <code>INCOEX APPS</code>. Copia cada bloque con un clic y deja la API encendida antes de abrir la web o Flutter.</p></div><span className="launch-badge"><span className="pulse-dot" /> Local listo</span></div>
+    <section className="reference-panel panel">
+      <div className="reference-heading"><div><span className="eyebrow">REFERENCIAS VISUALES</span><h2>Pantallas consideradas en este corte</h2><p>Estas capturas sirven como referencia de alcance y navegación. La validación final se realiza contra la implementación conectada y el comportamiento de cada flujo.</p></div><span className="reference-count">{referenceScreens.length} capturas</span></div>
+      <div className="reference-grid">{referenceScreens.map((screen, index) => <figure className="reference-card" key={screen.src}><a href={screen.src} target="_blank" rel="noreferrer"><img src={screen.src} alt={screen.title} loading="lazy" /></a><figcaption><span>0{index + 1}</span><div><strong>{screen.title}</strong><small>{screen.detail}</small></div><a className="reference-open" href={screen.src} target="_blank" rel="noreferrer" aria-label={`Abrir ${screen.title}`}>↗</a></figcaption></figure>)}</div>
+    </section>
+    <section className="launch-panel technical-launch">
+      <div className="launch-heading"><div><span className="eyebrow">GUÍA TÉCNICA · POWERSHELL</span><h2>Cómo levantar el proyecto local</h2><p>Abre tres terminales en la raíz de <code>INCOEX APPS</code>. Copia cada bloque con un clic y deja la API encendida antes de abrir la web o Flutter.</p></div><span className="launch-badge"><span className="pulse-dot" /> Entorno local</span></div>
       <div className="command-grid">{launchCommands.map((item) => <article className="command-card" key={item.id}><div className="command-card-head"><span className="command-step">{item.step}</span><div><h3>{item.title}</h3><small>{item.detail}</small></div><button className="copy-button" onClick={() => void copyCommand(item.command, item.title)} aria-label={`Copiar ${item.title}`}>⧉ Copiar</button></div><pre><code>{item.command}</code></pre></article>)}</div>
-      <div className="launch-footnote"><strong>Ruta que debes abrir:</strong> <span>http://localhost:5173</span><b>·</b><strong>API:</strong> <span>http://localhost:3000/api</span><b>·</b><strong>Kanban:</strong> <span>menú Entregables</span></div>
+      <div className="launch-footnote"><strong>Web:</strong> <span>http://localhost:5173</span><b>·</b><strong>API:</strong> <span>http://localhost:3000/api</span><b>·</b><strong>Reporte:</strong> <span>menú Entregables</span></div>
     </section>
     <section className="kanban-shell">
-      <div className="kanban-heading"><div><span className="eyebrow">CONTROL DE AVANCE</span><h2>Kanban de entregables</h2></div><span className="kanban-note">Los cambios se guardan en SQLite local</span></div>
+      <div className="kanban-heading"><div><span className="eyebrow">VALIDACIÓN DEL ALCANCE</span><h2>Detalle de tareas y entregables</h2><p>El estado de cada tarjeta puede actualizarse durante la revisión del cliente.</p></div><span className="kanban-note">Cambios persistidos en SQLite local</span></div>
       <div className="kanban-grid">{columns.map((column) => { const items = deliverables.filter((item) => item.status === column.status); return <section className={`kanban-column column-${column.status}`} key={column.status}><div className="kanban-column-head"><div><h3>{column.label}</h3><small>{column.detail}</small></div><b>{items.length}</b></div><div className="kanban-cards">{items.map((item) => <article className="deliverable-card" key={item.id}><div className="deliverable-card-meta"><span className={`priority-dot ${item.priority.toLowerCase()}`} />{item.area}<span className="source-badge">{item.source}</span></div><h3>{item.title}</h3><p>{item.summary}</p><div className="evidence-line"><small>EVIDENCIA / SIGUIENTE PASO</small><span>{item.evidence}</span></div><label className="status-select">Mover estado<select value={item.status} onChange={(event) => void onStatusChange(item.id, event.target.value as DeliverableStatus)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}</select></label></article>)}</div></section> })}</div>
     </section>
   </>
