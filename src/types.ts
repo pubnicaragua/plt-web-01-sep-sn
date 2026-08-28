@@ -112,6 +112,11 @@ export interface Deliverable {
   priority: 'Alta' | 'Media' | 'Baja'
   evidence: string
   source: DeliverableSource
+  startDate: string
+  targetDate: string
+  owner: string
+  phase: string
+  contractRef: string
   updatedAt: string
 }
 

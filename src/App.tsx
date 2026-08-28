@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import {
   assignTrip,
   createTrip,
@@ -448,6 +448,12 @@ function TrackingView({ tracking }: { tracking: TrackingOverview | null }) {
 function HistoryView({ history }: { history: HistoryEvent[] }) { return <section className="panel history-panel"><PanelHeader title="Historial de operaciones" action="API" /><div className="timeline">{history.map((event) => <div className="timeline-row" key={event.id}><span className="timeline-time">{event.time}<small>{event.date}</small></span><span className={`timeline-dot ${event.color}`} /><div className="timeline-event"><strong>{event.title}</strong><span>{event.detail}</span></div></div>)}</div></section> }
 
 function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: { deliverables: Deliverable[]; summary: DeliverableSummary; onStatusChange: (id: string, status: DeliverableStatus) => Promise<void>; onNotice: (message: string) => void }) {
+  const [statusFilter, setStatusFilter] = useState<'all' | DeliverableStatus>('all')
+  const [areaFilter, setAreaFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [searchFilter, setSearchFilter] = useState('')
+  const [draggingId, setDraggingId] = useState('')
+  const [dragOverStatus, setDragOverStatus] = useState<DeliverableStatus | ''>('')
   const columns: Array<{ status: DeliverableStatus; label: string; detail: string }> = [
     { status: 'done', label: 'Verificado', detail: 'Evidencia tangible en el repositorio' },
     { status: 'in_progress', label: 'En implementación', detail: 'Trabajo iniciado en esta base local' },
@@ -455,6 +461,12 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     { status: 'backlog', label: 'Pendiente', detail: 'Requisito contractual aún no implementado' },
   ]
   const areas = Array.from(new Set(deliverables.map((item) => item.area)))
+  const priorities = ['Alta', 'Media', 'Baja'] as const
+  const filteredDeliverables = useMemo(() => deliverables.filter((item) => {
+    const query = searchFilter.trim().toLowerCase()
+    const matchesQuery = !query || [item.title, item.area, item.summary, item.owner, item.contractRef].join(' ').toLowerCase().includes(query)
+    return matchesQuery && (statusFilter === 'all' || item.status === statusFilter) && (areaFilter === 'all' || item.area === areaFilter) && (priorityFilter === 'all' || item.priority === priorityFilter)
+  }), [areaFilter, deliverables, priorityFilter, searchFilter, statusFilter])
   const verifiedPercent = summary.total ? Math.round((summary.done / summary.total) * 100) : 0
   const reportDate = new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
   const referenceScreens = [
@@ -483,6 +495,25 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
       onNotice('El navegador no permitió copiar; selecciona el comando manualmente')
     }
   }
+  function resetFilters() {
+    setStatusFilter('all')
+    setAreaFilter('all')
+    setPriorityFilter('all')
+    setSearchFilter('')
+  }
+  function beginDrag(event: DragEvent<HTMLElement>, id: string) {
+    setDraggingId(id)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', id)
+  }
+  function dropCard(event: DragEvent<HTMLElement>, status: DeliverableStatus) {
+    event.preventDefault()
+    const id = event.dataTransfer.getData('text/plain') || draggingId
+    const item = deliverables.find((candidate) => candidate.id === id)
+    setDraggingId('')
+    setDragOverStatus('')
+    if (item && item.status !== status) void onStatusChange(item.id, status)
+  }
   return <>
     <section className="report-hero panel">
       <div className="report-hero-main">
@@ -505,6 +536,10 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
       <div className="scope-area-grid">{areas.map((area) => { const areaItems = deliverables.filter((item) => item.area === area); return <div className="scope-area" key={area}><span className="scope-area-count">{areaItems.length}</span><div><strong>{area}</strong><small>{areaItems.filter((item) => item.status === 'done').length} verificados · {areaItems.filter((item) => item.status !== 'done').length} por cerrar</small></div></div> })}</div>
       <div className="report-legend"><span><i className="legend-dot verified" />Verificado: reproducible con evidencia</span><span><i className="legend-dot review" />Revisión: requiere QA o validación</span><span><i className="legend-dot pending" />Pendiente: aún no implementado</span></div>
     </section>
+    <section className="project-plan panel">
+      <div className="plan-heading"><div><span className="eyebrow">PLAN DE TRABAJO</span><h2>Seguimiento desde el lunes 17 de agosto</h2><p>El alcance se organiza en cuatro semanas de trabajo para dar contexto a cada tarea y facilitar el seguimiento de fechas.</p></div><span className="plan-date">17 AGO 2026 → 13 SEP 2026</span></div>
+      <div className="plan-track"><div className="plan-week complete"><span>01</span><strong>Definición</strong><small>17–23 ago · alcance, UX y criterios</small></div><div className="plan-week active"><span>02</span><strong>Base técnica</strong><small>24–30 ago · API, datos y seguridad</small></div><div className="plan-week"><span>03</span><strong>Flujos</strong><small>31 ago–06 sep · web, móvil y operación</small></div><div className="plan-week"><span>04</span><strong>QA y salida</strong><small>07–13 sep · pruebas y preparación</small></div></div>
+    </section>
     <section className="reference-panel panel">
       <div className="reference-heading"><div><span className="eyebrow">REFERENCIAS VISUALES</span><h2>Pantallas consideradas en este corte</h2><p>Estas capturas sirven como referencia de alcance y navegación. La validación final se realiza contra la implementación conectada y el comportamiento de cada flujo.</p></div><span className="reference-count">{referenceScreens.length} capturas</span></div>
       <div className="reference-grid">{referenceScreens.map((screen, index) => <figure className="reference-card" key={screen.src}><a href={screen.src} target="_blank" rel="noreferrer"><img src={screen.src} alt={screen.title} loading="lazy" /></a><figcaption><span>0{index + 1}</span><div><strong>{screen.title}</strong><small>{screen.detail}</small></div><a className="reference-open" href={screen.src} target="_blank" rel="noreferrer" aria-label={`Abrir ${screen.title}`}>↗</a></figcaption></figure>)}</div>
@@ -516,9 +551,16 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     </section>
     <section className="kanban-shell">
       <div className="kanban-heading"><div><span className="eyebrow">VALIDACIÓN DEL ALCANCE</span><h2>Detalle de tareas y entregables</h2><p>El estado de cada tarjeta puede actualizarse durante la revisión del cliente.</p></div><span className="kanban-note">Cambios persistidos en SQLite local</span></div>
-      <div className="kanban-grid">{columns.map((column) => { const items = deliverables.filter((item) => item.status === column.status); return <section className={`kanban-column column-${column.status}`} key={column.status}><div className="kanban-column-head"><div><h3>{column.label}</h3><small>{column.detail}</small></div><b>{items.length}</b></div><div className="kanban-cards">{items.map((item) => <article className="deliverable-card" key={item.id}><div className="deliverable-card-meta"><span className={`priority-dot ${item.priority.toLowerCase()}`} />{item.area}<span className="source-badge">{item.source}</span></div><h3>{item.title}</h3><p>{item.summary}</p><div className="evidence-line"><small>EVIDENCIA / SIGUIENTE PASO</small><span>{item.evidence}</span></div><label className="status-select">Mover estado<select value={item.status} onChange={(event) => void onStatusChange(item.id, event.target.value as DeliverableStatus)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}</select></label></article>)}</div></section> })}</div>
+      <div className="deliverable-filters"><div className="status-filter-row"><button className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>Todos <b>{deliverables.length}</b></button>{columns.map((column) => <button key={column.status} className={statusFilter === column.status ? 'active ' + column.status : ''} onClick={() => setStatusFilter(column.status)}>{column.label} <b>{deliverables.filter((item) => item.status === column.status).length}</b></button>)}</div><div className="filter-controls"><label className="filter-search"><span>⌕</span><input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Buscar tarea, módulo o responsable" /></label><select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}><option value="all">Todas las áreas</option>{areas.map((area) => <option value={area} key={area}>{area}</option>)}</select><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}><option value="all">Todas las prioridades</option>{priorities.map((priority) => <option value={priority} key={priority}>{priority}</option>)}</select><button className="clear-filters" onClick={resetFilters}>Limpiar</button></div><div className="filter-result">Mostrando <strong>{filteredDeliverables.length}</strong> de {deliverables.length} tareas · Arrastra una tarjeta a otra columna para moverla.</div></div>
+      <div className="kanban-grid">{columns.map((column) => { const items = filteredDeliverables.filter((item) => item.status === column.status); return <section className={'kanban-column column-' + column.status + (dragOverStatus === column.status ? ' drag-target' : '')} key={column.status} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverStatus(column.status) }} onDragLeave={() => setDragOverStatus('')} onDrop={(event) => dropCard(event, column.status)}><div className="kanban-column-head"><div><h3>{column.label}</h3><small>{column.detail}</small></div><b>{items.length}</b></div><div className="kanban-cards">{items.map((item) => <article className={'deliverable-card' + (draggingId === item.id ? ' is-dragging' : '')} key={item.id} draggable onDragStart={(event) => beginDrag(event, item.id)} onDragEnd={() => { setDraggingId(''); setDragOverStatus('') }}><div className="deliverable-card-meta"><span className={'priority-dot ' + item.priority.toLowerCase()} />{item.area}<span className="source-badge">{item.source}</span></div><h3>{item.title}</h3><p>{item.summary}</p><div className="deliverable-card-details"><span><b>Responsable</b>{item.owner}</span><span><b>Fecha objetivo</b>{formatProjectDate(item.targetDate)}</span></div><div className="evidence-line"><small>EVIDENCIA / SIGUIENTE PASO</small><span>{item.evidence}</span></div><div className="deliverable-card-footer"><span>Actualizado {formatProjectDate(item.updatedAt, true)}</span><label className="status-select">Mover estado<select value={item.status} onChange={(event) => void onStatusChange(item.id, event.target.value as DeliverableStatus)}>{columns.map((option) => <option key={option.status} value={option.status}>{option.label}</option>)}</select></label></div></article>)}</div>{items.length === 0 && <div className="empty-column">No hay tareas con este filtro</div>}</section> })}</div>
     </section>
   </>
+}
+
+function formatProjectDate(value: string, includeYear = false) {
+  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return 'Sin fecha'
+  return new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'short', ...(includeYear ? { year: 'numeric' } : {}) }).format(date)
 }
 
 function DeliverableMetric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) { return <div className={`deliverable-metric ${tone}`}><span className="metric-label">{label}</span><strong>{value}</strong><small>{detail}</small></div> }
