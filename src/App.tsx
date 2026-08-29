@@ -15,7 +15,8 @@ import {
   getTrips,
   updateDeliverableStatus,
 } from './lib/api'
-import { googleStatusColor, loadGoogleMaps, MANAGUA_CENTER } from './lib/googleMaps'
+import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER } from './lib/googleMaps'
+import { Icon, type IconName } from './lib/icons'
 import type { Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, ReportsSummary, Section, TrackingOverview, Trip, TripStatus } from './types'
 
 const emptySummary: DashboardSummary = {
@@ -29,20 +30,21 @@ const emptySummary: DashboardSummary = {
   openIncidents: 0,
 }
 
-const navItems: Array<{ id: Section; label: string; icon: string; group?: string }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⌂' },
-  { id: 'trips', label: 'Viajes', icon: '↗', group: 'Operaciones' },
-  { id: 'requests', label: 'Solicitudes', icon: '◌', group: 'Operaciones' },
-  { id: 'assignment', label: 'Asignar conductor', icon: '⇄', group: 'Operaciones' },
-  { id: 'drivers', label: 'Conductores', icon: '◉' },
-  { id: 'clients', label: 'Clientes', icon: '▦' },
-  { id: 'packages', label: 'Paquetes', icon: '◇' },
-  { id: 'tracking', label: 'Mapa / Tracking', icon: '⌖' },
-  { id: 'history', label: 'Historial', icon: '↺' },
-  { id: 'incidents', label: 'Incidencias', icon: '△' },
-  { id: 'reports', label: 'Reportes', icon: '▥' },
-  { id: 'deliverables', label: 'Entregables', icon: '▤' },
-  { id: 'settings', label: 'Configuración', icon: '⚙' },
+const navItems: Array<{ id: Section; label: string; icon: IconName; group?: string }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { id: 'trips', label: 'Viajes', icon: 'trips', group: 'Operaciones' },
+  { id: 'requests', label: 'Solicitudes', icon: 'requests', group: 'Operaciones' },
+  { id: 'assignment', label: 'Asignar conductor', icon: 'assignment', group: 'Operaciones' },
+  { id: 'drivers', label: 'Conductores', icon: 'drivers' },
+  { id: 'clients', label: 'Clientes', icon: 'clients' },
+  { id: 'packages', label: 'Paquetes', icon: 'packages' },
+  { id: 'tracking', label: 'Mapa / Tracking', icon: 'tracking' },
+  { id: 'history', label: 'Historial', icon: 'history' },
+  { id: 'incidents', label: 'Incidencias', icon: 'incidents' },
+  { id: 'reports', label: 'Reportes', icon: 'reports' },
+  { id: 'deliverables', label: 'Entregables', icon: 'deliverables' },
+  { id: 'billing', label: 'Facturas y pagos', icon: 'billing', group: 'Finanzas' },
+  { id: 'settings', label: 'Configuración', icon: 'settings' },
 ]
 
 type ConnectionState = 'loading' | 'connected' | 'error'
@@ -114,7 +116,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
-          <div className="brand-mark">X</div>
+          <BrandMark />
           <div>
             <div className="brand-name">INCOEX</div>
             <div className="brand-subtitle">Logistics / Command</div>
@@ -125,28 +127,30 @@ function App() {
         <nav className="nav-list" aria-label="Navegación principal">
           {navItems.map((item) => (
             <button className={`nav-item ${section === item.id ? 'active' : ''}`} key={item.id} onClick={() => navigate(item.id)}>
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon"><Icon name={item.icon} size={17} /></span>
               <span>{item.label}</span>
               {item.id === 'incidents' && summary.openIncidents > 0 && <span className="nav-badge">{summary.openIncidents}</span>}
+              {item.id === 'billing' && <span className="nav-lock"><Icon name="lock" size={11} /></span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
           <div className={`health-card ${connection === 'error' ? 'health-error' : ''}`}>
-            <span className="pulse-dot" />
-            <div>
+            <span className="health-icon"><Icon name="activity" size={15} /></span>
+            <div className="health-text">
               <strong>{connection === 'connected' ? 'Sistema operativo' : connection === 'loading' ? 'Conectando API' : 'API no disponible'}</strong>
               <small>{connection === 'connected' ? 'Última sincronización · ahora' : getApiBase()}</small>
             </div>
+            <span className="health-dot" />
           </div>
           <div className="user-card">
-            <div className="avatar">SA</div>
+            <div className="avatar"><Icon name="drivers" size={17} /></div>
             <div className="user-info">
               <strong>Superadministrador</strong>
               <small>Cuenta de plataforma</small>
             </div>
-            <button className="icon-button" aria-label="Cerrar sesión">↪</button>
+            <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => setNotice('Cierre de sesión listo para conectarse al backend de autenticación')}><Icon name="logout" size={16} /></button>
           </div>
         </div>
       </aside>
@@ -156,14 +160,14 @@ function App() {
           <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
           <div className="topbar-actions">
             <div className="search-box">
-              <span>⌕</span>
+              <span className="search-icon"><Icon name="search" size={15} /></span>
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes..." />
               <kbd>⌘ K</kbd>
             </div>
             <div className="live-pill"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</div>
-            <button className="round-button" aria-label="Notificaciones" onClick={() => setNotice('No hay notificaciones nuevas')}>♧<span className="notification-dot">{summary.openIncidents}</span></button>
-            <button className="round-button" aria-label="Ayuda">?</button>
-            <div className="profile-menu"><div className="avatar small">SA</div><span>Superadministrador</span><span className="chevron">⌄</span></div>
+            <button className="round-button" aria-label="Notificaciones" onClick={() => setNotice('No hay notificaciones nuevas')}><Icon name="bell" size={16} />{summary.openIncidents > 0 && <span className="notification-dot">{summary.openIncidents}</span>}</button>
+            <button className="round-button" aria-label="Ayuda"><Icon name="help" size={16} /></button>
+            <div className="profile-menu"><div className="avatar small"><Icon name="drivers" size={14} /></div><span>Superadministrador</span><span className="chevron"><Icon name="chevronDown" size={13} /></span></div>
           </div>
         </header>
 
@@ -176,10 +180,10 @@ function App() {
             </div>
             <div className="heading-actions">
               <span className="region-label">Managua · Nicaragua <span className="tiny-flag">●</span></span>
-              {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}>＋ Nuevo viaje</button>}
-              {section === 'drivers' && <button className="primary-button" onClick={() => setNotice('El alta de conductores se conectará al endpoint de administración')}>＋ Agregar conductor</button>}
-              {(section === 'reports' || section === 'history') && <button className="secondary-button" onClick={() => setNotice('La exportación usará los datos recibidos de la API')}>↧ Exportar</button>}
-              {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}>↧ Exportar PDF</button>}
+              {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
+              {section === 'drivers' && <button className="primary-button" onClick={() => setNotice('El alta de conductores se conectará al endpoint de administración')}><Icon name="plus" size={13} /> Agregar conductor</button>}
+              {(section === 'reports' || section === 'history') && <button className="secondary-button" onClick={() => setNotice('La exportación usará los datos recibidos de la API')}><Icon name="download" size={13} /> Exportar</button>}
+              {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}><Icon name="download" size={13} /> Exportar PDF</button>}
             </div>
           </div>
 
@@ -198,6 +202,7 @@ function App() {
           {section === 'tracking' && <TrackingView tracking={tracking} />}
           {section === 'history' && <HistoryView history={history} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
+          {section === 'billing' && <BillingView onNotice={setNotice} />}
           {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} />}
         </div>
       </main>
@@ -237,6 +242,7 @@ function sectionDescription(section: Section) {
     incidents: 'Seguimiento de contingencias metropolitanas reportadas por la flota.',
     reports: 'Analítica agregada del rendimiento de viajes y entregas.',
     deliverables: 'Alcance, avance tangible y próximos hitos del proyecto.',
+    billing: 'Facturas, pagos recibidos y calendario de pagos del proyecto. Acceso restringido.',
     settings: 'Configuración de la plataforma, integraciones y seguridad.',
   }
   return descriptions[section]
@@ -245,14 +251,14 @@ function sectionDescription(section: Section) {
 function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; onNavigate: (section: Section) => void }) {
   return <>
     <div className="metrics-grid">
-      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="API" tone="blue" icon="↗" />
-      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="activo" tone="cyan" icon="◒" />
-      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="Atención" tone="gold" icon="◷" />
-      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="API" tone="mint" icon="✓" />
-      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="activo" tone="mint" icon="◉" />
-      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta="API" tone="blue" icon="▦" />
-      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="Normal" tone="slate" icon="◇" />
-      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="Atención" tone="red" icon="△" />
+      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="API" tone="blue" icon="trips" />
+      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="activo" tone="cyan" icon="truck" />
+      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="Atención" tone="gold" icon="clock" />
+      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="API" tone="mint" icon="checkCircle" />
+      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="activo" tone="mint" icon="drivers" />
+      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta="API" tone="blue" icon="clients" />
+      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="Normal" tone="slate" icon="packages" />
+      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="Atención" tone="red" icon="incidents" />
     </div>
     <div className="dashboard-grid">
       <section className="panel map-panel">
@@ -269,24 +275,28 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
     </div>
     <section className="quick-actions">
       <div><span className="eyebrow">Acciones rápidas</span><h2>Lo importante, a un clic.</h2></div>
-      <button onClick={() => onNavigate('trips')}><span>↗</span><strong>Revisar solicitudes</strong><small>{summary.pendingTrips} pendientes</small></button>
-      <button onClick={() => onNavigate('tracking')}><span>⌖</span><strong>Abrir tracking</strong><small>{summary.activeTrips} operaciones</small></button>
-      <button onClick={() => onNavigate('incidents')}><span>△</span><strong>Atender incidencias</strong><small>{summary.openIncidents} abiertas</small></button>
+      <button onClick={() => onNavigate('trips')}><span className="quick-icon"><Icon name="trips" size={17} /></span><strong>Revisar solicitudes</strong><small>{summary.pendingTrips} pendientes</small></button>
+      <button onClick={() => onNavigate('tracking')}><span className="quick-icon"><Icon name="tracking" size={17} /></span><strong>Abrir tracking</strong><small>{summary.activeTrips} operaciones</small></button>
+      <button onClick={() => onNavigate('incidents')}><span className="quick-icon"><Icon name="incidents" size={17} /></span><strong>Atender incidencias</strong><small>{summary.openIncidents} abiertas</small></button>
     </section>
     <div className="data-source-note">Datos de esta vista: <strong>{trips.length} viajes</strong> y <strong>{drivers.length} conductores</strong> recibidos desde NestJS.</div>
   </>
 }
 
-function MetricCard({ label, value, delta, tone, icon }: { label: string; value: number; delta: string; tone: string; icon: string }) {
-  return <div className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-label">{label}</span><span className="metric-icon">{icon}</span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>↑ {delta}</span><small>dato del servicio</small></div></div>
+function MetricCard({ label, value, delta, tone, icon }: { label: string; value: number; delta: string; tone: string; icon: IconName }) {
+  return <div className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-label">{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>↑ {delta}</span><small>dato del servicio</small></div></div>
 }
 
 function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  return <div className="panel-header"><h2>{title}</h2>{action && <button onClick={onAction}>{action} <span>↗</span></button>}</div>
+  return <div className="panel-header"><h2>{title}</h2>{action && <button onClick={onAction}><span>{action}</span><Icon name="arrowRight" size={11} /></button>}</div>
 }
 
 function Activity({ time, color, title, detail }: { time: string; color: string; title: string; detail: string }) {
   return <div className="activity-row"><span className="activity-time">{time}</span><span className={`activity-marker ${color}`} /><div><strong>{title}</strong><small>{detail}</small></div><span className="activity-arrow">›</span></div>
+}
+
+function BrandMark() {
+  return <div className="brand-mark" aria-hidden="true"><span>X</span></div>
 }
 
 function GoogleMap({ drivers }: { drivers: Driver[] }) {
@@ -294,19 +304,32 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setMapState('loading')
     loadGoogleMaps()
       .then((maps) => {
         if (cancelled || !containerRef.current) return
         if (!maps) throw new Error('maps-unavailable')
-        mapRef.current = new maps.Map(containerRef.current, {
-          center: MANAGUA_CENTER,
-          zoom: 12,
-          disableDefaultUI: false,
-        })
-        setMapState('ready')
+        try {
+          mapRef.current = new maps.Map(containerRef.current, {
+            center: MANAGUA_CENTER,
+            zoom: 12,
+            disableDefaultUI: true,
+            zoomControl: true,
+            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
+            fullscreenControl: true,
+            streetViewControl: false,
+            mapTypeControl: false,
+            gestureHandling: 'greedy',
+            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+          })
+          setMapState('ready')
+        } catch {
+          if (!cancelled) setMapState('error')
+        }
       })
       .catch(() => {
         if (!cancelled) setMapState('error')
@@ -314,7 +337,7 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
 
   useEffect(() => {
     const maps = window.google?.maps
@@ -329,12 +352,13 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
           map,
           title: `${driver.name} · ${driver.status}`,
           icon: {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 9,
+            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
             fillColor: googleStatusColor(driver.status),
             fillOpacity: 1,
             strokeColor: '#ffffff',
-            strokeWeight: 2,
+            strokeWeight: 1.6,
+            scale: 1.15,
+            anchor: new maps.Point(12, 24),
           },
         })
         marker.addListener('click', () => {
@@ -350,8 +374,20 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
   return (
     <div className="google-map-wrap">
       <div ref={containerRef} className="google-map-canvas" />
-      {mapState === 'loading' && <div className="map-status"><span className="pulse-dot" /> Cargando Google Maps…</div>}
-      {mapState === 'error' && <div className="map-status error">No se pudo cargar Google Maps. Verifica la API key o la conexión.</div>}
+      {mapState === 'loading' && (
+        <div className="map-status">
+          <span className="map-status-card"><span className="map-spinner" />Cargando mapa en vivo…</span>
+        </div>
+      )}
+      {mapState === 'error' && (
+        <div className="map-status error">
+          <span className="map-status-card">
+            <strong>No se pudo cargar Google Maps</strong>
+            <small>Revisa la API key o la conexión a internet.</small>
+            <button onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button>
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -426,7 +462,7 @@ function IncidentsView({ incidents, onNotice }: { incidents: Incident[]; onNotic
 
 function ReportsView({ reports }: { reports: ReportsSummary | null }) {
   if (!reports) return <EmptyState title="Reportes pendientes" detail="La API aún no entregó el resumen analítico." />
-  return <><div className="metrics-grid report-metrics"><MetricCard label="Viajes totales" value={reports.totalTrips} delta="API" tone="blue" icon="↗" /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="API" tone="mint" icon="✓" /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="API" tone="red" icon="△" /><MetricCard label="Tiempo prom. entrega" value={reports.averageDeliveryMinutes} delta="min" tone="gold" icon="◷" /></div><div className="reports-grid"><ChartPanel title="Viajes por semana" values={reports.weeklyTrips} labels={reports.weeklyLabels} /><ChartPanel title="Entregas por día · tendencia" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact /><Leaderboard title="Top conductores" entries={reports.topDrivers} /><Leaderboard title="Top clientes" entries={reports.topClients} /></div></>
+  return <><div className="metrics-grid report-metrics"><MetricCard label="Viajes totales" value={reports.totalTrips} delta="API" tone="blue" icon="trips" /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="API" tone="mint" icon="checkCircle" /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="API" tone="red" icon="cancelCircle" /><MetricCard label="Tiempo prom. entrega" value={reports.averageDeliveryMinutes} delta="min" tone="gold" icon="clock" /></div><div className="reports-grid"><ChartPanel title="Viajes por semana" values={reports.weeklyTrips} labels={reports.weeklyLabels} /><ChartPanel title="Entregas por día · tendencia" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact /><Leaderboard title="Top conductores" entries={reports.topDrivers} /><Leaderboard title="Top clientes" entries={reports.topClients} /></div></>
 }
 
 function ChartPanel({ title, values, labels, compact = false }: { title: string; values: number[]; labels: string[]; compact?: boolean }) {
@@ -438,7 +474,7 @@ function Leaderboard({ title, entries }: { title: string; entries: Array<{ name:
   return <section className="panel leaderboard"><PanelHeader title={title} action="API" /><ol>{entries.map((entry, index) => <li key={entry.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(entry.name)}</span><strong>{entry.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{entry.trips} viajes</b></li>)}</ol></section>
 }
 
-function PackagesView({ trips }: { trips: Trip[] }) { return <section className="panel placeholder-panel"><div className="placeholder-icon">◇</div><div><span className="eyebrow">Módulo conectado al dominio</span><h2>Administración de paquetes</h2><p>Paquetes derivados de los viajes recibidos desde la API.</p></div><div className="placeholder-list">{trips.slice(0, 8).map((trip) => <div key={trip.id}><span className="pulse-dot" />{trip.id} · {trip.packages} paquetes · {trip.status}<span>›</span></div>)}</div></section> }
+function PackagesView({ trips }: { trips: Trip[] }) { return <section className="panel placeholder-panel"><div className="placeholder-icon"><Icon name="packages" size={26} /></div><div><span className="eyebrow">Módulo conectado al dominio</span><h2>Administración de paquetes</h2><p>Paquetes derivados de los viajes recibidos desde la API.</p></div><div className="placeholder-list">{trips.slice(0, 8).map((trip) => <div key={trip.id}><span className="pulse-dot" />{trip.id} · {trip.packages} paquetes · {trip.status}<span>›</span></div>)}</div></section> }
 
 function TrackingView({ tracking }: { tracking: TrackingOverview | null }) {
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
@@ -565,9 +601,147 @@ function formatProjectDate(value: string, includeYear = false) {
 
 function DeliverableMetric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) { return <div className={`deliverable-metric ${tone}`}><span className="metric-label">{label}</span><strong>{value}</strong><small>{detail}</small></div> }
 
-function SettingsView({ apiBase, connection }: { apiBase: string; connection: ConnectionState }) { return <div className="settings-grid"><section className="panel settings-card"><span className="setting-icon">⌁</span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend NestJS.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'API conectada' : connection === 'loading' ? 'Conectando…' : 'API no disponible'}</div></section><section className="panel settings-card"><span className="setting-icon">⌖</span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps JavaScript API y posiciones GPS de los conductores.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section><section className="panel settings-card"><span className="setting-icon">⛨</span><h2>Roles y seguridad</h2><p>Empresa, conductor y superadministrador se aislarán mediante JWT y permisos.</p><div className="setting-status muted-status">JWT/RBAC pendiente de producción</div></section></div> }
+const BILLING_PASSWORD = 'Mario@2026'
+const BILLING_SESSION_KEY = 'incoex-billing-unlocked'
 
-function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon">⌁</div><h2>{title}</h2><p>{detail}</p></section> }
+interface BillingPayment {
+  id: string
+  label: string
+  date: string
+  amount: string
+  concept: string
+  status: 'paid' | 'next' | 'upcoming'
+  image?: string
+}
+
+const billingPayments: BillingPayment[] = [
+  { id: 'PAG-001', label: '18 de agosto 2026', date: '2026-08-18', amount: '$1,200.00', concept: '20% · Diseño UI/UX', status: 'paid', image: '/billing/factura-18-ago-2026.jpg' },
+  { id: 'PAG-002', label: '28 de agosto 2026', date: '2026-08-28', amount: '$1,800.00', concept: '30% · Desarrollo base', status: 'next' },
+  { id: 'PAG-003', label: '8 de septiembre 2026', date: '2026-09-08', amount: '$1,800.00', concept: '30% · Flujos y módulos', status: 'upcoming' },
+  { id: 'PAG-004', label: '18 de septiembre 2026', date: '2026-09-18', amount: '$1,200.00', concept: '20% · QA y entrega', status: 'upcoming' },
+]
+
+function BillingView({ onNotice }: { onNotice: (message: string) => void }) {
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(BILLING_SESSION_KEY) === '1')
+  if (!unlocked) return <BillingLock onUnlocked={() => { sessionStorage.setItem(BILLING_SESSION_KEY, '1'); setUnlocked(true); onNotice('Acceso financiero concedido · Bienvenido, Mario Martínez') }} />
+  return <BillingContent onLock={() => { sessionStorage.removeItem(BILLING_SESSION_KEY); setUnlocked(false); onNotice('Sesión financiera bloqueada') }} onNotice={onNotice} />
+}
+
+function BillingLock({ onUnlocked }: { onUnlocked: () => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(false)
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (password === BILLING_PASSWORD) {
+      onUnlocked()
+    } else {
+      setError(true)
+      setPassword('')
+    }
+  }
+  return (
+    <section className="panel billing-lock">
+      <span className="billing-lock-icon"><Icon name="lock" size={24} /></span>
+      <span className="eyebrow">MÓDULO FINANCIERO · ACCESO RESTRINGIDO</span>
+      <h2>Facturas y pagos</h2>
+      <p>Este módulo es exclusivo para Mario Martínez. Ingresa la contraseña para ver la factura del pago recibido y el calendario de próximos pagos.</p>
+      <form onSubmit={submit}>
+        <input type="password" autoFocus value={password} onChange={(event) => { setPassword(event.target.value); setError(false) }} placeholder="Contraseña" className={error ? 'invalid' : ''} />
+        <button className="primary-button" type="submit"><Icon name="lock" size={13} /> Desbloquear</button>
+      </form>
+      {error && <span className="billing-lock-error">Contraseña incorrecta. Intenta de nuevo.</span>}
+      <span className="billing-lock-foot">Solo Mario Martínez está autorizado para consultar esta información.</span>
+    </section>
+  )
+}
+
+function BillingContent({ onLock, onNotice }: { onLock: () => void; onNotice: (message: string) => void }) {
+  const received = billingPayments.find((payment) => payment.status === 'paid')
+  const upcoming = billingPayments.filter((payment) => payment.status !== 'paid')
+
+  function downloadInvoice() {
+    if (!received?.image) return
+    fetch(received.image)
+      .then((response) => response.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = 'INCOEX-Factura-Pago-18-Ago-2026.jpg'
+        anchor.click()
+        URL.revokeObjectURL(url)
+        onNotice('Factura descargada')
+      })
+      .catch(() => onNotice('No se pudo descargar la factura'))
+  }
+
+  return <>
+    <section className="billing-hero panel">
+      <div>
+        <span className="eyebrow">FINANZAS · SESIÓN PRIVADA</span>
+        <h2>Hola, Mario Martínez</h2>
+        <p>Aquí está el estado de pagos del proyecto: la factura del pago recibido el 18 de agosto y el calendario con los próximos pagos acordados.</p>
+      </div>
+      <button className="secondary-button" onClick={onLock}><Icon name="lock" size={13} /> Bloquear sesión</button>
+    </section>
+
+    <div className="billing-summary-grid">
+      <BillingMetric icon="checkCircle" label="Pago recibido · 18 ago" value="$1,200.00" detail="20% · Diseño UI/UX · Pagado" tone="mint" />
+      <BillingMetric icon="calendar" label="Siguiente pago" value="$1,800.00" detail="28 de agosto · 30% · Desarrollo base" tone="blue" />
+      <BillingMetric icon="wallet" label="Saldo del proyecto" value="$4,800.00" detail="3 pagos restantes · cierre 18 sep" tone="gold" />
+    </div>
+
+    {received && (
+      <section className="panel invoice-panel">
+        <div className="invoice-head">
+          <div><span className="eyebrow">FACTURA DEL PAGO</span><h2>Pago recibido · 18 de agosto de 2026</h2><p>Comprobante del pago de <strong>$1,200.00 USD</strong> por el <strong>20% · Diseño UI/UX</strong> del proyecto INCOEX Apps. Documento privado, disponible solo para visualización y descarga desde este módulo.</p></div>
+          <span className="invoice-badge"><Icon name="check" size={12} /> Pagado</span>
+        </div>
+        <div className="invoice-body">
+          <img src={received.image} alt="Factura del pago del 18 de agosto de 2026" className="invoice-image" />
+          <div className="invoice-actions">
+            <span className="invoice-note"><Icon name="lock" size={12} /> La factura se muestra dentro del panel; no se abre en pestaña nueva.</span>
+            <button className="primary-button" onClick={downloadInvoice}><Icon name="download" size={13} /> Descargar factura</button>
+          </div>
+        </div>
+      </section>
+    )}
+
+    <section className="panel calendar-panel">
+      <div className="panel-header"><div><span className="eyebrow">CALENDARIO DE PAGOS</span><h2>Próximos pagos del proyecto</h2></div><span className="source-badge">Plan acordado</span></div>
+      <div className="billing-calendar-grid">
+        {upcoming.map((payment) => (
+          <article className={`billing-calendar-card ${payment.status}`} key={payment.id}>
+            <div className="billing-date-block"><span className="billing-date-day">{payment.label.split(' ')[0]}</span><span className="billing-date-month">{payment.label.split(' ').slice(1, 3).join(' ')}</span></div>
+            <div className="billing-calendar-info">
+              <strong>{payment.amount}</strong>
+              <span>{payment.concept}</span>
+              <small><Icon name="calendar" size={11} /> {payment.label}</small>
+            </div>
+            <span className={`billing-status ${payment.status}`}>{payment.status === 'next' ? 'Siguiente pago' : 'Pronosticado'}</span>
+          </article>
+        ))}
+      </div>
+      <div className="billing-timeline">
+        <span className="timeline-paid"><i /> 18 ago · Pagado $1,200.00</span>
+        <span className="timeline-arrow">→</span>
+        <span className="timeline-next"><i /> 28 ago · $1,800.00</span>
+        <span className="timeline-arrow">→</span>
+        <span><i /> 8 sep · $1,800.00</span>
+        <span className="timeline-arrow">→</span>
+        <span><i /> 18 sep · $1,200.00</span>
+      </div>
+    </section>
+  </>
+}
+
+function BillingMetric({ icon, label, value, detail, tone }: { icon: IconName; label: string; value: string; detail: string; tone: string }) {
+  return <div className={`deliverable-metric billing-metric ${tone}`}><span className="metric-label"><Icon name={icon} size={13} /> {label}</span><strong>{value}</strong><small>{detail}</small></div>
+}
+
+function SettingsView({ apiBase, connection }: { apiBase: string; connection: ConnectionState }) { return <div className="settings-grid"><section className="panel settings-card"><span className="setting-icon"><Icon name="globe" size={19} /></span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend NestJS.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'API conectada' : connection === 'loading' ? 'Conectando…' : 'API no disponible'}</div></section><section className="panel settings-card"><span className="setting-icon"><Icon name="map" size={19} /></span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps JavaScript API y posiciones GPS de los conductores.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section><section className="panel settings-card"><span className="setting-icon"><Icon name="shield" size={19} /></span><h2>Roles y seguridad</h2><p>Empresa, conductor y superadministrador se aislarán mediante JWT y permisos.</p><div className="setting-status muted-status">JWT/RBAC pendiente de producción</div></section></div> }
+
+function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon"><Icon name="requests" size={24} /></div><h2>{title}</h2><p>{detail}</p></section> }
 function DataTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="table-scroll"><table><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
 function Pagination() { return <div className="pagination"><button>‹</button><button className="active">1</button><button>2</button><button>3</button><button>›</button></div> }
 function SummaryValue({ label, value, tone = 'blue' }: { label: string; value: string; tone?: string }) { return <div className="summary-value"><span className={`summary-icon ${tone}`} /> <div><strong>{value}</strong><small>{label}</small></div></div> }

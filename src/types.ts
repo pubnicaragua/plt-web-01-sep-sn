@@ -11,6 +11,7 @@ export type Section =
   | 'incidents'
   | 'reports'
   | 'deliverables'
+  | 'billing'
   | 'settings'
 
 export type TripStatus = 'Pendiente' | 'Asignado' | 'En camino' | 'En entrega' | 'Completado' | 'Cancelado'
