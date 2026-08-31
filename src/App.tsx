@@ -311,7 +311,6 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <BrandMark />
-          <div><strong>Centro de operaciones</strong><span>Panel de administración</span></div>
         </div>
         <h1>Iniciar sesión</h1>
         <p>Accede al panel de administración de operaciones.</p>
