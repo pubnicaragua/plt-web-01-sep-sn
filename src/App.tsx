@@ -50,6 +50,7 @@ const navItems: Array<{ id: Section; label: string; icon: IconName; group?: stri
 type ConnectionState = 'loading' | 'connected' | 'error'
 
 function App() {
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('incoex-auth') === '1')
   const [section, setSection] = useState<Section>('dashboard')
   const [summary, setSummary] = useState(emptySummary)
   const [trips, setTrips] = useState<Trip[]>([])
@@ -112,15 +113,19 @@ function App() {
     setSearch('')
   }
 
+  function logout() {
+    sessionStorage.removeItem('incoex-auth')
+    sessionStorage.removeItem(BILLING_SESSION_KEY)
+    setAuthed(false)
+  }
+
+  if (!authed) return <LoginView onLogin={() => { sessionStorage.setItem('incoex-auth', '1'); setAuthed(true) }} />
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
           <BrandMark />
-          <div>
-            <div className="brand-name">INCOEX</div>
-            <div className="brand-subtitle">Logistics / Command</div>
-          </div>
         </div>
 
         <div className="sidebar-section-label">Centro de operaciones</div>
@@ -136,21 +141,13 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className={`health-card ${connection === 'error' ? 'health-error' : ''}`}>
-            <span className="health-icon"><Icon name="activity" size={15} /></span>
-            <div className="health-text">
-              <strong>{connection === 'connected' ? 'Sistema operativo' : connection === 'loading' ? 'Conectando API' : 'API no disponible'}</strong>
-              <small>{connection === 'connected' ? 'Última sincronización · ahora' : getApiBase()}</small>
-            </div>
-            <span className="health-dot" />
-          </div>
           <div className="user-card">
             <div className="avatar"><Icon name="drivers" size={17} /></div>
             <div className="user-info">
               <strong>Superadministrador</strong>
-              <small>Cuenta de plataforma</small>
+              <small>Mario Martínez</small>
             </div>
-            <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => setNotice('Cierre de sesión listo para conectarse al backend de autenticación')}><Icon name="logout" size={16} /></button>
+            <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><Icon name="logout" size={16} /></button>
           </div>
         </div>
       </aside>
@@ -166,20 +163,20 @@ function App() {
             </div>
             <div className="live-pill"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</div>
             <button className="round-button" aria-label="Notificaciones" onClick={() => setNotice('No hay notificaciones nuevas')}><Icon name="bell" size={16} />{summary.openIncidents > 0 && <span className="notification-dot">{summary.openIncidents}</span>}</button>
-            <button className="round-button" aria-label="Ayuda"><Icon name="help" size={16} /></button>
-            <div className="profile-menu"><div className="avatar small"><Icon name="drivers" size={14} /></div><span>Superadministrador</span><span className="chevron"><Icon name="chevronDown" size={13} /></span></div>
+            <button className="round-button" aria-label="Ayuda" title="Ayuda" onClick={() => setNotice('Centro de ayuda en preparación')}><Icon name="help" size={16} /></button>
+            <div className="profile-menu" onClick={logout} title="Cerrar sesión"><div className="avatar small"><Icon name="drivers" size={14} /></div><span>Superadministrador</span><span className="chevron"><Icon name="chevronDown" size={13} /></span></div>
           </div>
         </header>
 
         <div className="content">
           <div className="page-heading">
             <div>
-              <div className={`eyebrow ${connection === 'error' ? 'eyebrow-error' : ''}`}>{connection === 'connected' ? 'Datos conectados' : connection === 'loading' ? 'Conectando datos' : 'Conexión requerida'}</div>
+              <div className="eyebrow">{new Intl.DateTimeFormat('es-NI', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div>
               <h1>{currentPage?.label ?? 'Dashboard'}</h1>
               <p>{sectionDescription(section)}</p>
             </div>
             <div className="heading-actions">
-              <span className="region-label">Managua · Nicaragua <span className="tiny-flag">●</span></span>
+              <span className="region-label">Managua · Nicaragua</span>
               {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
               {section === 'drivers' && <button className="primary-button" onClick={() => setNotice('El alta de conductores se conectará al endpoint de administración')}><Icon name="plus" size={13} /> Agregar conductor</button>}
               {(section === 'reports' || section === 'history') && <button className="secondary-button" onClick={() => setNotice('La exportación usará los datos recibidos de la API')}><Icon name="download" size={13} /> Exportar</button>}
@@ -187,8 +184,7 @@ function App() {
             </div>
           </div>
 
-          {connection === 'error' && <div className="connection-banner error"><strong>No hay datos locales de respaldo.</strong> Conecta la API en <code>{getApiBase()}</code> para cargar la operación. <span>{errorMessage}</span></div>}
-          {connection === 'loading' && <div className="connection-banner"><strong>Sincronizando operación…</strong> Consultando dashboard, viajes, conductores, clientes, incidencias, reportes y tracking.</div>}
+          {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
           {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} onNavigate={navigate} />}
           {section === 'trips' && <TripsView trips={trips} search={search} onNotice={setNotice} />}
@@ -279,12 +275,11 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
       <button onClick={() => onNavigate('tracking')}><span className="quick-icon"><Icon name="tracking" size={17} /></span><strong>Abrir tracking</strong><small>{summary.activeTrips} operaciones</small></button>
       <button onClick={() => onNavigate('incidents')}><span className="quick-icon"><Icon name="incidents" size={17} /></span><strong>Atender incidencias</strong><small>{summary.openIncidents} abiertas</small></button>
     </section>
-    <div className="data-source-note">Datos de esta vista: <strong>{trips.length} viajes</strong> y <strong>{drivers.length} conductores</strong> recibidos desde NestJS.</div>
   </>
 }
 
 function MetricCard({ label, value, delta, tone, icon }: { label: string; value: number; delta: string; tone: string; icon: IconName }) {
-  return <div className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-label">{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>↑ {delta}</span><small>dato del servicio</small></div></div>
+  return <div className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-label">{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></div>
 }
 
 function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
@@ -296,7 +291,38 @@ function Activity({ time, color, title, detail }: { time: string; color: string;
 }
 
 function BrandMark() {
-  return <div className="brand-mark" aria-hidden="true"><span>X</span></div>
+  return <img src="/brand/logo.png" alt="INCOEX" className="brand-logo-img" />
+}
+function LoginView({ onLogin }: { onLogin: () => void }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(false)
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (username.trim() === 'admin' && password === 'Admin@2026') {
+      onLogin()
+    } else {
+      setError(true)
+      setPassword('')
+    }
+  }
+  return (
+    <div className="login-shell">
+      <form className="login-card" onSubmit={submit}>
+        <div className="login-brand">
+          <BrandMark />
+          <div><strong>Centro de operaciones</strong><span>Panel de administración</span></div>
+        </div>
+        <h1>Iniciar sesión</h1>
+        <p>Accede al panel de administración de operaciones.</p>
+        <label>Usuario<input autoFocus value={username} onChange={(event) => { setUsername(event.target.value); setError(false) }} placeholder="admin" /></label>
+        <label>Contraseña<input type="password" value={password} onChange={(event) => { setPassword(event.target.value); setError(false) }} placeholder="••••••••" /></label>
+        {error && <span className="login-error">Usuario o contraseña incorrectos</span>}
+        <button className="primary-button login-submit" type="submit">Entrar <Icon name="arrowRight" size={13} /></button>
+        <span className="login-hint">Demo · admin / Admin@2026</span>
+      </form>
+    </div>
+  )
 }
 
 function GoogleMap({ drivers }: { drivers: Driver[] }) {
@@ -553,24 +579,24 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
   return <>
     <section className="report-hero panel">
       <div className="report-hero-main">
-        <span className="eyebrow">INFORME DE AVANCE · ENTREGA LOCAL</span>
-        <h2>Estado de implementación de INCOEX Apps</h2>
-        <p>Este informe reúne el alcance definido, las pantallas de referencia y la evidencia disponible en el repositorio. Está preparado para que el cliente lo revise directamente en la plataforma o lo guarde como PDF.</p>
-        <div className="report-meta-row"><span><b>Fecha de corte</b>{reportDate}</span><span><b>Fuente</b>Figma + repositorio local</span><span><b>Modalidad</b>Revisión colaborativa</span></div>
+        <span className="eyebrow">Estado del proyecto</span>
+        <h2>Entregables de INCOEX Apps</h2>
+        <p>Avance del proyecto frente al alcance acordado con el cliente, con evidencia de lo implementado y lo pendiente por cerrar.</p>
+        <div className="report-meta-row"><span><b>Fecha de corte</b>{reportDate}</span><span><b>Fuente</b>Figma + repositorio</span></div>
       </div>
-      <div className="report-hero-side"><span className="review-badge"><i /> Disponible para revisión</span><div className="report-progress"><strong>{verifiedPercent}%</strong><span>avance verificado</span><div><i style={{ width: `${verifiedPercent}%` }} /></div></div><button className="primary-button" onClick={() => { onNotice('Selecciona “Guardar como PDF” para compartir el informe'); window.print() }}>Imprimir / guardar PDF</button></div>
+      <div className="report-hero-side"><div className="report-progress"><strong>{verifiedPercent}%</strong><span>avance verificado</span><div><i style={{ width: `${verifiedPercent}%` }} /></div></div><button className="primary-button" onClick={() => { onNotice('Selecciona “Guardar como PDF” para compartir el informe'); window.print() }}>Imprimir / guardar PDF</button></div>
     </section>
     <div className="deliverable-summary-grid">
-      <DeliverableMetric label="Alcance rastreado" value={summary.total} detail="tarjetas persistidas" tone="blue" />
-      <DeliverableMetric label="Verificado" value={summary.done} detail="evidencia reproducible" tone="mint" />
-      <DeliverableMetric label="En curso" value={summary.in_progress} detail="implementación local" tone="gold" />
-      <DeliverableMetric label="Brecha pendiente" value={summary.review + summary.backlog} detail="QA, producto o producción" tone="red" />
+      <DeliverableMetric label="Total de tareas" value={summary.total} detail="alcance del proyecto" tone="blue" />
+      <DeliverableMetric label="Verificadas" value={summary.done} detail="con evidencia" tone="mint" />
+      <DeliverableMetric label="En desarrollo" value={summary.in_progress} detail="en implementación" tone="gold" />
+      <DeliverableMetric label="Pendientes" value={summary.review + summary.backlog} detail="por revisar o cerrar" tone="red" />
     </div>
     <section className="panel scope-panel">
-      <div className="panel-header"><div><span className="eyebrow">ALCANCE Y TRAZABILIDAD</span><h2>Figma frente al avance tangible</h2></div><span className="source-badge">Sincronizado con la API</span></div>
-      <p className="scope-intro">La lectura del avance separa lo que ya puede reproducirse en el código, lo que está en implementación y lo que requiere una decisión o validación adicional. Así el cliente puede revisar cada punto con evidencia, sin confundir una pantalla visual con una funcionalidad terminada.</p>
-      <div className="scope-area-grid">{areas.map((area) => { const areaItems = deliverables.filter((item) => item.area === area); return <div className="scope-area" key={area}><span className="scope-area-count">{areaItems.length}</span><div><strong>{area}</strong><small>{areaItems.filter((item) => item.status === 'done').length} verificados · {areaItems.filter((item) => item.status !== 'done').length} por cerrar</small></div></div> })}</div>
-      <div className="report-legend"><span><i className="legend-dot verified" />Verificado: reproducible con evidencia</span><span><i className="legend-dot review" />Revisión: requiere QA o validación</span><span><i className="legend-dot pending" />Pendiente: aún no implementado</span></div>
+      <div className="panel-header"><div><span className="eyebrow">Áreas del proyecto</span><h2>Avance por módulo</h2></div></div>
+      <p className="scope-intro">Cada área indica cuántas tareas están verificadas y cuántas quedan por cerrar.</p>
+      <div className="scope-area-grid">{areas.map((area) => { const areaItems = deliverables.filter((item) => item.area === area); return <div className="scope-area" key={area}><span className="scope-area-count">{areaItems.length}</span><div><strong>{area}</strong><small>{areaItems.filter((item) => item.status === 'done').length} verificadas · {areaItems.filter((item) => item.status !== 'done').length} por cerrar</small></div></div> })}</div>
+      <div className="report-legend"><span><i className="legend-dot verified" />Verificada: con evidencia</span><span><i className="legend-dot review" />Revisión: requiere QA</span><span><i className="legend-dot pending" />Pendiente: sin implementar</span></div>
     </section>
     <section className="project-plan panel">
       <div className="plan-heading"><div><span className="eyebrow">PLAN DE TRABAJO</span><h2>Seguimiento desde el lunes 17 de agosto</h2><p>El alcance se organiza en cuatro semanas de trabajo para dar contexto a cada tarea y facilitar el seguimiento de fechas.</p></div><span className="plan-date">17 AGO 2026 → 13 SEP 2026</span></div>
