@@ -1,4 +1,4 @@
-import type { AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
+import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api').replace(/\/$/, '')
 
@@ -8,14 +8,15 @@ async function getJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-async function sendJson<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
+async function sendJson<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!response.ok) throw new Error(`API ${response.status}`)
-  return response.json() as Promise<T>
+  const text = await response.text()
+  return (text ? JSON.parse(text) : {}) as T
 }
 
 export function getDashboardSummary() {
@@ -23,9 +24,16 @@ export function getDashboardSummary() {
 }
 
 export function getTrips() { return getJson<Trip[]>('/trips') }
+export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
+export function createDriver(body: { name: string; phone?: string; vehicle?: string; plate?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
+export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string }) { return sendJson<Client>('/clients', 'POST', body) }
+export function deleteClient(id: string) { return sendJson<{ deleted: string }>(`/clients/${encodeURIComponent(id)}`, 'DELETE') }
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
+export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
+export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function getHistory() { return getJson<HistoryEvent[]>('/history') }
 export function getReportsSummary() { return getJson<ReportsSummary>('/reports/summary') }
 export function getTrackingOverview() { return getJson<TrackingOverview>('/tracking/overview') }
@@ -37,6 +45,14 @@ export function createTrip(body: Pick<Trip, 'client' | 'origin' | 'destination' 
   recipientName?: string
   recipientPhone?: string
   fragile?: boolean
+  originLat?: number
+  originLng?: number
+  destinationLat?: number
+  destinationLng?: number
+  distanceKm?: number
+  serviceType?: 'Urbano' | 'Express' | 'Programado'
+  contactName?: string
+  contactPhone?: string
 }) {
   return sendJson<Trip>('/trips', 'POST', body)
 }
@@ -50,18 +66,38 @@ export function updateTripStatus(tripId: string, status: TripStatus) {
 }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
-export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
+export async function uploadVehicleImage(id: string, file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+  const response = await fetch(`${API_BASE}/vehicles/${encodeURIComponent(id)}/image`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) throw new Error(`API ${response.status}`)
+  return response.json() as Promise<Vehicle>
+}
 export function updateVehicleStatus(id: string, status: VehicleStatus) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
+export function deleteVehicle(id: string) { return sendJson<{ deleted: string }>(`/vehicles/${encodeURIComponent(id)}`, 'DELETE') }
 export function assignVehicleDriver(id: string, driver: string) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}/driver`, 'PATCH', { driver }) }
 export function registerVehicleMaintenance(id: string, description: string, cost?: number) { return sendJson<MaintenanceRecord[]>(`/vehicles/${encodeURIComponent(id)}/maintenance`, 'POST', { description, cost }) }
 export function getMaintenance() { return getJson<MaintenanceRecord[]>('/vehicles/maintenance') }
+
+export function getSettings() { return getJson<AppSettings>('/settings') }
+export function updateSettings(body: Partial<Omit<AppSettings, 'updatedAt'>>) { return sendJson<AppSettings>('/settings', 'PATCH', body) }
+
+export function resolveImageUrl(path: string) {
+  return path.startsWith('http') ? path : `${API_BASE}${path}`
+}
 
 export function getUsers() { return getJson<AppUser[]>('/admin/users') }
 export function getRoles() { return getJson<Role[]>('/admin/roles') }
 export function createUser(body: { name: string; email: string; phone?: string; role: UserRole }) { return sendJson<AppUser>('/admin/users', 'POST', body) }
 export function updateUser(id: string, body: { role?: UserRole; status?: 'Activo' | 'Inactivo' }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function deleteUser(id: string) { return sendJson<{ deleted: string }>(`/admin/users/${encodeURIComponent(id)}`, 'DELETE') }
 
-export function getReportCsvUrl(collection: 'trips' | 'drivers' | 'clients' | 'incidents') {
+export function getReportCsvUrl(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages') {
   return `${API_BASE}/reports/export/${collection}`
 }
 

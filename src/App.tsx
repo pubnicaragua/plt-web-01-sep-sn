@@ -1,10 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import * as XLSX from 'xlsx'
 import {
   assignTrip,
   assignVehicleDriver,
+  createClient,
+  createDriver,
+  createIncident,
   createTrip,
   createUser,
   createVehicle,
+  deleteClient,
+  deleteDriver,
+  deleteTrip,
+  deleteUser,
+  deleteVehicle,
   getApiBase,
   getClients,
   getDashboardSummary,
@@ -14,22 +23,28 @@ import {
   getHistory,
   getIncidents,
   getMaintenance,
-  getReportCsvUrl,
   getReportsSummary,
   getRoles,
+  getSettings,
   getTrackingOverview,
   getTrips,
   getUsers,
   getVehicles,
   registerVehicleMaintenance,
+  resolveImageUrl,
   updateDeliverableStatus,
+  updateIncidentStatus,
+  updateSettings,
   updateTripStatus,
   updateUser,
+  updateVehicle,
   updateVehicleStatus,
+  uploadVehicleImage,
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
-import type { AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import { csToUsd, formatCs } from './types'
 
 const emptySummary: DashboardSummary = {
   tripsToday: 0,
@@ -43,6 +58,37 @@ const emptySummary: DashboardSummary = {
   packagesInTransit: 0,
   delayedTrips: 0,
   openIncidents: 0,
+}
+
+type ExportCell = string | number
+
+function exportExcel(filename: string, sheetName: string, rows: Array<Record<string, ExportCell>>) {
+  const sheet = XLSX.utils.json_to_sheet(rows)
+  const book = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(book, sheet, sheetName.slice(0, 31))
+  XLSX.writeFile(book, filename)
+}
+
+function exportPdf(title: string, subtitle: string, columns: string[], rows: ExportCell[][]) {
+  const windowRef = window.open('', '_blank', 'width=1000,height=700')
+  if (!windowRef) return
+  const header = columns.map((column) => `<th>${column}</th>`).join('')
+  const body = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')
+  windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #243554; padding: 28px; }
+    h1 { font-size: 20px; margin: 0 0 4px; } p { color: #7e8ca3; font-size: 13px; margin: 0 0 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; background: #f2f5fa; border-bottom: 2px solid #dbe5f6; padding: 8px 10px; }
+    td { border-bottom: 1px solid #eef2f8; padding: 7px 10px; }
+    .foot { margin-top: 18px; color: #93a1b8; font-size: 11px; }
+  </style></head><body><h1>${title}</h1><p>${subtitle}</p><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table><p class="foot">INCOEX Logistics · generado el ${new Date().toLocaleString('es-NI')} · guarda como PDF desde el diálogo de impresión</p><script>window.onload = function () { window.print() }</script></body></html>`)
+  windowRef.document.close()
+}
+
+class MapErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? <div className="map-status error"><span className="map-status-card"><strong>El mapa no pudo dibujarse</strong><small>Reintenta o revisa la conexión.</small><button onClick={() => this.setState({ failed: false })}><Icon name="refresh" size={12} /> Reintentar</button></span></div> : this.props.children }
 }
 
 const navItems: Array<{ id: Section; label: string; icon: IconName; group?: string }> = [
@@ -83,11 +129,16 @@ function App() {
   const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([])
   const [users, setUsers] = useState<AppUser[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [connection, setConnection] = useState<ConnectionState>('loading')
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
   const [notice, setNotice] = useState('')
   const [newTripOpen, setNewTripOpen] = useState(false)
+  const [driverFormOpen, setDriverFormOpen] = useState(false)
+  const [clientFormOpen, setClientFormOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -105,8 +156,9 @@ function App() {
       getMaintenance(),
       getUsers(),
       getRoles(),
+      getSettings(),
     ])
-      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextTracking, nextDeliverables, nextDeliverableSummary, nextVehicles, nextMaintenance, nextUsers, nextRoles]) => {
+      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextTracking, nextDeliverables, nextDeliverableSummary, nextVehicles, nextMaintenance, nextUsers, nextRoles, nextSettings]) => {
         setSummary(nextSummary)
         setTrips(nextTrips)
         setDrivers(nextDrivers)
@@ -121,6 +173,7 @@ function App() {
         setMaintenance(nextMaintenance)
         setUsers(nextUsers)
         setRoles(nextRoles)
+        setSettings(nextSettings)
         setConnection('connected')
       })
       .catch((error: unknown) => {
@@ -190,10 +243,13 @@ function App() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes..." />
               <kbd>⌘ K</kbd>
             </div>
-            <div className="live-pill"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</div>
-            <button className="round-button" aria-label="Notificaciones" onClick={() => setNotice('No hay notificaciones nuevas')}><Icon name="bell" size={16} />{summary.openIncidents > 0 && <span className="notification-dot">{summary.openIncidents}</span>}</button>
+            <button className="live-pill" onClick={() => navigate('tracking')} title="Ver el mapa de operaciones"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</button>
+            <NotificationBell openIncidents={summary.openIncidents} pendingTrips={summary.pendingTrips} history={history} onNavigate={(target) => { setNotificationsOpen(false); navigate(target) }} open={notificationsOpen} onToggle={() => setNotificationsOpen((current) => !current)} />
             <button className="round-button" aria-label="Ayuda" title="Ayuda" onClick={() => setNotice('Centro de ayuda en preparación')}><Icon name="help" size={16} /></button>
-            <div className="profile-menu" onClick={logout} title="Cerrar sesión"><div className="avatar small"><Icon name="drivers" size={14} /></div><span>Superadministrador</span><span className="chevron"><Icon name="chevronDown" size={13} /></span></div>
+            <div className="profile-menu" onClick={() => setProfileMenuOpen((current) => !current)} title="Cuenta de administrador">
+              <div className="avatar small"><Icon name="drivers" size={14} /></div><span>Superadministrador</span><span className="chevron"><Icon name="chevronDown" size={13} /></span>
+              {profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>Mario Martínez</strong><small>Administrador General</small></div><button onClick={() => navigate('users')}>Usuarios y roles</button><button onClick={() => navigate('settings')}>Configuración</button><button className="danger-item" onClick={logout}><Icon name="logout" size={13} /> Cerrar sesión</button></div>}
+            </div>
           </div>
         </header>
 
@@ -205,10 +261,9 @@ function App() {
               <p>{sectionDescription(section)}</p>
             </div>
             <div className="heading-actions">
-              <span className="region-label">Managua · Nicaragua</span>
               {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
-              {section === 'drivers' && <button className="primary-button" onClick={() => setNotice('El alta de conductores se conectará al endpoint de administración')}><Icon name="plus" size={13} /> Agregar conductor</button>}
-              {(section === 'reports' || section === 'history') && <button className="secondary-button" onClick={() => setNotice('La exportación usará los datos recibidos de la API')}><Icon name="download" size={13} /> Exportar</button>}
+              {section === 'drivers' && <button className="primary-button" onClick={() => setDriverFormOpen(true)}><Icon name="plus" size={13} /> Agregar conductor</button>}
+              {section === 'clients' && <button className="primary-button" onClick={() => setClientFormOpen(true)}><Icon name="plus" size={13} /> Nuevo cliente</button>}
               {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}><Icon name="download" size={13} /> Exportar PDF</button>}
             </div>
           </div>
@@ -216,25 +271,27 @@ function App() {
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
           {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} onNavigate={navigate} />}
-          {section === 'trips' && <TripsView trips={trips} search={search} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'trips' && <TripsView trips={trips} search={search} settings={settings} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice) }} />}
           {section === 'requests' && <RequestsView trips={trips} onNavigate={navigate} />}
           {section === 'assignment' && <AssignmentView trips={trips} drivers={drivers} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
-          {section === 'drivers' && <DriversView drivers={drivers} onNotice={setNotice} />}
-          {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} />}
-          {section === 'clients' && <ClientsView clients={clients} search={search} />}
-          {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} />}
-          {section === 'reports' && <ReportsView reports={reports} />}
-          {section === 'packages' && <PackagesView trips={trips} />}
-          {section === 'tracking' && <TrackingView tracking={tracking} />}
+          {section === 'drivers' && <DriversView drivers={drivers} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
+          {section === 'clients' && <ClientsView clients={clients} search={search} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} onNotice={setNotice} />}
+          {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
+          {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} />}
           {section === 'history' && <HistoryView history={history} />}
-          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} />}
+          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
           {section === 'billing' && <BillingView onNotice={setNotice} />}
-          {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} />}
+          {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
         </div>
       </main>
       {notice && <div className="toast"><span className="toast-check">✓</span>{notice}</div>}
-      {newTripOpen && <NewTripDialog onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada en la API`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
+      {newTripOpen && <NewTripDialog settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
+      {driverFormOpen && <DriverFormDialog onClose={() => setDriverFormOpen(false)} onCreated={(driver) => { setDrivers((current) => [...current, driver]); setDriverFormOpen(false); setNotice(`Conductor ${driver.name} registrado y disponible`) }} onError={setNotice} />}
+      {clientFormOpen && <ClientFormDialog onClose={() => setClientFormOpen(false)} onCreated={(client) => { setClients((current) => [...current, client]); setClientFormOpen(false); setNotice(`Cliente ${client.name} registrado y activo`) }} onError={setNotice} />}
     </div>
   )
 }
@@ -280,16 +337,16 @@ function sectionDescription(section: Section) {
 function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; onNavigate: (section: Section) => void }) {
   return <>
     <div className="metrics-grid">
-      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." />
-      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="Asignado · En camino · En entrega" tone="cyan" icon="truck" hint="Viajes que ya tienen conductor asignado y no han sido entregados ni cancelados." />
-      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="sin asignar" tone="gold" icon="clock" hint="Solicitudes aprobadas que aún no tienen conductor asignado." />
-      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="hoy" tone="mint" icon="checkCircle" hint="Viajes marcados como Completado en el día." />
-      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="conectados" tone="mint" icon="drivers" hint="Conductores disponibles, en viaje o en entrega." />
-      <MetricCard label="Conductores disponibles" value={summary.availableDrivers} delta="para asignar" tone="blue" icon="assignment" hint="Conductores en estado Disponible que pueden recibir una asignación ahora." />
-      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta={`${summary.activeClients} activos`} tone="blue" icon="clients" hint="Cuentas corporativas y particulares registradas; activos son los que han operado en el último mes." />
-      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="suma de paquetes en viajes en curso" tone="slate" icon="packages" hint="Suma de paquetes de todos los viajes en curso. Un viaje puede aportar varios paquetes." />
-      <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta o que superan el tiempo estimado de entrega." />
-      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." />
+      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." onClick={() => onNavigate('trips')} />
+      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="Asignado · En camino · En entrega" tone="cyan" icon="truck" hint="Viajes que ya tienen conductor asignado y no han sido entregados ni cancelados." onClick={() => onNavigate('tracking')} />
+      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="sin asignar" tone="gold" icon="clock" hint="Solicitudes aprobadas que aún no tienen conductor asignado." onClick={() => onNavigate('requests')} />
+      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="hoy" tone="mint" icon="checkCircle" hint="Viajes marcados como Completado en el día." onClick={() => onNavigate('trips')} />
+      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="conectados" tone="mint" icon="drivers" hint="Conductores disponibles, en viaje o en entrega." onClick={() => onNavigate('drivers')} />
+      <MetricCard label="Conductores disponibles" value={summary.availableDrivers} delta="para asignar" tone="blue" icon="assignment" hint="Conductores en estado Disponible que pueden recibir una asignación ahora." onClick={() => onNavigate('assignment')} />
+      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta={`${summary.activeClients} activos`} tone="blue" icon="clients" hint="Cuentas corporativas y particulares registradas; activos son los que han operado en el último mes." onClick={() => onNavigate('clients')} />
+      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="suma de paquetes en viajes en curso" tone="slate" icon="packages" hint="Suma de paquetes de todos los viajes en curso. Un viaje puede aportar varios paquetes." onClick={() => onNavigate('packages')} />
+      <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta." onClick={() => onNavigate('incidents')} />
+      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." onClick={() => onNavigate('incidents')} />
     </div>
     <section className="panel attention-panel">
       <PanelHeader title="Requiere atención" action="Ver incidencias" onAction={() => onNavigate('incidents')} />
@@ -323,8 +380,8 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
   </>
 }
 
-function MetricCard({ label, value, delta, tone, icon, hint }: { label: string; value: number; delta: string; tone: string; icon: IconName; hint?: string }) {
-  return <div className={`metric-card tone-${tone}`} title={hint}><div className="metric-top"><span className="metric-label">{label}{hint && <span className="metric-info"><Icon name="info" size={11} /></span>}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></div>
+function MetricCard({ label, value, delta, tone, icon, hint, onClick }: { label: string; value: number; delta: string; tone: string; icon: IconName; hint?: string; onClick?: () => void }) {
+  return <button className={`metric-card tone-${tone} clickable`} title={hint} onClick={onClick} type="button"><div className="metric-top"><span className="metric-label">{label}{hint && <span className="metric-info"><Icon name="info" size={11} /></span>}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></button>
 }
 
 function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
@@ -369,10 +426,30 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
   )
 }
 
-function GoogleMap({ drivers }: { drivers: Driver[] }) {
+function NotificationBell({ openIncidents, pendingTrips, history, open, onToggle, onNavigate }: { openIncidents: number; pendingTrips: number; history: HistoryEvent[]; open: boolean; onToggle: () => void; onNavigate: (section: Section) => void }) {
+  const total = openIncidents + pendingTrips
+  return (
+    <div className="notifications-wrap">
+      <button className="round-button" aria-label="Notificaciones" onClick={onToggle}><Icon name="bell" size={16} />{total > 0 && <span className="notification-dot">{total}</span>}</button>
+      {open && (
+        <div className="notifications-dropdown">
+          <div className="notifications-head"><strong>Notificaciones</strong><span>{total} sin atender</span></div>
+          {openIncidents > 0 && <button onClick={() => onNavigate('incidents')}><span className="attention-icon red"><Icon name="alert" size={13} /></span><div><strong>{openIncidents} incidencias abiertas</strong><small>Requieren resolución</small></div></button>}
+          {pendingTrips > 0 && <button onClick={() => onNavigate('requests')}><span className="attention-icon blue"><Icon name="requests" size={13} /></span><div><strong>{pendingTrips} solicitudes pendientes</strong><small>Esperan asignación de conductor</small></div></button>}
+          {total === 0 && <p className="notifications-empty">Todo al día, sin pendientes.</p>}
+          <div className="notifications-foot"><span>Última actividad</span></div>
+          {history.slice(0, 3).map((event) => <div className="notification-row" key={event.id}><span className={`activity-marker ${event.color}`} /><div><strong>{event.title}</strong><small>{event.detail}</small></div><span>{event.time}</span></div>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
+  const polylinesRef = useRef<any[]>([])
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
 
@@ -413,33 +490,54 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
-    markersRef.current.forEach((marker) => marker.setMap(null))
-    markersRef.current = drivers
-      .filter((driver) => Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude))
-      .map((driver) => {
-        const marker = new maps.Marker({
-          position: { lat: driver.latitude, lng: driver.longitude },
+    try {
+      markersRef.current.forEach((marker) => marker.setMap(null))
+      markersRef.current = drivers
+        .filter((driver) => Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude))
+        .map((driver) => {
+          const marker = new maps.Marker({
+            position: { lat: driver.latitude, lng: driver.longitude },
+            map,
+            title: `${driver.name} · ${driver.status}`,
+            icon: {
+              path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
+              fillColor: googleStatusColor(driver.status),
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 1.6,
+              scale: 1.15,
+              anchor: new maps.Point(12, 24),
+            },
+          })
+          marker.addListener('click', () => {
+            new maps.InfoWindow({
+              content: `<strong>${driver.name}</strong><br/>${driver.vehicle} · ${driver.plate}<br/>Estado: ${driver.status}`,
+            }).open({ anchor: marker, map })
+          })
+          return marker
+        })
+      polylinesRef.current.forEach((polyline) => polyline.setMap(null))
+      polylinesRef.current = trips
+        .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLng))
+        .map((trip) => new maps.Polyline({
+          path: [{ lat: trip.originLat, lng: trip.originLng }, { lat: trip.destinationLat, lng: trip.destinationLng }],
           map,
-          title: `${driver.name} · ${driver.status}`,
-          icon: {
-            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-            fillColor: googleStatusColor(driver.status),
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 1.6,
-            scale: 1.15,
-            anchor: new maps.Point(12, 24),
-          },
-        })
-        marker.addListener('click', () => {
-          new maps.InfoWindow({
-            content: `<strong>${driver.name}</strong><br/>${driver.vehicle} · ${driver.plate}<br/>Estado: ${driver.status}`,
-          }).open({ anchor: marker, map })
-        })
-        return marker
-      })
-    return () => markersRef.current.forEach((marker) => marker.setMap(null))
-  }, [drivers, mapState])
+          strokeColor: '#e9a23b',
+          strokeOpacity: 0.85,
+          strokeWeight: 2.5,
+        }))
+    } catch {
+      // el proveedor rechazó los marcadores; el mapa sigue visible
+    }
+    return () => {
+      try {
+        markersRef.current.forEach((marker) => marker.setMap(null))
+        polylinesRef.current.forEach((polyline) => polyline.setMap(null))
+      } catch {
+        // limpieza segura
+      }
+    }
+  }, [drivers, trips, mapState])
 
   return (
     <div className="google-map-wrap">
@@ -462,19 +560,165 @@ function GoogleMap({ drivers }: { drivers: Driver[] }) {
   )
 }
 
-function NewTripDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
-  const [client, setClient] = useState('')
-  const [origin, setOrigin] = useState('')
-  const [destination, setDestination] = useState('')
-  const [packages, setPackages] = useState(1)
-  const [description, setDescription] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+type LatLng = { lat: number; lng: number }
 
+function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (driver: Driver) => void; onError: (message: string) => void }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [vehicle, setVehicle] = useState('')
+  const [plate, setPlate] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     try {
-      const trip = await createTrip({ client, origin, destination, packages, description })
+      onCreated(await createDriver({ name, phone, vehicle, plate }))
+    } catch {
+      onError('No se pudo registrar el conductor; revisa la conexión con la API')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <form className="modal-card" onSubmit={submit}>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Conductores</span><h2>Agregar conductor</h2><p>Queda en estado Disponible con posición inicial en Managua.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="form-grid">
+          <label className="full-field">Nombre completo<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre y apellidos" /></label>
+          <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          <label>Vehículo<input value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="Ej: Toyota Hilux 2024" /></label>
+          <label>Placa<input value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
+        </div>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar conductor'}</button></div>
+      </form>
+    </div>
+  )
+}
+
+function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (client: Client) => void; onError: (message: string) => void }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('Corporativo')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [address, setAddress] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitting(true)
+    try {
+      onCreated(await createClient({ name, type, phone, email, address }))
+    } catch {
+      onError('No se pudo registrar el cliente; revisa el nombre o la conexión con la API')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <form className="modal-card" onSubmit={submit}>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Clientes</span><h2>Nuevo cliente</h2><p>Se registra Activo y queda disponible para solicitar viajes.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="form-grid">
+          <label className="full-field">Nombre o empresa<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre de la empresa o persona" /></label>
+          <label>Tipo de cliente<select value={type} onChange={(event) => setType(event.target.value)}><option>Corporativo</option><option>Particular</option></select></label>
+          <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="contacto@empresa.com.ni" /></label>
+          <label className="full-field">Dirección<input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Dirección principal en Managua" /></label>
+        </div>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar cliente'}</button></div>
+      </form>
+    </div>
+  )
+}
+
+function haversineKm(a: LatLng, b: LatLng) {
+  const radius = 6371
+  const toRad = (value: number) => (value * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * radius * Math.asin(Math.sqrt(h))
+}
+
+const TRIP_STEPS = ['Cliente y servicio', 'Ruta en el mapa', 'Destinatario y carga', 'Confirmar']
+
+function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: AppSettings | null; onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
+  const [step, setStep] = useState(0)
+  const [client, setClient] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [serviceType, setServiceType] = useState<Trip['serviceType']>('Urbano')
+  const [packages, setPackages] = useState(1)
+  const [description, setDescription] = useState('')
+  const [fragile, setFragile] = useState(false)
+  const [origin, setOrigin] = useState('')
+  const [destination, setDestination] = useState('')
+  const [originPoint, setOriginPoint] = useState<LatLng | null>(null)
+  const [destinationPoint, setDestinationPoint] = useState<LatLng | null>(null)
+  const [recipientName, setRecipientName] = useState('')
+  const [recipientPhone, setRecipientPhone] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [searching, setSearching] = useState<'' | 'origin' | 'destination'>('')
+  const [searchError, setSearchError] = useState('')
+
+  async function searchOnMap(address: string, type: 'origin' | 'destination') {
+    const query = address.trim()
+    if (!query) return
+    setSearching(type)
+    setSearchError('')
+    try {
+      const maps = await loadGoogleMaps()
+      if (!maps?.Geocoder) throw new Error('geocoder-no-disponible')
+      const geocoder = new maps.Geocoder()
+      const results = await new Promise<any[]>((resolve, reject) => {
+        geocoder.geocode({ address: `${query}, Managua, Nicaragua` }, (response: any[], status: string) => {
+          if (status === 'OK' && response.length > 0) resolve(response)
+          else reject(new Error(status))
+        })
+      })
+      const location = results[0].geometry.location
+      const point = { lat: location.lat(), lng: location.lng() }
+      if (type === 'origin') setOriginPoint(point)
+      else setDestinationPoint(point)
+      if (type === 'origin' && (!origin || !origin.trim())) setOrigin(`${query} (punto localizado)`)
+      if (type === 'destination' && (!destination || !destination.trim())) setDestination(`${query} (punto localizado)`)
+    } catch {
+      setSearchError('No se pudo localizar la dirección en el mapa; haz clic directamente sobre el mapa para colocar el punto.')
+    } finally {
+      setSearching('')
+    }
+  }
+
+  const distanceKm = useMemo(() => (originPoint && destinationPoint ? haversineKm(originPoint, destinationPoint) : 0), [originPoint, destinationPoint])
+  const estimatedCost = settings ? Number((settings.baseFeeCs + distanceKm * settings.farePerKmCs).toFixed(2)) : 0
+  const estimatedUsd = settings ? csToUsd(estimatedCost, settings.dollarRate) : 0
+
+  const canNext = step === 0
+    ? client.trim() !== ''
+    : step === 1
+      ? origin.trim() !== '' && destination.trim() !== '' && originPoint !== null && destinationPoint !== null
+      : true
+
+  async function submit() {
+    setSubmitting(true)
+    try {
+      const trip = await createTrip({
+        client,
+        contactName,
+        contactPhone,
+        serviceType,
+        packages,
+        description,
+        fragile,
+        origin,
+        destination,
+        originLat: originPoint?.lat,
+        originLng: originPoint?.lng,
+        destinationLat: destinationPoint?.lat,
+        destinationLng: destinationPoint?.lng,
+        distanceKm: Number(distanceKm.toFixed(2)),
+        recipientName,
+        recipientPhone,
+      })
       onCreated(trip)
     } catch {
       onError('No se pudo crear el viaje; revisa la conexión con la API')
@@ -483,14 +727,305 @@ function NewTripDialog({ onClose, onCreated, onError }: { onClose: () => void; o
     }
   }
 
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><span className="eyebrow">Nueva solicitud · API</span><h2>Crear viaje</h2><p>Los datos se guardarán en el servicio de operaciones.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div><div className="form-grid"><label>Cliente<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre o empresa" /></label><label>Paquetes<input required type="number" min="1" value={packages} onChange={(event) => setPackages(Math.max(1, Number(event.target.value)))} /></label><label>Recogida<input required value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="Dirección de recogida" /></label><label>Destino<input required value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Dirección de entrega" /></label><label className="full-field">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Características o instrucciones de la carga" rows={3} /></label></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Crear solicitud'}</button></div></form></div>
+  return (
+    <div className="modal-backdrop wizard-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <form className="modal-card wizard-card" onSubmit={(event) => { event.preventDefault(); if (step < 3) setStep(step + 1); else void submit() }}>
+        <div className="modal-header"><div><span className="eyebrow">Nueva solicitud · API</span><h2>Crear viaje</h2><p>Proceso completo: cliente, ruta sobre el mapa y tarifa estimada en córdobas.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="wizard-steps">{TRIP_STEPS.map((label, index) => <div className={`wizard-step ${index === step ? 'active' : ''} ${index < step ? 'done' : ''}`} key={label}><span>{index < step ? '✓' : index + 1}</span>{label}</div>)}</div>
+        <div className="wizard-body">
+          {step === 0 && (
+            <div className="form-grid">
+              <label className="full-field">Cliente *<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre o empresa" /></label>
+              <label>Contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Quién solicita" /></label>
+              <label>Teléfono de contacto<input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+              <label>Tipo de servicio<select value={serviceType} onChange={(event) => setServiceType(event.target.value as Trip['serviceType'])}><option>Urbano</option><option>Express</option><option>Programado</option></select></label>
+              <label>Paquetes<input required type="number" min="1" value={packages} onChange={(event) => setPackages(Math.max(1, Number(event.target.value)))} /></label>
+              <label className="full-field check-field"><input type="checkbox" checked={fragile} onChange={(event) => setFragile(event.target.checked)} /> Carga frágil (manejo cuidadoso)</label>
+              <label className="full-field">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Características o instrucciones de la carga" rows={3} /></label>
+            </div>
+          )}
+          {step === 1 && (
+            <div className="route-step">
+              <div className="form-grid route-fields">
+                <label>Recogida<input required value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="Dirección o zona de recogida" /><button type="button" className="secondary-button geocode-button" disabled={searching !== ''} onClick={() => void searchOnMap(origin, 'origin')}><Icon name="map" size={12} /> {searching === 'origin' ? 'Localizando…' : 'Buscar en el mapa'}</button></label>
+                <label>Destino<input required value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Dirección de entrega" /><button type="button" className="secondary-button geocode-button" disabled={searching !== ''} onClick={() => void searchOnMap(destination, 'destination')}><Icon name="map" size={12} /> {searching === 'destination' ? 'Localizando…' : 'Buscar en el mapa'}</button></label>
+              </div>
+              {searchError && <p className="wizard-hint error-hint">{searchError}</p>}
+              <MapErrorBoundary>
+                <RoutePickerMap origin={originPoint} destination={destinationPoint} onChange={(point, type) => {
+                  if (type === 'origin') {
+                    setOriginPoint(point)
+                    if (!origin.trim()) setOrigin(`Punto en mapa · ${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`)
+                  } else {
+                    setDestinationPoint(point)
+                    if (!destination.trim()) setDestination(`Punto en mapa · ${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`)
+                  }
+                }} />
+              </MapErrorBoundary>
+              <div className="route-summary">
+                <span>Distancia <b>{distanceKm.toFixed(2)} km</b></span>
+                <span>Tarifa estimada <b>{formatCs(estimatedCost)}</b></span>
+                {settings && <span>≈ US$ {estimatedUsd.toFixed(2)} · tasa {settings.dollarRate}</span>}
+              </div>
+            </div>
+          )}
+          {step === 2 && (
+            <div className="form-grid">
+              <label>Destinatario<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Nombre de quien recibe" /></label>
+              <label>Teléfono del destinatario<input value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+              <p className="wizard-hint">El destinatario recibirá la notificación de entrega desde la app móvil cuando el viaje esté en curso.</p>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="confirm-step">
+              <div className="confirm-block"><span className="eyebrow">CLIENTE Y SERVICIO</span><h3>{client}</h3><p>{serviceType}{contactName ? ` · Contacto: ${contactName}` : ''}{contactPhone ? ` · ${contactPhone}` : ''} · {packages} paquete(s){fragile ? ' · Frágil' : ''}</p>{description && <p className="confirm-note">{description}</p>}</div>
+              <div className="confirm-block"><span className="eyebrow">RUTA EN EL MAPA</span><h3>{origin}</h3><p className="route-arrow">↓</p><h3>{destination}</h3><p>{distanceKm.toFixed(2)} km en línea recta sobre Managua</p></div>
+              <div className="confirm-block"><span className="eyebrow">DESTINATARIO</span><p>{recipientName || 'Sin destinatario registrado'}{recipientPhone ? ` · ${recipientPhone}` : ''}</p></div>
+              <div className="fare-box"><span>Tarifa estimada</span><strong>{formatCs(estimatedCost)}</strong><small>≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''} · tarifa base {settings ? formatCs(settings.baseFeeCs) : ''} + {distanceKm.toFixed(2)} km × {settings?.farePerKmCs ?? 0}</small></div>
+            </div>
+          )}
+        </div>
+        <div className="modal-actions wizard-actions">
+          <button type="button" className="secondary-button" onClick={step === 0 ? onClose : () => setStep(step - 1)}>{step === 0 ? 'Cancelar' : 'Anterior'}</button>
+          {step < 3 ? <button className="primary-button" disabled={!canNext}>Continuar <Icon name="arrowRight" size={13} /></button> : <button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Crear solicitud'}</button>}
+        </div>
+      </form>
+    </div>
+  )
 }
 
-function TripsView({ trips, search, onNotice, onChanged }: { trips: Trip[]; search: string; onNotice: (message: string) => void; onChanged: (trip: Trip) => void }) {
+function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | null; destination: LatLng | null; onChange: (point: LatLng, type: 'origin' | 'destination') => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const originMarkerRef = useRef<any>(null)
+  const destinationMarkerRef = useRef<any>(null)
+  const polylineRef = useRef<any>(null)
+  const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
+  const [activePick, setActivePick] = useState<'origin' | 'destination'>('origin')
+  const activePickRef = useRef(activePick)
+  activePickRef.current = activePick
+
+  useEffect(() => {
+    let cancelled = false
+    setMapState('loading')
+    loadGoogleMaps()
+      .then((maps) => {
+        if (cancelled || !containerRef.current) return
+        if (!maps) throw new Error('maps-unavailable')
+        try {
+          const map = new maps.Map(containerRef.current, {
+            center: MANAGUA_CENTER,
+            zoom: 12,
+            disableDefaultUI: true,
+            zoomControl: true,
+            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
+            fullscreenControl: true,
+            streetViewControl: false,
+            mapTypeControl: false,
+            gestureHandling: 'greedy',
+            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+          })
+          mapRef.current = map
+          map.addListener('click', (event: any) => {
+            const point = { lat: event.latLng.lat(), lng: event.latLng.lng() }
+            onChange(point, activePickRef.current)
+          })
+          setMapState('ready')
+        } catch {
+          if (!cancelled) setMapState('error')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMapState('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
+
+  useEffect(() => {
+    const maps = window.google?.maps
+    const map = mapRef.current
+    if (!maps || !map || mapState !== 'ready') return
+    try {
+      originMarkerRef.current?.setMap(null)
+      destinationMarkerRef.current?.setMap(null)
+      polylineRef.current?.setMap(null)
+      if (origin) {
+        originMarkerRef.current = new maps.Marker({
+          position: origin,
+          map,
+          draggable: true,
+          title: 'Recogida',
+          icon: {
+            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
+            fillColor: '#2562ec',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 1.6,
+            scale: 1.2,
+            anchor: new maps.Point(12, 24),
+          },
+        })
+        originMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'origin'))
+      }
+      if (destination) {
+        destinationMarkerRef.current = new maps.Marker({
+          position: destination,
+          map,
+          draggable: true,
+          title: 'Destino',
+          icon: {
+            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
+            fillColor: '#e5484d',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 1.6,
+            scale: 1.2,
+            anchor: new maps.Point(12, 24),
+          },
+        })
+        destinationMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'destination'))
+      }
+      if (origin && destination) {
+        polylineRef.current = new maps.Polyline({
+          path: [origin, destination],
+          map,
+          strokeColor: '#2562ec',
+          strokeOpacity: 0.9,
+          strokeWeight: 3,
+        })
+        const bounds = new maps.LatLngBounds(origin, destination)
+        map.fitBounds(bounds, 60)
+      } else if (origin || destination) {
+        map.setCenter(origin ?? destination)
+        map.setZoom(14)
+      }
+    } catch {
+      // el marcador o la ruta no se pudieron dibujar; el mapa sigue operativo
+    }
+    return () => {
+      try {
+        originMarkerRef.current?.setMap(null)
+        destinationMarkerRef.current?.setMap(null)
+        polylineRef.current?.setMap(null)
+      } catch {
+        // limpieza segura
+      }
+    }
+  }, [origin, destination, mapState])
+
+  return (
+    <div className="map-picker">
+      <div className="map-picker-toolbar">
+        <span className="eyebrow">SELECCIONA LOS PUNTOS EN EL MAPA</span>
+        <div className="pick-toggle">
+          <button type="button" className={activePick === 'origin' ? 'active' : ''} onClick={() => setActivePick('origin')}><i className="dot blue" />Recogida</button>
+          <button type="button" className={activePick === 'destination' ? 'active' : ''} onClick={() => setActivePick('destination')}><i className="dot red" />Destino</button>
+        </div>
+      </div>
+      <div className="map-picker-canvas">
+        <div ref={containerRef} className="google-map-canvas" />
+        {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando mapa…</span></div>}
+        {mapState === 'error' && (
+          <div className="map-status error">
+            <span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Revisa la API key o la conexión a internet.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button></span>
+          </div>
+        )}
+      </div>
+      <p className="wizard-hint">Haz clic en el mapa para colocar {activePick === 'origin' ? 'la recogida' : 'el destino'} · Arrastra los marcadores para ajustar la ubicación.</p>
+    </div>
+  )
+}
+
+function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setMapState('loading')
+    loadGoogleMaps()
+      .then((maps) => {
+        if (cancelled || !containerRef.current) return
+        if (!maps) throw new Error('maps-unavailable')
+        try {
+          const map = new maps.Map(containerRef.current, {
+            center: MANAGUA_CENTER,
+            zoom: 12,
+            disableDefaultUI: true,
+            zoomControl: true,
+            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
+            fullscreenControl: false,
+            streetViewControl: false,
+            mapTypeControl: false,
+            gestureHandling: 'greedy',
+            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+          })
+          mapRef.current = map
+          try {
+            const bounds = new maps.LatLngBounds(origin, destination)
+            map.fitBounds(bounds, 60)
+          } catch {
+            map.setCenter({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 })
+          }
+          new maps.Marker({
+            position: origin,
+            map,
+            title: 'Recogida',
+            icon: { path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z', fillColor: '#2562ec', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 1.6, scale: 1.1, anchor: new maps.Point(12, 24) },
+          })
+          new maps.Marker({
+            position: destination,
+            map,
+            title: 'Destino',
+            icon: { path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z', fillColor: '#e5484d', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 1.6, scale: 1.1, anchor: new maps.Point(12, 24) },
+          })
+          new maps.Polyline({ path: [origin, destination], map, strokeColor: '#2562ec', strokeOpacity: 0.9, strokeWeight: 3 })
+          setMapState('ready')
+        } catch {
+          if (!cancelled) setMapState('error')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMapState('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
+
+  return (
+    <div className="route-map-wrap">
+      <div ref={containerRef} className="google-map-canvas" />
+      {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando ruta…</span></div>}
+      {mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>Mapa no disponible</strong><small>Revisa la API key o la conexión.</small><button onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button></span></div>}
+    </div>
+  )
+}
+
+function TripsView({ trips, search, settings, onNavigate, onNotice, onChanged, onDeleted }: { trips: Trip[]; search: string; settings: AppSettings | null; onNavigate: (section: Section) => void; onNotice: (message: string) => void; onChanged: (trip: Trip) => void; onDeleted: (id: string) => void }) {
   const [detailTrip, setDetailTrip] = useState<Trip | null>(null)
   const [actingTrip, setActingTrip] = useState('')
-  const filtered = useMemo(() => trips.filter((trip) => `${trip.id} ${trip.client} ${trip.driver} ${trip.origin} ${trip.destination}`.toLowerCase().includes(search.toLowerCase())), [trips, search])
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Pendiente' | 'En curso' | 'Completado'>('all')
+  const [typeFilter, setTypeFilter] = useState<'all' | Trip['serviceType']>('all')
+  const [page, setPage] = useState(1)
+  const pageSize = 8
   const inCourse = trips.filter((trip) => trip.status === 'En camino' || trip.status === 'En entrega').length
+  const filtered = useMemo(() => trips.filter((trip) => {
+    const matchesSearch = `${trip.id} ${trip.client} ${trip.driver} ${trip.origin} ${trip.destination}`.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = statusFilter === 'all' || (statusFilter === 'En curso' ? trip.status === 'En camino' || trip.status === 'En entrega' || trip.status === 'Asignado' : trip.status === statusFilter)
+    const matchesType = typeFilter === 'all' || (trip.serviceType ?? 'Urbano') === typeFilter
+    return matchesSearch && matchesStatus && matchesType
+  }), [trips, search, statusFilter, typeFilter])
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const visible = useMemo(() => {
+    const safePage = Math.min(page, pageCount)
+    return filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  }, [filtered, page, pageCount])
   async function changeStatus(trip: Trip, status: TripStatus) {
     setActingTrip(trip.id)
     try {
@@ -504,8 +1039,22 @@ function TripsView({ trips, search, onNotice, onChanged }: { trips: Trip[]; sear
       setActingTrip('')
     }
   }
+  async function removeTrip(trip: Trip) {
+    if (!window.confirm(`¿Eliminar el viaje ${trip.id} de ${trip.client}? El conductor asignado quedará libre.`)) return
+    setActingTrip(trip.id)
+    try {
+      await deleteTrip(trip.id)
+      onDeleted(trip.id)
+      if (detailTrip?.id === trip.id) setDetailTrip(null)
+      onNotice(`Viaje ${trip.id} eliminado`)
+    } catch {
+      onNotice(`No se pudo eliminar ${trip.id}`)
+    } finally {
+      setActingTrip('')
+    }
+  }
   return <>
-    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className="filter-chip active">Todas <b>{trips.length}</b></button><button className="filter-chip">Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className="filter-chip">En curso <b>{inCourse}</b></button><button className="filter-chip">Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><button className="secondary-button" onClick={() => onNotice('Los filtros avanzados se enviarán al endpoint de consulta')}>Filtros <span>⌄</span></button></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paquetes', 'Estado', 'Acciones']} rows={filtered.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <strong key={`${trip.id}-client`}>{trip.client}</strong>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ir a tracking" onClick={() => onNotice(`Tracking de ${trip.id} en el mapa`)}><Icon name="tracking" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {filtered.length} de {trips.length} viajes · Clic en 👁 para ver detalle y acciones</span><Pagination /></div></section>
+    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{trips.length}</b></button><button className={`filter-chip ${statusFilter === 'Pendiente' ? 'active' : ''}`} onClick={() => { setStatusFilter('Pendiente'); setPage(1) }}>Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className={`filter-chip ${statusFilter === 'En curso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En curso'); setPage(1) }}>En curso <b>{inCourse}</b></button><button className={`filter-chip ${statusFilter === 'Completado' ? 'active' : ''}`} onClick={() => { setStatusFilter('Completado'); setPage(1) }}>Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><select className="mini-select type-filter" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as typeof typeFilter); setPage(1) }} title="Filtrar por tipo de servicio"><option value="all">Todos los servicios</option><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paquetes', 'Tarifa', 'Estado', 'Acciones']} rows={visible.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <strong key={`${trip.id}-client`}>{trip.client}</strong>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? <><b>{formatCs(trip.estimatedCostCs)}</b><small className="cell-sub">{trip.serviceType ?? 'Urbano'}</small></> : '—'}</span>, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ver en el mapa" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={14} /></button><button title="Eliminar viaje" disabled={actingTrip === trip.id} onClick={() => void removeTrip(trip)}><Icon name="trash" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} viajes · 👁 detalle · 🗑 elimina (libera al conductor)</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {detailTrip && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTrip(null) }}>
         <div className="modal-card trip-detail-modal">
@@ -514,16 +1063,32 @@ function TripsView({ trips, search, onNotice, onChanged }: { trips: Trip[]; sear
             <div className="trip-detail-field"><span>Conductor</span><strong>{detailTrip.driver}</strong></div>
             <div className="trip-detail-field"><span>Fecha</span><strong>{detailTrip.date}</strong></div>
             <div className="trip-detail-field"><span>Paquetes</span><strong>{detailTrip.packages}</strong></div>
+            <div className="trip-detail-field"><span>Tipo de servicio</span><strong>{detailTrip.serviceType ?? 'Urbano'}</strong></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailTrip.status} /></div>
+            <div className="trip-detail-field"><span>Tarifa estimada</span><strong>{detailTrip.estimatedCostCs !== undefined ? `${formatCs(detailTrip.estimatedCostCs)}${settings ? ` · US$ ${csToUsd(detailTrip.estimatedCostCs, settings.dollarRate).toFixed(2)}` : ''}` : '—'}</strong></div>
           </div>
+          {(detailTrip.contactName || detailTrip.contactPhone || detailTrip.recipientName) && (
+            <div className="trip-detail-grid compact">
+              {detailTrip.contactName && <div className="trip-detail-field"><span>Contacto</span><strong>{detailTrip.contactName}</strong></div>}
+              {detailTrip.contactPhone && <div className="trip-detail-field"><span>Tel. contacto</span><strong>{detailTrip.contactPhone}</strong></div>}
+              {detailTrip.recipientName && <div className="trip-detail-field"><span>Destinatario</span><strong>{detailTrip.recipientName}{detailTrip.recipientPhone ? ` · ${detailTrip.recipientPhone}` : ''}</strong></div>}
+            </div>
+          )}
+          {detailTrip.fragile && <p className="trip-detail-note"><b>Carga frágil</b> — manejo cuidadoso requerido.</p>}
           {detailTrip.description && <p className="trip-detail-note">{detailTrip.description}</p>}
+          {Number.isFinite(detailTrip.originLat) && Number.isFinite(detailTrip.destinationLat) && (
+            <div className="trip-route-map">
+              <RouteMap origin={{ lat: detailTrip.originLat!, lng: detailTrip.originLng! }} destination={{ lat: detailTrip.destinationLat!, lng: detailTrip.destinationLng! }} />
+              <span className="route-distance">{detailTrip.distanceKm?.toFixed(2) ?? '—'} km</span>
+            </div>
+          )}
           <div className="modal-actions trip-actions">
-            {detailTrip.status === 'Pendiente' && <button className="primary-button" onClick={() => onNotice(`Asigna un conductor a ${detailTrip.id} desde la sección de asignación`)}><Icon name="assignment" size={13} /> Asignar conductor</button>}
+            {detailTrip.status === 'Pendiente' && <button className="primary-button" onClick={() => { setDetailTrip(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar conductor</button>}
             {detailTrip.status === 'Asignado' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En camino')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en camino'}</button>}
             {detailTrip.status === 'En camino' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En entrega')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en entrega'}</button>}
             {detailTrip.status === 'En entrega' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Completado')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Confirmar entrega'}</button>}
             {!['Completado', 'Cancelado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Cancelado')}>Cancelar viaje</button>}
-            <button className="secondary-button" onClick={() => onNotice(`Tracking de ${detailTrip.id} disponible en el mapa`)}><Icon name="tracking" size={13} /> Ver tracking</button>
+            <button className="secondary-button" onClick={() => { setDetailTrip(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button>
           </div>
         </div>
       </div>
@@ -537,12 +1102,13 @@ function RequestsView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
 }
 
 function AssignmentView({ trips, drivers, onAssigned, onNotice }: { trips: Trip[]; drivers: Driver[]; onAssigned: (trip: Trip) => void; onNotice: (message: string) => void }) {
+  const pending = trips.filter((trip) => trip.status === 'Pendiente')
+  const [selectedId, setSelectedId] = useState<string>('')
   const [assigning, setAssigning] = useState('')
-  const request = trips.find((trip) => trip.status === 'Pendiente')
   const available = drivers.filter((driver) => driver.status === 'Disponible')
-  if (!request) return <EmptyState title="No hay solicitudes pendientes" detail="La API no tiene viajes pendientes para asignar." />
-  const selectedRequest = request
+  const selectedRequest = pending.find((trip) => trip.id === selectedId) ?? pending[0] ?? null
   async function assign(driver: Driver) {
+    if (!selectedRequest) return
     setAssigning(driver.id)
     try {
       const trip = await assignTrip(selectedRequest.id, driver.id)
@@ -554,30 +1120,74 @@ function AssignmentView({ trips, drivers, onAssigned, onNotice }: { trips: Trip[
       setAssigning('')
     }
   }
-  return <div className="assignment-layout"><section className="panel assignment-detail"><span className="eyebrow">Solicitud pendiente</span><h2>{request.id} · {request.client}</h2><p>Información del viaje recibida desde la API.</p><div className="assignment-route"><span><b>RECOGIDA</b>{request.origin}</span><span><b>DESTINO</b>{request.destination}</span></div><div className="assignment-load"><span>{request.packages} paquetes</span><span>Estado · {request.status}</span></div></section><section className="panel assignment-list"><PanelHeader title="Asignar conductor" action={`${available.length} disponibles`} />{available.length === 0 && <EmptyState title="Sin conductores disponibles" detail="La API no reporta conductores libres en este momento." />}{available.map((driver) => <div className="assignment-driver" key={driver.id}><div className="driver-avatar mint">{initials(driver.name)}</div><div><strong>{driver.name}</strong><small>{driver.vehicle} · {driver.plate}</small></div><button className="primary-mini" disabled={assigning !== ''} onClick={() => void assign(driver)}>{assigning === driver.id ? 'Asignando…' : 'Asignar'}</button></div>)}</section></div>
+  if (pending.length === 0) return <EmptyState title="Sin solicitudes pendientes" detail="La cola está al día: no hay viajes pendientes por asignar. Crea una solicitud desde Viajes → Nuevo viaje." />
+  return <div className="assignment-layout"><section className="panel assignment-queue"><div className="panel-header"><div><span className="eyebrow">COLA DE SOLICITUDES</span><h2>{pending.length} pendientes por asignar</h2></div><span className="source-badge">selecciona una</span></div>{pending.map((trip) => <button className={`assignment-request ${selectedRequest?.id === trip.id ? 'selected' : ''}`} key={trip.id} onClick={() => setSelectedId(trip.id)}><span className="status-pill pendiente">Pendiente</span><strong>{trip.id} · {trip.client}</strong><small>{trip.origin} → {trip.destination} · {trip.packages} paquete(s) · {trip.serviceType ?? 'Urbano'}</small><span className="request-fare">{trip.estimatedCostCs !== undefined ? formatCs(trip.estimatedCostCs) : '—'}</span></button>)}</section><section className="panel assignment-detail"><span className="eyebrow">Solicitud seleccionada</span><h2>{selectedRequest.id} · {selectedRequest.client}</h2><p>Información del viaje recibida desde la API.</p><div className="assignment-route"><span><b>RECOGIDA</b>{selectedRequest.origin}</span><span><b>DESTINO</b>{selectedRequest.destination}</span></div><div className="assignment-load"><span>{selectedRequest.packages} paquetes</span><span>Tarifa · {selectedRequest.estimatedCostCs !== undefined ? formatCs(selectedRequest.estimatedCostCs) : '—'}</span></div></section><section className="panel assignment-list"><PanelHeader title="Asignar conductor" action={`${available.length} disponibles`} />{available.length === 0 && <EmptyState title="Sin conductores disponibles" detail="La API no reporta conductores libres en este momento. Termina viajes en curso o agrega un conductor." />}{available.map((driver) => <div className="assignment-driver" key={driver.id}><div className="driver-avatar mint">{initials(driver.name)}</div><div><strong>{driver.name}</strong><small>{driver.vehicle} · {driver.plate}</small></div><button className="primary-mini" disabled={assigning !== ''} onClick={() => void assign(driver)}>{assigning === driver.id ? 'Asignando…' : 'Asignar'}</button></div>)}</section></div>
 }
 
-function DriversView({ drivers, onNotice }: { drivers: Driver[]; onNotice: (message: string) => void }) {
-  return <><div className="driver-summary"><SummaryValue label="Total conductores" value={String(drivers.length)} /><SummaryValue label="Disponibles" value={String(drivers.filter((driver) => driver.status === 'Disponible').length)} tone="mint" /><SummaryValue label="En viaje" value={String(drivers.filter((driver) => driver.status === 'En viaje' || driver.status === 'En entrega').length)} tone="blue" /><SummaryValue label="Fuera de servicio" value={String(drivers.filter((driver) => driver.status === 'Fuera de servicio').length)} tone="slate" /></div><div className="drivers-grid">{drivers.map((driver, index) => <article className="driver-card" key={driver.id}><div className="driver-card-top"><div className={`driver-avatar ${['blue', 'cyan', 'violet', 'mint', 'gold', 'slate'][index % 6]}`}>{initials(driver.name)}</div><div><h3>{driver.name}</h3><p>{driver.phone}</p></div><StatusPill status={driver.status} /></div><div className="vehicle-line"><span>VEHÍCULO</span><strong>{driver.vehicle} <em>— {driver.plate}</em></strong></div><div className="route-line"><span>RUTA / ACTIVIDAD ACTUAL</span><strong>{driver.route}</strong></div><div className="driver-actions"><button onClick={() => onNotice(`Perfil de ${driver.name}`)}>Ver perfil</button><button className="primary-mini" onClick={() => onNotice(`Asignación preparada para ${driver.name}`)}>Asignar viaje</button></div></article>)}</div></>
+function DriversView({ drivers, onNavigate, onNotice, onDeleted }: { drivers: Driver[]; onNavigate: (section: Section) => void; onNotice: (message: string) => void; onDeleted: (id: string) => void }) {
+  const [profileDriver, setProfileDriver] = useState<Driver | null>(null)
+  const [busy, setBusy] = useState('')
+  async function removeDriver(driver: Driver) {
+    if (!window.confirm(`¿Eliminar al conductor ${driver.name}? No podrá tener viajes activos.`)) return
+    setBusy(driver.id)
+    try {
+      await deleteDriver(driver.id)
+      onDeleted(driver.id)
+      setProfileDriver(null)
+      onNotice(`Conductor ${driver.name} eliminado`)
+    } catch {
+      onNotice(`No se pudo eliminar a ${driver.name}; revisa si tiene viajes activos`)
+    } finally {
+      setBusy('')
+    }
+  }
+  return <><div className="driver-summary"><SummaryValue label="Total conductores" value={String(drivers.length)} /><SummaryValue label="Disponibles" value={String(drivers.filter((driver) => driver.status === 'Disponible').length)} tone="mint" /><SummaryValue label="En viaje" value={String(drivers.filter((driver) => driver.status === 'En viaje' || driver.status === 'En entrega').length)} tone="blue" /><SummaryValue label="Fuera de servicio" value={String(drivers.filter((driver) => driver.status === 'Fuera de servicio').length)} tone="slate" /></div><div className="drivers-grid">{drivers.map((driver, index) => <article className="driver-card" key={driver.id}><div className="driver-card-top"><div className={`driver-avatar ${['blue', 'cyan', 'violet', 'mint', 'gold', 'slate'][index % 6]}`}>{initials(driver.name)}</div><div><h3>{driver.name}</h3><p>{driver.phone}</p></div><StatusPill status={driver.status} /></div><div className="vehicle-line"><span>VEHÍCULO</span><strong>{driver.vehicle} <em>— {driver.plate}</em></strong></div><div className="route-line"><span>RUTA / ACTIVIDAD ACTUAL</span><strong>{driver.route}</strong></div><div className="driver-actions"><button onClick={() => setProfileDriver(driver)}>Ver perfil</button><button className="primary-mini" onClick={() => onNavigate('assignment')}>Asignar viaje</button></div></article>)}</div>{profileDriver && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProfileDriver(null) }}>
+        <div className="modal-card trip-detail-modal">
+          <div className="modal-header"><div><span className="eyebrow">Perfil del conductor · {profileDriver.id}</span><h2>{profileDriver.name}</h2><p>{profileDriver.phone}</p></div><button type="button" className="icon-button" onClick={() => setProfileDriver(null)} aria-label="Cerrar">×</button></div>
+          <div className="trip-detail-grid">
+            <div className="trip-detail-field"><span>Estado</span><StatusPill status={profileDriver.status} /></div>
+            <div className="trip-detail-field"><span>Vehículo</span><strong>{profileDriver.vehicle}</strong></div>
+            <div className="trip-detail-field"><span>Placa</span><strong>{profileDriver.plate}</strong></div>
+            <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
+            <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
+            <div className="trip-detail-field"><span>Perfil en el mapa</span><strong><span className="green-dot" /> visible en tracking</strong></div>
+          </div>
+          <div className="modal-actions trip-actions"><button className="secondary-button danger" disabled={busy === profileDriver.id} onClick={() => void removeDriver(profileDriver)}><Icon name="trash" size={13} /> Eliminar conductor</button><button className="secondary-button" onClick={() => { setProfileDriver(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver en el mapa</button><button className="primary-button" onClick={() => { setProfileDriver(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar viaje</button></div>
+        </div>
+      </div>
+    )}</>
 }
 
-function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onCreated }: { vehicles: Vehicle[]; drivers: Driver[]; maintenance: MaintenanceRecord[]; onNotice: (message: string) => void; onChanged: (vehicle: Vehicle) => void; onCreated: (vehicle: Vehicle) => void }) {
+function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onChanged, onCreated, onDeleted }: { vehicles: Vehicle[]; drivers: Driver[]; maintenance: MaintenanceRecord[]; settings: AppSettings | null; onNotice: (message: string) => void; onChanged: (vehicle: Vehicle) => void; onCreated: (vehicle: Vehicle) => void; onDeleted: (id: string) => void }) {
   const [formOpen, setFormOpen] = useState(false)
   const [maintenanceVehicle, setMaintenanceVehicle] = useState<Vehicle | null>(null)
+  const [detailVehicle, setDetailVehicle] = useState<Vehicle | null>(null)
+  const [editVehicle, setEditVehicle] = useState<Vehicle | null>(null)
   const [busy, setBusy] = useState('')
   const [plate, setPlate] = useState('')
   const [model, setModel] = useState('')
   const [type, setType] = useState('Panel')
   const [capacityKg, setCapacityKg] = useState(1000)
   const [year, setYear] = useState(2024)
+  const [fuelType, setFuelType] = useState<FuelType>('Gasolina')
+  const [consumptionLPerKm, setConsumptionLPerKm] = useState(0.1)
+  const [priceCs, setPriceCs] = useState(0)
+  const [odometerKm, setOdometerKm] = useState(0)
   const [maintenanceNote, setMaintenanceNote] = useState('')
+  const [maintenanceCost, setMaintenanceCost] = useState(0)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [photoTargetId, setPhotoTargetId] = useState('')
 
   const byStatus = (status: VehicleStatus) => vehicles.filter((vehicle) => vehicle.status === status)
+  const dollarRate = settings?.dollarRate ?? 36.5
 
   async function changeStatus(vehicle: Vehicle, status: VehicleStatus) {
     setBusy(`status-${vehicle.id}`)
     try {
-      onChanged(await updateVehicleStatus(vehicle.id, status))
+      const updated = await updateVehicleStatus(vehicle.id, status)
+      onChanged(updated)
+      if (detailVehicle?.id === vehicle.id) setDetailVehicle(updated)
       onNotice(`${vehicle.plate} pasó a ${status}`)
     } catch {
       onNotice(`No se pudo cambiar el estado de ${vehicle.plate}`)
@@ -589,10 +1199,27 @@ function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onC
   async function assignDriver(vehicle: Vehicle, driver: string) {
     setBusy(`driver-${vehicle.id}`)
     try {
-      onChanged(await assignVehicleDriver(vehicle.id, driver))
+      const updated = await assignVehicleDriver(vehicle.id, driver)
+      onChanged(updated)
+      if (detailVehicle?.id === vehicle.id) setDetailVehicle(updated)
       onNotice(`${vehicle.plate} asignado a ${driver}`)
     } catch {
       onNotice(`No se pudo asignar el vehículo ${vehicle.plate}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function removeVehicle(vehicle: Vehicle) {
+    if (!window.confirm(`¿Eliminar el vehículo ${vehicle.plate} (${vehicle.model})? Su historial de mantenimiento también se borrará.`)) return
+    setBusy(`delete-${vehicle.id}`)
+    try {
+      await deleteVehicle(vehicle.id)
+      onDeleted(vehicle.id)
+      if (detailVehicle?.id === vehicle.id) setDetailVehicle(null)
+      onNotice(`Vehículo ${vehicle.plate} eliminado de la flota`)
+    } catch {
+      onNotice(`No se pudo eliminar ${vehicle.plate}; libera primero al conductor`)
     } finally {
       setBusy('')
     }
@@ -602,10 +1229,13 @@ function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onC
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createVehicle({ plate, model, type, capacityKg, year }))
+      onCreated(await createVehicle({ plate, model, type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm }))
       setFormOpen(false)
       setPlate('')
       setModel('')
+      setConsumptionLPerKm(0.1)
+      setPriceCs(0)
+      setOdometerKm(0)
     } catch {
       onNotice('No se pudo registrar el vehículo; verifica la placa y los datos')
     } finally {
@@ -618,16 +1248,58 @@ function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onC
     if (!maintenanceVehicle) return
     setBusy(`mt-${maintenanceVehicle.id}`)
     try {
-      await registerVehicleMaintenance(maintenanceVehicle.id, maintenanceNote)
+      await registerVehicleMaintenance(maintenanceVehicle.id, maintenanceNote, maintenanceCost)
       onChanged(await getVehicles().then((list) => list.find((vehicle) => vehicle.id === maintenanceVehicle.id) ?? maintenanceVehicle))
       onNotice(`Mantenimiento registrado para ${maintenanceVehicle.plate}`)
       setMaintenanceVehicle(null)
       setMaintenanceNote('')
+      setMaintenanceCost(0)
     } catch {
       onNotice('No se pudo registrar el mantenimiento')
     } finally {
       setBusy('')
     }
+  }
+
+  async function submitEconomicData(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editVehicle) return
+    setBusy(`edit-${editVehicle.id}`)
+    try {
+      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, odometerKm })
+      onChanged(updated)
+      if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
+      onNotice(`Datos económicos de ${updated.plate} actualizados`)
+      setEditVehicle(null)
+    } catch {
+      onNotice('No se pudieron guardar los datos económicos')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function uploadPhoto(file: File) {
+    if (!photoTargetId) return
+    setBusy(`photo-${photoTargetId}`)
+    try {
+      const updated = await uploadVehicleImage(photoTargetId, file)
+      onChanged(updated)
+      if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
+      onNotice(`Foto subida para ${updated.plate}`)
+    } catch {
+      onNotice('No se pudo subir la foto; usa jpg, png o webp de hasta 5 MB')
+    } finally {
+      setBusy('')
+      setPhotoTargetId('')
+    }
+  }
+
+  function openEconomicEditor(vehicle: Vehicle) {
+    setEditVehicle(vehicle)
+    setFuelType(vehicle.fuelType)
+    setConsumptionLPerKm(vehicle.consumptionLPerKm)
+    setPriceCs(vehicle.priceCs)
+    setOdometerKm(vehicle.odometerKm)
   }
 
   return <>
@@ -638,26 +1310,61 @@ function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onC
       <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="gold" />
     </div>
     <section className="panel table-panel">
-      <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · capacidad en kg</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
-      <DataTable columns={['Placa', 'Modelo', 'Tipo', 'Capacidad', 'Año', 'Conductor', 'Estado', 'Último mantenimiento', 'Viajes', 'Acciones']} rows={vehicles.map((vehicle) => [<strong className="linkish" key={`${vehicle.id}-plate`}>{vehicle.plate}</strong>, vehicle.model, vehicle.type, `${vehicle.capacityKg.toLocaleString('es-NI')} kg`, vehicle.year, <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>, <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />, vehicle.lastMaintenance, vehicle.totalTrips, <div className="action-group" key={`${vehicle.id}-actions`}>
-        <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
-        <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => <option value={driver.name} key={driver.id}>{driver.name}</option>)}</select>
-        <button title="Registrar mantenimiento" onClick={() => setMaintenanceVehicle(vehicle)}><Icon name="wrench" size={14} /></button>
-      </div>])} />
-      <div className="table-footer"><span>Los cambios de estado y conductor se persisten en la API · Registros de mantenimiento: {maintenance.length}</span></div>
+      <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
+      <DataTable columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Consumo', 'Precio', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
+        <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
+        <strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong>,
+        vehicle.model,
+        vehicle.type,
+        <span key={`${vehicle.id}-cons`}><b>{vehicle.fuelType}</b><small className="cell-sub">{vehicle.consumptionLPerKm} L/km</small></span>,
+        <span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>,
+        <span key={`${vehicle.id}-costkm`}><b>{formatCs(vehicle.fuelCostPerKmC$)}</b><small className="cell-sub">solo combustible</small></span>,
+        <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>,
+        <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />,
+        <div className="action-group" key={`${vehicle.id}-actions`}>
+          <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
+          <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => <option value={driver.name} key={driver.id}>{driver.name}</option>)}</select>
+          <button title="Ver detalle" onClick={() => setDetailVehicle(vehicle)}><Icon name="eye" size={14} /></button>
+          <button title="Datos económicos (consumo, precio C$, odómetro)" onClick={() => openEconomicEditor(vehicle)}><Icon name="fuel" size={14} /></button>
+          <button title="Subir foto" disabled={busy === `photo-${vehicle.id}`} onClick={() => { setPhotoTargetId(vehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={14} /></button>
+          <button title="Registrar mantenimiento" onClick={() => setMaintenanceVehicle(vehicle)}><Icon name="wrench" size={14} /></button>
+          <button title="Eliminar vehículo" disabled={busy === `delete-${vehicle.id}`} onClick={() => void removeVehicle(vehicle)}><Icon name="trash" size={14} /></button>
+        </div>,
+      ])} />
+      <div className="table-footer"><span>Los cambios de estado, conductor, consumo y precio se persisten en la API · Costo por km = consumo × precio de combustible en C$ · Mantenimientos: {maintenance.length}</span></div>
     </section>
+    <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.target.value = '' }} />
     {formOpen && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
         <form className="modal-card" onSubmit={submitVehicle}>
-          <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible.</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
+          <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible. Precios en córdobas (C$).</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
             <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
             <label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option>Panel</option><option>Van</option><option>Camión</option><option>Pickup</option></select></label>
             <label>Capacidad (kg)<input required type="number" min="100" max="20000" value={capacityKg} onChange={(event) => setCapacityKg(Number(event.target.value))} /></label>
             <label>Año<input required type="number" min="2000" max="2030" value={year} onChange={(event) => setYear(Number(event.target.value))} /></label>
+            <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
+            <label>Consumo (L por km)<input required type="number" min="0" step="0.01" value={consumptionLPerKm} onChange={(event) => setConsumptionLPerKm(Number(event.target.value))} /></label>
+            <label>Precio de compra (C$)<input type="number" min="0" step="1000" value={priceCs} onChange={(event) => setPriceCs(Number(event.target.value))} placeholder="Ej: 1850000" /></label>
+            <label>Odómetro (km)<input type="number" min="0" step="100" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
+        </form>
+      </div>
+    )}
+    {editVehicle && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
+        <form className="modal-card" onSubmit={submitEconomicData}>
+          <div className="modal-header"><div><span className="eyebrow">Datos económicos · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$) y odómetro. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
+            <label>Consumo (L por km)<input required type="number" min="0" step="0.01" value={consumptionLPerKm} onChange={(event) => setConsumptionLPerKm(Number(event.target.value))} /></label>
+            <label>Precio de compra (C$)<input required type="number" min="0" step="1000" value={priceCs} onChange={(event) => setPriceCs(Number(event.target.value))} /></label>
+            <label>Odómetro (km)<input type="number" min="0" step="100" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
+            <div className="full-field conversion-note"><span>Equivalente en dólares:</span><strong>US$ {csToUsd(priceCs, dollarRate).toLocaleString('es-NI')} · tasa {dollarRate}</strong></div>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editVehicle.id}`}>{busy === `edit-${editVehicle.id}` ? 'Guardando…' : 'Guardar datos'}</button></div>
         </form>
       </div>
     )}
@@ -665,15 +1372,41 @@ function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onC
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMaintenanceVehicle(null) }}>
         <form className="modal-card" onSubmit={submitMaintenance}>
           <div className="modal-header"><div><span className="eyebrow">Mantenimiento · {maintenanceVehicle.plate}</span><h2>{maintenanceVehicle.model}</h2><p>Al registrar el mantenimiento, el vehículo pasa a estado Mantenimiento.</p></div><button type="button" className="icon-button" onClick={() => setMaintenanceVehicle(null)} aria-label="Cerrar">×</button></div>
-          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label></div>
+          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label><label>Costo (C$)<input type="number" min="0" step="10" value={maintenanceCost} onChange={(event) => setMaintenanceCost(Number(event.target.value))} placeholder="Ej: 7420" /></label><span className="full-field conversion-note">Costo en córdobas: {formatCs(maintenanceCost)} · US$ {csToUsd(maintenanceCost, dollarRate).toFixed(2)}</span></div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setMaintenanceVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `mt-${maintenanceVehicle.id}`}>{busy === `mt-${maintenanceVehicle.id}` ? 'Guardando…' : 'Registrar mantenimiento'}</button></div>
         </form>
+      </div>
+    )}
+    {detailVehicle && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailVehicle(null) }}>
+        <div className="modal-card vehicle-detail-modal">
+          <div className="modal-header"><div><span className="eyebrow">Detalle de flota · {detailVehicle.plate}</span><h2>{detailVehicle.model}</h2><p>{detailVehicle.type} · capacidad {detailVehicle.capacityKg.toLocaleString('es-NI')} kg · {detailVehicle.year}</p></div><button type="button" className="icon-button" onClick={() => setDetailVehicle(null)} aria-label="Cerrar">×</button></div>
+          <div className="vehicle-detail-body">
+            <div className="vehicle-photo">{detailVehicle.imageUrl ? <img src={resolveImageUrl(detailVehicle.imageUrl)} alt={detailVehicle.model} /> : <div className="vehicle-photo-empty"><Icon name="vehicles" size={28} />Sin foto registrada</div>}<button className="secondary-button photo-change" onClick={() => { setPhotoTargetId(detailVehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={12} /> {detailVehicle.imageUrl ? 'Cambiar foto' : 'Subir foto'}</button></div>
+            <div className="vehicle-detail-info">
+              <div className="trip-detail-grid">
+                <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailVehicle.status} /></div>
+                <div className="trip-detail-field"><span>Conductor</span><strong>{detailVehicle.driver}</strong></div>
+                <div className="trip-detail-field"><span>Combustible</span><strong>{detailVehicle.fuelType}</strong></div>
+                <div className="trip-detail-field"><span>Consumo</span><strong>{detailVehicle.consumptionLPerKm} L/km</strong></div>
+                <div className="trip-detail-field"><span>Precio de compra</span><strong>{formatCs(detailVehicle.priceCs)}<small className="cell-sub">US$ {detailVehicle.priceUsd.toLocaleString('es-NI')}</small></strong></div>
+                <div className="trip-detail-field"><span>Costo por km</span><strong>{formatCs(detailVehicle.fuelCostPerKmC$)}<small className="cell-sub">solo combustible</small></strong></div>
+                <div className="trip-detail-field"><span>Odómetro</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
+                <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}</strong></div>
+                <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
+                <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
+              </div>
+              <div className="maintenance-mini"><span className="eyebrow">HISTORIAL DE MANTENIMIENTO</span>{maintenance.filter((record) => record.vehicleId === detailVehicle.id).length === 0 && <p className="muted">Sin registros para este vehículo.</p>}{maintenance.filter((record) => record.vehicleId === detailVehicle.id).map((record) => <div className="maintenance-row" key={record.id}><span>{record.date}</span><p>{record.description}</p><b>{formatCs(record.cost)}</b></div>)}</div>
+            </div>
+          </div>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => openEconomicEditor(detailVehicle)}><Icon name="fuel" size={13} /> Editar datos económicos</button><button className="secondary-button" onClick={() => setDetailVehicle(null)}>Cerrar</button></div>
+        </div>
       </div>
     )}
   </>
 }
 
-function UsersView({ users, roles, onNotice, onChanged, onCreated }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void }) {
+function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void; onDeleted: (id: string) => void }) {
   const [formOpen, setFormOpen] = useState(false)
   const [busy, setBusy] = useState('')
   const [name, setName] = useState('')
@@ -705,6 +1438,20 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated }: { users: Ap
     }
   }
 
+  async function removeUser(user: AppUser) {
+    if (!window.confirm(`¿Eliminar al usuario ${user.name} (${user.email})?`)) return
+    setBusy(user.id)
+    try {
+      await deleteUser(user.id)
+      onDeleted(user.id)
+      onNotice(`Usuario ${user.name} eliminado`)
+    } catch {
+      onNotice(`No se pudo eliminar a ${user.name}; el administrador principal está protegido`)
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function submitUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setBusy('create')
@@ -729,12 +1476,12 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated }: { users: Ap
       <SummaryValue label="Conductores" value={String(users.filter((user) => user.role === 'driver').length)} tone="gold" />
     </div>
     <section className="panel role-matrix-panel">
-      <div className="panel-header"><div><span className="eyebrow">MATRIZ DE ROLES · CONTRATO</span><h2>Los ocho roles y sus permisos</h2></div><span className="source-badge">{roles.length} roles contractuales</span></div>
+      <div className="panel-header"><div><span className="eyebrow">MATRIZ DE ROLES · CONTRATO</span><h2>Los ocho roles y sus permisos</h2><p className="panel-sub">Los roles son fijos del contrato: no se eliminan; se asignan a cada usuario desde la tabla.</p></div><span className="source-badge">{roles.length} roles contractuales</span></div>
       <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permission}</span>)}</div></article>)}</div>
     </section>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Los cambios de rol y estado se persisten en la API</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Crear usuario</button></div>
-      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button></div>])} />
+      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
       <div className="table-footer"><span>El administrador general puede gestionar todos los usuarios y sus permisos</span></div>
     </section>
     {formOpen && (
@@ -754,38 +1501,144 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated }: { users: Ap
   </>
 }
 
-function ClientsView({ clients, search }: { clients: Client[]; search: string }) {
-  const filtered = useMemo(() => clients.filter((client) => `${client.name} ${client.email} ${client.phone}`.toLowerCase().includes(search.toLowerCase())), [clients, search])
-  return <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> {clients.length} clientes cargados desde la API</div><button className="primary-button">＋ Nuevo cliente</button></div><DataTable columns={['Nombre / Empresa', 'Teléfono', 'Email', 'Viajes', 'Solicitudes act.', 'Estado', 'Acciones']} rows={filtered.map((client) => [<div className="client-cell" key={`${client.id}-cell`}><span className="client-avatar">{initials(client.name)}</span><div><strong>{client.name}</strong><small>{client.type}</small></div></div>, client.phone, client.email, client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />, <button className="row-action" key={`${client.id}-action`}>•••</button>])} /><div className="table-footer"><span>Mostrando {filtered.length} de {clients.length} clientes</span><Pagination /></div></section>
+function ClientsView({ clients, search, onDeleted, onNotice }: { clients: Client[]; search: string; onDeleted: (id: string) => void; onNotice: (message: string) => void }) {
+  const [page, setPage] = useState(1)
+  const [busy, setBusy] = useState('')
+  const pageSize = 8
+  const filtered = useMemo(() => clients.filter((client) => `${client.name} ${client.email} ${client.phone} ${client.address ?? ''}`.toLowerCase().includes(search.toLowerCase())), [clients, search])
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const visible = filtered.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize)
+  async function removeClient(client: Client) {
+    if (!window.confirm(`¿Eliminar al cliente ${client.name}?`)) return
+    setBusy(client.id)
+    try {
+      await deleteClient(client.id)
+      onDeleted(client.id)
+      onNotice(`Cliente ${client.name} eliminado`)
+    } catch {
+      onNotice(`No se pudo eliminar a ${client.name}`)
+    } finally {
+      setBusy('')
+    }
+  }
+  return <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> {clients.length} clientes cargados desde la API · usa «Nuevo cliente» arriba para registrar</div><span className="source-badge">registro disponible</span></div><DataTable columns={['Nombre / Empresa', 'Teléfono', 'Email', 'Dirección', 'Viajes', 'Solicitudes act.', 'Estado', 'Acciones']} rows={visible.map((client) => [<div className="client-cell" key={`${client.id}-cell`}><span className="client-avatar">{initials(client.name)}</span><div><strong>{client.name}</strong><small>{client.type}</small></div></div>, client.phone, client.email, client.address || '—', client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />, <div className="action-group" key={`${client.id}-actions`}><button title="Eliminar cliente" disabled={busy === client.id} onClick={() => void removeClient(client)}><Icon name="trash" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} clientes</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
 }
 
-function IncidentsView({ incidents, onNotice }: { incidents: Incident[]; onNotice: (message: string) => void }) {
-  return <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className="filter-chip active">Todas <b>{incidents.length}</b></button><button className="filter-chip">Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className="filter-chip">En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className="filter-chip">Resueltas</button></div><button className="secondary-button" onClick={() => onNotice('Vista de incidencias filtrada desde el conjunto recibido')}>Exportar CSV</button></div><DataTable columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={incidents.map((incident) => [<strong className="linkish" key={`${incident.id}-id`}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button onClick={() => onNotice(`Abriendo ${incident.id}`)}>◉</button><button onClick={() => onNotice(`Incidencia ${incident.id} marcada para atención`)}>✓</button></div>])} /><div className="table-footer"><span>Mostrando {incidents.length} incidencias recibidas</span><Pagination /></div></section>
+function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incidents: Incident[]; onNotice: (message: string) => void; onChanged: (incident: Incident) => void; onCreated: (incident: Incident) => void }) {
+  const [statusFilter, setStatusFilter] = useState<'all' | Incident['status']>('all')
+  const [acting, setActing] = useState('')
+  const [page, setPage] = useState(1)
+  const [formOpen, setFormOpen] = useState(false)
+  const [detailIncident, setDetailIncident] = useState<Incident | null>(null)
+  const pageSize = 8
+  const filtered = incidents.filter((incident) => statusFilter === 'all' || incident.status === statusFilter)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const visible = filtered.slice((Math.min(page, pageCount) - 1) * pageSize, Math.min(page, pageCount) * pageSize)
+  async function changeStatus(incident: Incident, status: Incident['status']) {
+    setActing(incident.id)
+    try {
+      const updated = await updateIncidentStatus(incident.id, status)
+      onChanged(updated)
+      if (detailIncident?.id === incident.id) setDetailIncident(updated)
+      onNotice(`${incident.id} marcada como ${status}`)
+    } catch {
+      onNotice(`No se pudo actualizar ${incident.id}`)
+    } finally {
+      setActing('')
+    }
+  }
+  function exportExcelFile() {
+    exportExcel(`incoex-incidencias-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Incidencias', incidents.map((incident) => ({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })))
+    onNotice('Reporte de incidencias en Excel descargado')
+  }
+  function exportPdfFile() {
+    exportPdf('Incidencias · INCOEX Logistics', 'Incidencias registradas en la operación de Managua', ['ID', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado'], incidents.map((incident) => [incident.id, incident.trip, incident.driver, incident.client, incident.type, incident.priority, incident.status]))
+    onNotice('Reporte de incidencias preparado para guardar como PDF')
+  }
+  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button title="Ver detalle" onClick={() => setDetailIncident(incident)}><Icon name="eye" size={14} /></button><button title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}><Icon name="activity" size={14} /></button><button title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}><Icon name="check" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+    {formOpen && <IncidentFormDialog onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
+    {detailIncident && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailIncident(null) }}>
+        <div className="modal-card trip-detail-modal">
+          <div className="modal-header"><div><span className="eyebrow">Detalle de incidencia · {detailIncident.id}</span><h2>{detailIncident.type}</h2><p>Reportada para el viaje {detailIncident.trip}</p></div><button type="button" className="icon-button" onClick={() => setDetailIncident(null)} aria-label="Cerrar">×</button></div>
+          <div className="trip-detail-grid">
+            <div className="trip-detail-field"><span>Cliente</span><strong>{detailIncident.client}</strong></div>
+            <div className="trip-detail-field"><span>Conductor</span><strong>{detailIncident.driver}</strong></div>
+            <div className="trip-detail-field"><span>Prioridad</span><PriorityPill priority={detailIncident.priority} /></div>
+            <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailIncident.status} /></div>
+          </div>
+          <div className="modal-actions trip-actions">
+            {detailIncident.status !== 'En proceso' && detailIncident.status !== 'Resuelta' && <button className="primary-button" disabled={acting === detailIncident.id} onClick={() => void changeStatus(detailIncident, 'En proceso')}>{acting === detailIncident.id ? 'Actualizando…' : 'Poner en proceso'}</button>}
+            {detailIncident.status !== 'Resuelta' && <button className="primary-button" disabled={acting === detailIncident.id} onClick={() => void changeStatus(detailIncident, 'Resuelta')}>{acting === detailIncident.id ? 'Actualizando…' : 'Marcar resuelta'}</button>}
+            <button className="secondary-button" onClick={() => setDetailIncident(null)}>Cerrar</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
 }
 
-function ReportsView({ reports }: { reports: ReportsSummary | null }) {
+function IncidentFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (incident: Incident) => void; onError: (message: string) => void }) {
+  const [type, setType] = useState('Retraso')
+  const [client, setClient] = useState('')
+  const [trip, setTrip] = useState('')
+  const [driver, setDriver] = useState('')
+  const [priority, setPriority] = useState<Incident['priority']>('Media')
+  const [submitting, setSubmitting] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitting(true)
+    try {
+      onCreated(await createIncident({ type, client, trip, driver, priority }))
+    } catch {
+      onError('No se pudo reportar la incidencia; revisa los datos')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <form className="modal-card" onSubmit={submit}>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Incidencias</span><h2>Reportar incidencia</h2><p>La incidencia queda Abierta y alimenta el panel «Requiere atención».</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="form-grid">
+          <label>Tipo de incidencia<select value={type} onChange={(event) => setType(event.target.value)}><option>Retraso</option><option>Cliente ausente</option><option>Problema con paquete</option><option>Problema con dirección</option><option>Accidente</option><option>Otro</option></select></label>
+          <label>Prioridad<select value={priority} onChange={(event) => setPriority(event.target.value as Incident['priority'])}><option>Baja</option><option>Media</option><option>Alta</option><option>Crítica</option></select></label>
+          <label className="full-field">Cliente afectado<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre del cliente o empresa" /></label>
+          <label>Viaje<input value={trip} onChange={(event) => setTrip(event.target.value)} placeholder="Ej: #4791" /></label>
+          <label>Conductor<input value={driver} onChange={(event) => setDriver(event.target.value)} placeholder="Nombre del conductor" /></label>
+        </div>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Reportar incidencia'}</button></div>
+      </form>
+    </div>
+  )
+}
+
+function ReportsView({ reports, trips, drivers, clients, incidents, onNotice }: { reports: ReportsSummary | null; trips: Trip[]; drivers: Driver[]; clients: Client[]; incidents: Incident[]; onNotice: (message: string) => void }) {
   const [exporting, setExporting] = useState('')
   if (!reports) return <EmptyState title="Reportes pendientes" detail="La API aún no entregó el resumen analítico." />
-  function exportCsv(collection: 'trips' | 'drivers' | 'clients' | 'incidents', label: string) {
+  function exportExcelFile(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages', label: string) {
     setExporting(collection)
-    const anchor = document.createElement('a')
-    anchor.href = getReportCsvUrl(collection)
-    anchor.download = `incoex-${collection}-${new Date().toISOString().slice(0, 10)}.csv`
-    anchor.click()
+    const rows: Array<Record<string, ExportCell>> = []
+    if (collection === 'trips') for (const trip of trips) rows.push({ 'ID': trip.id, 'Cliente': trip.client, 'Conductor': trip.driver, 'Origen': trip.origin, 'Destino': trip.destination, 'Fecha': trip.date, 'Paquetes': trip.packages, 'Estado': trip.status, 'Distancia km': trip.distanceKm ?? '', 'Costo C$': trip.estimatedCostCs ?? '', 'Servicio': trip.serviceType ?? 'Urbano' })
+    if (collection === 'drivers') for (const driver of drivers) rows.push({ 'ID': driver.id, 'Nombre': driver.name, 'Teléfono': driver.phone, 'Vehículo': driver.vehicle, 'Placa': driver.plate, 'Estado': driver.status, 'Ruta': driver.route })
+    if (collection === 'clients') for (const client of clients) rows.push({ 'ID': client.id, 'Nombre': client.name, 'Tipo': client.type, 'Teléfono': client.phone, 'Email': client.email, 'Dirección': client.address ?? '', 'Viajes': client.trips, 'Solicitudes activas': client.activeRequests, 'Estado': client.status })
+    if (collection === 'incidents') for (const incident of incidents) rows.push({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })
+    if (collection === 'packages') for (const trip of trips) for (let index = 1; index <= Math.min(trip.packages, 3); index += 1) rows.push({ 'Guía': `PKG-${trip.id.replace('#', '')}-${index}`, 'Viaje': trip.id, 'Cliente': trip.client, 'Peso kg': (1 + ((trip.packages + index) % 24)).toFixed(1), 'Dimensiones': `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, 'Estado': trip.status })
+    exportExcel(`incoex-${collection}-${new Date().toISOString().slice(0, 10)}.xlsx`, label, rows)
+    onNotice(`Reporte ${label} en Excel descargado`)
     window.setTimeout(() => setExporting(''), 600)
-    window.setTimeout(() => { if (exporting === collection) setExporting('') }, 4000)
   }
   return <>
     <section className="panel export-panel">
-      <div className="export-panel-head"><div><span className="eyebrow">EXPORTACIÓN REAL · CSV</span><h2>Descargar datos operativos</h2><p>Cada archivo contiene los datos recibidos de la API con sus columnas documentadas. Los permisos de exportación los define el rol (Gerencia y Finanzas pueden exportar).</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportCsv('trips', 'viajes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Viajes CSV</button><button className="secondary-button" onClick={() => exportCsv('drivers', 'conductores')} disabled={exporting !== ''}><Icon name="download" size={13} /> Conductores CSV</button><button className="secondary-button" onClick={() => exportCsv('clients', 'clientes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Clientes CSV</button><button className="secondary-button" onClick={() => exportCsv('incidents', 'incidencias')} disabled={exporting !== ''}><Icon name="download" size={13} /> Incidencias CSV</button></div></div>
-      <div className="export-footnote"><strong>Columnas:</strong> Viajes (ID, cliente, conductor, origen, destino, fecha, paquetes, estado) · Conductores (ID, nombre, teléfono, vehículo, placa, estado, ruta) · Clientes (ID, nombre, tipo, teléfono, email, viajes, solicitudes activas, estado) · Incidencias (ID, viaje, conductor, cliente, tipo, prioridad, estado).</div>
+      <div className="export-panel-head"><div><span className="eyebrow">EXPORTACIÓN · EXCEL Y PDF</span><h2>Descargar datos operativos</h2><p>Cada archivo se genera con los datos reales de la API (viajes, conductores, clientes, incidencias y paquetes). Los permisos de exportación los define el rol (Gerencia y Finanzas pueden exportar).</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('trips', 'Viajes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Viajes Excel</button><button className="secondary-button" onClick={() => exportExcelFile('drivers', 'Conductores')} disabled={exporting !== ''}><Icon name="download" size={13} /> Conductores Excel</button><button className="secondary-button" onClick={() => exportExcelFile('clients', 'Clientes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Clientes Excel</button><button className="secondary-button" onClick={() => exportExcelFile('incidents', 'Incidencias')} disabled={exporting !== ''}><Icon name="download" size={13} /> Incidencias Excel</button><button className="secondary-button" onClick={() => exportExcelFile('packages', 'Paquetes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Paquetes Excel</button><button className="secondary-button" onClick={() => { exportPdf('Reporte de operaciones · INCOEX Logistics', 'Datos reales de la operación de Managua', ['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Estado', 'Distancia km', 'Costo C$'], trips.map((trip) => [trip.id, trip.client, trip.driver, trip.origin, trip.destination, trip.status, trip.distanceKm ?? '—', trip.estimatedCostCs ?? '—'])); onNotice('Reporte PDF preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Viajes PDF</button></div></div>
+      <div className="export-footnote"><strong>Datos:</strong> Viajes (ID, cliente, conductor, origen, destino, fecha, paquetes, estado, distancia km, costo C$, servicio) · Conductores (ID, nombre, teléfono, vehículo, placa, estado, ruta) · Clientes (ID, nombre, tipo, teléfono, email, dirección, viajes, solicitudes, estado) · Incidencias (ID, viaje, conductor, cliente, tipo, prioridad, estado) · Paquetes (guía, viaje, cliente, peso, dimensiones, estado).</div>
     </section>
-    <div className="metrics-grid report-metrics"><MetricCard label="Viajes totales" value={reports.totalTrips} delta="periodo" tone="blue" icon="trips" hint="Total de solicitudes registradas en el periodo." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado: recogida y entrega confirmadas." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados antes de la entrega." /><MetricCard label="Tiempo prom. entrega" value={reports.averageDeliveryMinutes} delta="min" tone="gold" icon="clock" hint="Promedio entre la asignación del conductor y la entrega confirmada." /></div>
+    <div className="metrics-grid report-metrics"><MetricCard label="Viajes registrados" value={reports.totalTrips} delta="en la base real" tone="blue" icon="trips" hint="Total de solicitudes registradas en la API." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados antes de la entrega." /><MetricCard label="Ingresos estimados" value={reports.totalRevenueCs} delta="C$ · tarifas calculadas" tone="gold" icon="wallet" hint="Suma de la tarifa estimada de todos los viajes en córdobas." /><MetricCard label="Kilómetros recorridos" value={reports.totalDistanceKm} delta="km en rutas registradas" tone="slate" icon="tracking" hint="Suma de la distancia en km de los viajes con ruta." /><MetricCard label="Distancia promedio" value={reports.averageDistanceKm} delta="km por viaje" tone="cyan" icon="truck" hint="Distancia media de los viajes con ruta." /></div>
     <div className="reports-grid">
-      <ChartPanel title="Viajes por semana" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes creadas por semana del periodo." />
-      <ChartPanel title="Entregas por día · tendencia" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por día de la semana." />
-      <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes entregados en el periodo." />
-      <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados en el periodo." />
+      <ChartPanel title="Viajes por fecha" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes registradas por fecha en la API." />
+      <ChartPanel title="Entregas por fecha" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por fecha." />
+      <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes registrados." />
+      <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados." />
     </div>
   </>
 }
@@ -799,23 +1652,54 @@ function Leaderboard({ title, entries, note }: { title: string; entries: Array<{
   return <section className="panel leaderboard"><PanelHeader title={title} action="API" /><ol>{entries.map((entry, index) => <li key={entry.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(entry.name)}</span><strong>{entry.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{entry.trips} viajes</b></li>)}</ol>{note && <p className="chart-note">{note}</p>}</section>
 }
 
-function PackagesView({ trips }: { trips: Trip[] }) {
+function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (section: Section) => void }) {
+  const [detailPkg, setDetailPkg] = useState<{ id: string; trip: string; client: string; weightKg: string; dimensions: string; status: TripStatus } | null>(null)
   const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => ({ id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightKg: (1 + ((trip.packages + index) % 24)).toFixed(1), dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status })))
   const inTransit = packageRows.filter((pkg) => ['Asignado', 'En camino', 'En entrega'].includes(pkg.status)).length
+  function exportExcelFile() {
+    exportExcel(`incoex-paquetes-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Paquetes', packageRows.map((pkg) => ({ 'Guía': pkg.id, 'Viaje': pkg.trip, 'Cliente': pkg.client, 'Peso (kg)': pkg.weightKg, 'Dimensiones': pkg.dimensions, 'Estado': pkg.status })))
+  }
+  function exportPdfFile() {
+    exportPdf('Paquetes · INCOEX Logistics', 'Guías derivadas de los viajes registrados en la operación de Managua', ['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado'], packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, pkg.status]))
+  }
   return <>
     <div className="driver-summary"><SummaryValue label="Paquetes visibles" value={String(packageRows.length)} /><SummaryValue label="En tránsito" value={String(inTransit)} tone="blue" /><SummaryValue label="Entregados" value={String(packageRows.filter((pkg) => pkg.status === 'Completado').length)} tone="mint" /><SummaryValue label="Pendientes" value={String(packageRows.filter((pkg) => pkg.status === 'Pendiente').length)} tone="gold" /></div>
-    <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Cada paquete hereda el estado y la ruta de su viaje</div><button className="secondary-button" onClick={() => window.dispatchEvent(new CustomEvent('notice', { detail: 'El detalle de paquete con fotos y evidencias se conectará al almacenamiento de evidencias' }))}>Evidencias</button></div>
-    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`}>{pkg.id}</strong>, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
-    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · El peso y las dimensiones son de demostración hasta conectar la validación de carga</span></div></section>
+    <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Cada paquete hereda el estado y la ruta de su viaje</div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={13} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> PDF</button></div></div>
+    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`} onClick={() => setDetailPkg(pkg)}>{pkg.id}</strong>, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · clic en la guía para ver el detalle · el peso y las dimensiones son de demostración hasta conectar la validación de carga</span></div></section>
+    {detailPkg && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailPkg(null) }}>
+        <div className="modal-card trip-detail-modal">
+          <div className="modal-header"><div><span className="eyebrow">Detalle del paquete · {detailPkg.id}</span><h2>{detailPkg.client}</h2><p>Guía vinculada al viaje {detailPkg.trip}</p></div><button type="button" className="icon-button" onClick={() => setDetailPkg(null)} aria-label="Cerrar">×</button></div>
+          <div className="trip-detail-grid">
+            <div className="trip-detail-field"><span>Guía</span><strong>{detailPkg.id}</strong></div>
+            <div className="trip-detail-field"><span>Peso</span><strong>{detailPkg.weightKg} kg</strong></div>
+            <div className="trip-detail-field"><span>Dimensiones</span><strong>{detailPkg.dimensions}</strong></div>
+            <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailPkg.status} /></div>
+          </div>
+          <p className="trip-detail-note">El paquete sigue la ruta y el estado del viaje {detailPkg.trip}. Cuando la validación física de la tienda esté conectada, aquí se mostrarán fotos, peso real y la persona que recibió.</p>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('trips') }}><Icon name="trips" size={13} /> Ver viaje {detailPkg.trip}</button><button className="secondary-button" onClick={() => setDetailPkg(null)}>Cerrar</button></div>
+        </div>
+      </div>
+    )}
   </>
 }
 
-function TrackingView({ tracking }: { tracking: TrackingOverview | null }) {
+function TrackingView({ tracking, onNavigate }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void }) {
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} /><div className="tracking-card"><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></div><div className="tracking-card second"><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span></div></div></section>
+  const withRoute = tracking.trips.filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat))
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">Posiciones de conductores y rutas de viajes con coordenadas reales registradas en la API.</p></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas · {withRoute.length} rutas dibujadas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} trips={withRoute} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend gold" />Ruta de viaje</span></div></div></section>
 }
 
-function HistoryView({ history }: { history: HistoryEvent[] }) { return <section className="panel history-panel"><PanelHeader title="Historial de operaciones" action="API" /><div className="timeline">{history.map((event) => <div className="timeline-row" key={event.id}><span className="timeline-time">{event.time}<small>{event.date}</small></span><span className={`timeline-dot ${event.color}`} /><div className="timeline-event"><strong>{event.title}</strong><span>{event.detail}</span></div></div>)}</div></section> }
+function HistoryView({ history }: { history: HistoryEvent[] }) {
+  const [typeFilter, setTypeFilter] = useState<'all' | HistoryEvent['type']>('all')
+  const types = Array.from(new Set(history.map((event) => event.type)))
+  const filtered = typeFilter === 'all' ? history : history.filter((event) => event.type === typeFilter)
+  function exportPdfFile() {
+    exportPdf('Historial de operaciones · INCOEX Logistics', 'Bitácora de despachos, asignaciones e incidencias', ['Hora', 'Fecha', 'Tipo', 'Evento', 'Detalle'], filtered.map((event) => [event.time, event.date, event.type, event.title, event.detail]))
+  }
+  return <><div className="table-toolbar history-toolbar"><div className="filter-row"><button className={`filter-chip ${typeFilter === 'all' ? 'active' : ''}`} onClick={() => setTypeFilter('all')}>Todo <b>{history.length}</b></button>{types.map((type) => <button key={type} className={`filter-chip ${typeFilter === type ? 'active' : ''}`} onClick={() => setTypeFilter(type)}>{type} <b>{history.filter((event) => event.type === type).length}</b></button>)}</div><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> Exportar PDF</button></div><section className="panel history-panel"><PanelHeader title="Historial de operaciones" action="API" /><div className="timeline">{filtered.map((event) => <div className="timeline-row" key={event.id}><span className="timeline-time">{event.time}<small>{event.date}</small></span><span className={`timeline-dot ${event.color}`} /><div className="timeline-event"><strong>{event.title}</strong><span>{event.detail}</span></div></div>)}</div>{filtered.length === 0 && <EmptyState title="Sin eventos de este tipo" detail="Cambia el filtro para ver más actividad." />}</section></>
+}
 
 function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: { deliverables: Deliverable[]; summary: DeliverableSummary; onStatusChange: (id: string, status: DeliverableStatus) => Promise<void>; onNotice: (message: string) => void }) {
   const [statusFilter, setStatusFilter] = useState<'all' | DeliverableStatus>('all')
@@ -837,6 +1721,7 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     const matchesQuery = !query || [item.title, item.area, item.summary, item.owner, item.contractRef].join(' ').toLowerCase().includes(query)
     return matchesQuery && (statusFilter === 'all' || item.status === statusFilter) && (areaFilter === 'all' || item.area === areaFilter) && (priorityFilter === 'all' || item.priority === priorityFilter)
   }), [areaFilter, deliverables, priorityFilter, searchFilter, statusFilter])
+  const implementedPercent = summary.total ? Math.round(((summary.done + summary.in_progress) / summary.total) * 100) : 0
   const verifiedPercent = summary.total ? Math.round((summary.done / summary.total) * 100) : 0
   const reportDate = new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
   const referenceScreens = [
@@ -892,7 +1777,7 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
         <p>Avance del proyecto frente al alcance acordado con el cliente, con evidencia de lo implementado y lo pendiente por cerrar.</p>
         <div className="report-meta-row"><span><b>Fecha de corte</b>{reportDate}</span><span><b>Fuente</b>Figma + repositorio</span></div>
       </div>
-      <div className="report-hero-side"><div className="report-progress"><strong>{verifiedPercent}%</strong><span>avance verificado</span><div><i style={{ width: `${verifiedPercent}%` }} /></div></div><button className="primary-button" onClick={() => { onNotice('Selecciona “Guardar como PDF” para compartir el informe'); window.print() }}>Imprimir / guardar PDF</button></div>
+      <div className="report-hero-side"><div className="report-progress"><strong>{implementedPercent}%</strong><span>avance implementado</span><div><i style={{ width: `${implementedPercent}%` }} /></div><small className="progress-detail">{verifiedPercent}% verificado con evidencia · {summary.in_progress} en desarrollo · {summary.review + summary.backlog} pendientes de {summary.total}</small></div><button className="primary-button" onClick={() => { onNotice('Selecciona “Guardar como PDF” para compartir el informe'); window.print() }}>Imprimir / guardar PDF</button></div>
     </section>
     <div className="deliverable-summary-grid">
       <DeliverableMetric label="Total de tareas" value={summary.total} detail="alcance del proyecto" tone="blue" />
@@ -1073,11 +1958,89 @@ function BillingMetric({ icon, label, value, detail, tone }: { icon: IconName; l
   return <div className={`deliverable-metric billing-metric ${tone}`}><span className="metric-label"><Icon name={icon} size={13} /> {label}</span><strong>{value}</strong><small>{detail}</small></div>
 }
 
-function SettingsView({ apiBase, connection }: { apiBase: string; connection: ConnectionState }) { return <div className="settings-grid"><section className="panel settings-card"><span className="setting-icon"><Icon name="globe" size={19} /></span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend NestJS.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'API conectada' : connection === 'loading' ? 'Conectando…' : 'API no disponible'}</div></section><section className="panel settings-card"><span className="setting-icon"><Icon name="map" size={19} /></span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps JavaScript API y posiciones GPS de los conductores.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section><section className="panel settings-card"><span className="setting-icon"><Icon name="shield" size={19} /></span><h2>Roles y seguridad</h2><p>Empresa, conductor y superadministrador se aislarán mediante JWT y permisos.</p><div className="setting-status muted-status">JWT/RBAC pendiente de producción</div></section></div> }
+function SettingsView({ apiBase, connection, settings, onSaved, onNotice }: { apiBase: string; connection: ConnectionState; settings: AppSettings | null; onSaved: (settings: AppSettings) => void; onNotice: (message: string) => void }) {
+  const [dollarRate, setDollarRate] = useState(settings?.dollarRate ?? 36.5)
+  const [gasoline, setGasoline] = useState(settings?.fuelPriceGasolineCs ?? 61.5)
+  const [diesel, setDiesel] = useState(settings?.fuelPriceDieselCs ?? 54)
+  const [baseFee, setBaseFee] = useState(settings?.baseFeeCs ?? 80)
+  const [fareKm, setFareKm] = useState(settings?.farePerKmCs ?? 8.5)
+  const [companyName, setCompanyName] = useState(settings?.companyName ?? 'INCOEX Logistics')
+  const [companyPhone, setCompanyPhone] = useState(settings?.companyPhone ?? '')
+  const [companyEmail, setCompanyEmail] = useState(settings?.companyEmail ?? '')
+  const [companyAddress, setCompanyAddress] = useState(settings?.companyAddress ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const exampleTrip = Number((baseFee + 10 * fareKm).toFixed(2))
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const next = await updateSettings({
+        dollarRate: Number(dollarRate),
+        fuelPriceGasolineCs: Number(gasoline),
+        fuelPriceDieselCs: Number(diesel),
+        baseFeeCs: Number(baseFee),
+        farePerKmCs: Number(fareKm),
+        companyName,
+        companyPhone,
+        companyEmail,
+        companyAddress,
+      })
+      onSaved(next)
+      onNotice('Configuración guardada: la tasa, las tarifas y los datos de la empresa quedaron actualizados')
+    } catch {
+      onNotice('No se pudo guardar la configuración; revisa la conexión con la API')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <div className="settings-grid settings-form-grid">
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="globe" size={19} /></span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend de la plataforma.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'Conectado' : connection === 'loading' ? 'Conectando…' : 'No disponible'}</div></section>
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="map" size={19} /></span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps y las posiciones de los conductores registradas en la operación.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section>
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="shield" size={19} /></span><h2>Accesos y permisos</h2><p>Empresa, conductor y administrador trabajan con los ocho roles definidos en contrato.</p><div className="setting-status muted-status">Protección de accesos en preparación</div></section>
+    <section className="panel settings-card company-card">
+      <div className="settings-card-head"><span className="setting-icon"><Icon name="billing" size={19} /></span><div><h2>Información de la empresa</h2><p>Datos que aparecen en los reportes, comprobantes y comunicaciones de INCOEX.</p></div></div>
+      <form className="settings-form" onSubmit={save}>
+        <div className="form-grid">
+          <label>Nombre de la empresa<input required value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></label>
+          <label>Teléfono<input value={companyPhone} onChange={(event) => setCompanyPhone(event.target.value)} placeholder="+505 8888-0000" /></label>
+          <label>Correo<input type="email" value={companyEmail} onChange={(event) => setCompanyEmail(event.target.value)} placeholder="contacto@incoexlogistics.com" /></label>
+          <label>Dirección<input value={companyAddress} onChange={(event) => setCompanyAddress(event.target.value)} placeholder="Managua, Nicaragua" /></label>
+        </div>
+        <div className="settings-form-actions"><span className="settings-saved-hint">{settings ? `Última actualización: ${new Date(settings.updatedAt).toLocaleString('es-NI')}` : 'Cargando configuración…'}</span><button className="primary-button" disabled={saving || !settings}>{saving ? 'Guardando…' : 'Guardar empresa'}</button></div>
+      </form>
+    </section>
+    <section className="panel settings-card currency-card">
+      <div className="settings-card-head"><span className="setting-icon"><Icon name="wallet" size={19} /></span><div><h2>Moneda y tarifas</h2><p>Precios del sistema en córdobas (C$) con conversión automática al dólar para la flota y los viajes.</p></div></div>
+      <form className="settings-form" onSubmit={save}>
+        <div className="form-grid">
+          <label>Tasa de cambio · C$ por US$ 1<input required type="number" min="1" step="0.01" value={dollarRate} onChange={(event) => setDollarRate(Number(event.target.value))} /></label>
+          <label>Gasolina · C$ por litro<input required type="number" min="0" step="0.01" value={gasoline} onChange={(event) => setGasoline(Number(event.target.value))} /></label>
+          <label>Diésel · C$ por litro<input required type="number" min="0" step="0.01" value={diesel} onChange={(event) => setDiesel(Number(event.target.value))} /></label>
+          <label>Tarifa base por viaje · C$<input required type="number" min="0" step="0.01" value={baseFee} onChange={(event) => setBaseFee(Number(event.target.value))} /></label>
+          <label>Tarifa por kilómetro · C$<input required type="number" min="0" step="0.01" value={fareKm} onChange={(event) => setFareKm(Number(event.target.value))} /></label>
+        </div>
+        <div className="conversion-strip">
+          <span><b>1 USD</b> = {formatCs(dollarRate)}</span>
+          <span>Viaje de 10 km ≈ <b>{formatCs(exampleTrip)}</b> <small>(US$ {csToUsd(exampleTrip, dollarRate).toFixed(2)})</small></span>
+          <span>1 L gasolina = <b>{formatCs(gasoline)}</b> <small>(US$ {csToUsd(gasoline, dollarRate).toFixed(2)})</small></span>
+        </div>
+        <div className="settings-form-actions"><span className="settings-saved-hint">{settings ? `Última actualización: ${new Date(settings.updatedAt).toLocaleString('es-NI')}` : 'Cargando configuración…'}</span><button className="primary-button" disabled={saving || !settings}>{saving ? 'Guardando…' : 'Guardar tarifas'}</button></div>
+      </form>
+      <p className="settings-footnote">El costo por km de cada vehículo se recalcula con el precio de combustible de esta pantalla, y la tarifa de cada viaje nuevo con la tarifa base y por kilómetro.</p>
+    </section>
+  </div>
+}
 
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon"><Icon name="requests" size={24} /></div><h2>{title}</h2><p>{detail}</p></section> }
 function DataTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="table-scroll"><table><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
-function Pagination() { return <div className="pagination"><button>‹</button><button className="active">1</button><button>2</button><button>3</button><button>›</button></div> }
+function TablePagination({ page, pageSize, total, onChange }: { page: number; pageSize: number; total: number; onChange: (page: number) => void }) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  if (total <= pageSize) return <span className="pagination-note">Página 1 de 1</span>
+  return <div className="pagination"><button disabled={page <= 1} onClick={() => onChange(page - 1)}>‹</button>{Array.from({ length: pageCount }, (_, index) => index + 1).map((p) => <button className={p === page ? 'active' : ''} key={p} onClick={() => onChange(p)}>{p}</button>)}<button disabled={page >= pageCount} onClick={() => onChange(page + 1)}>›</button></div>
+}
 function SummaryValue({ label, value, tone = 'blue' }: { label: string; value: string; tone?: string }) { return <div className="summary-value"><span className={`summary-icon ${tone}`} /> <div><strong>{value}</strong><small>{label}</small></div></div> }
 function StatusPill({ status }: { status: string }) { return <span className={`status-pill ${statusClass(status)}`}>{status}</span> }
 function PriorityPill({ priority }: { priority: string }) { return <span className={`priority-pill ${statusClass(priority)}`}>{priority}</span> }

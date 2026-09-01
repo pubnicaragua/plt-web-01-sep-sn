@@ -45,6 +45,15 @@ export interface Trip {
   recipientName?: string
   recipientPhone?: string
   fragile?: boolean
+  originLat?: number
+  originLng?: number
+  destinationLat?: number
+  destinationLng?: number
+  distanceKm?: number
+  estimatedCostCs?: number
+  serviceType?: 'Urbano' | 'Express' | 'Programado'
+  contactName?: string
+  contactPhone?: string
 }
 
 export interface Driver {
@@ -65,6 +74,7 @@ export interface Client {
   type: string
   phone: string
   email: string
+  address?: string
   trips: number
   activeRequests: number
   status: 'Activo' | 'Suspendido'
@@ -94,7 +104,9 @@ export interface ReportsSummary {
   totalTrips: number
   completedTrips: number
   cancelledTrips: number
-  averageDeliveryMinutes: number
+  averageDistanceKm: number
+  totalDistanceKm: number
+  totalRevenueCs: number
   weeklyTrips: number[]
   weeklyLabels: string[]
   dailyDeliveries: number[]
@@ -111,6 +123,7 @@ export interface TrackingOverview {
 }
 
 export type VehicleStatus = 'Disponible' | 'En servicio' | 'Mantenimiento' | 'Fuera de servicio'
+export type FuelType = 'Gasolina' | 'Diésel' | 'Eléctrico' | 'Híbrido'
 
 export interface Vehicle {
   id: string
@@ -124,6 +137,34 @@ export interface Vehicle {
   lastMaintenance: string
   nextMaintenance: string
   totalTrips: number
+  fuelType: FuelType
+  consumptionLPerKm: number
+  priceCs: number
+  priceUsd: number
+  fuelCostPerKmC$: number
+  odometerKm: number
+  imageUrl: string
+}
+
+export interface AppSettings {
+  dollarRate: number
+  fuelPriceGasolineCs: number
+  fuelPriceDieselCs: number
+  baseFeeCs: number
+  farePerKmCs: number
+  companyName: string
+  companyPhone: string
+  companyEmail: string
+  companyAddress: string
+  updatedAt: string
+}
+
+export function formatCs(value: number) {
+  return `C$ ${value.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export function csToUsd(value: number, dollarRate: number) {
+  return dollarRate > 0 ? Number((value / dollarRate).toFixed(2)) : 0
 }
 
 export interface MaintenanceRecord {
