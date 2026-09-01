@@ -435,3 +435,53 @@ body { min-width: 0; background: var(--paper); }
 .brand-logo-img { display: block; height: 34px; width: auto; }
 .brand-lockup { padding: 4px 8px 30px; }
 .brand-lockup .brand-logo-img { height: 38px; }
+
+/* Módulos Vehículos, Usuarios y Dashboard enriquecido */
+.metric-info { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 5px; border-radius: 50%; color: #9aa7bb; background: #eef2f7; vertical-align: middle; }
+.metric-card:hover .metric-info { color: #2c65dc; background: #e8f0ff; }
+.attention-panel { margin-top: 14px; padding: 17px 20px 19px; border: 1px solid #f0e2c8; background: linear-gradient(105deg, #fffaf0, #fffdf7 55%, #fffaf0); }
+.attention-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+.attention-grid button { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border: 1px solid #f0e4cd; border-radius: 11px; background: white; text-align: left; cursor: pointer; }
+.attention-grid button:hover { border-color: #e2c890; transform: translateY(-1px); }
+.attention-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; flex: none; }
+.attention-icon.gold { color: #b87611; background: #fff3d6; }
+.attention-icon.red { color: #d25c64; background: #ffeded; }
+.attention-icon.blue { color: #2c65dc; background: #e8f0ff; }
+.attention-icon.mint { color: #159866; background: #e6faf0; }
+.attention-grid strong, .attention-grid small { display: block; }
+.attention-grid strong { color: #35425e; font-size: 12.5px; }
+.attention-grid small { margin-top: 2px; color: #9aa7bb; font-size: 10.5px; }
+.mini-select { height: 26px; padding: 0 6px; border: 1px solid #e4e9f0; border-radius: 5px; color: #4f5f7b; background: white; font-size: 11px; cursor: pointer; }
+.mini-select:disabled { color: #aab4c3; background: #f5f7fa; cursor: not-allowed; }
+.role-select { max-width: 175px; }
+.secondary-button.danger { color: #d25c64; border-color: #f2c9cc; }
+.trip-detail-modal { width: min(560px, 100%); }
+.trip-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+.trip-detail-field { padding: 13px 14px; border: 1px solid #e6ebf3; border-radius: 10px; background: #fafbfd; }
+.trip-detail-field span { display: block; color: #9aa7bb; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.trip-detail-field strong { display: block; margin-top: 5px; color: #2c3c5c; font-size: 13px; }
+.trip-detail-note { padding: 12px 14px; border-left: 3px solid #bcd1ff; border-radius: 4px; color: #64748f; background: #f5f8ff; font-size: 12px; line-height: 1.5; }
+.trip-actions { flex-wrap: wrap; }
+.role-matrix-panel { padding: 19px 20px; }
+.role-matrix-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+.role-card { padding: 14px; border: 1px solid #e6ebf3; border-radius: 11px; background: #fafbfd; }
+.role-card-head { display: flex; align-items: center; gap: 9px; }
+.role-code { padding: 4px 6px; border-radius: 4px; color: #2c65dc; background: #e8f0ff; font: 700 9.5px 'Acumin Pro'; letter-spacing: .08em; text-transform: uppercase; }
+.role-card strong { color: #2c3c5c; font-size: 12px; }
+.role-card p { margin-top: 8px; color: #71819c; font-size: 10.5px; line-height: 1.5; }
+.role-permissions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
+.role-permissions span { padding: 3px 6px; border-radius: 4px; color: #5a6b88; background: #eef2f7; font: 600 9px 'Acumin Pro'; }
+.export-panel { padding: 19px 20px; border-color: #dce8fe; background: linear-gradient(105deg, #f2f7ff, #fbfdff 55%, #f2f7ff); }
+.export-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.export-panel-head p { max-width: 520px; margin-top: 5px; color: #71819c; font-size: 12px; line-height: 1.55; }
+.export-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.export-footnote { margin-top: 13px; padding-top: 12px; border-top: 1px dashed #dce5f2; color: #8b97ab; font-size: 10.5px; line-height: 1.6; }
+.chart-note { margin: 11px 18px 16px; color: #93a0b3; font-size: 10.5px; line-height: 1.5; }
+
+@media (max-width: 1120px) {
+  .attention-grid, .role-matrix-grid, .trip-detail-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) {
+  .attention-grid, .role-matrix-grid, .trip-detail-grid { grid-template-columns: 1fr; }
+  .export-panel-head { flex-direction: column; }
+}

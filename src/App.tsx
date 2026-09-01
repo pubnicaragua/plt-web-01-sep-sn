@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import {
   assignTrip,
+  assignVehicleDriver,
   createTrip,
+  createUser,
+  createVehicle,
   getApiBase,
   getClients,
   getDashboardSummary,
@@ -10,14 +13,23 @@ import {
   getDrivers,
   getHistory,
   getIncidents,
+  getMaintenance,
+  getReportCsvUrl,
   getReportsSummary,
+  getRoles,
   getTrackingOverview,
   getTrips,
+  getUsers,
+  getVehicles,
+  registerVehicleMaintenance,
   updateDeliverableStatus,
+  updateTripStatus,
+  updateUser,
+  updateVehicleStatus,
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
-import type { Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, ReportsSummary, Section, TrackingOverview, Trip, TripStatus } from './types'
+import type { AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 
 const emptySummary: DashboardSummary = {
   tripsToday: 0,
@@ -25,8 +37,11 @@ const emptySummary: DashboardSummary = {
   pendingTrips: 0,
   completedTrips: 0,
   activeDrivers: 0,
+  availableDrivers: 0,
   registeredClients: 0,
+  activeClients: 0,
   packagesInTransit: 0,
+  delayedTrips: 0,
   openIncidents: 0,
 }
 
@@ -35,14 +50,16 @@ const navItems: Array<{ id: Section; label: string; icon: IconName; group?: stri
   { id: 'trips', label: 'Viajes', icon: 'trips', group: 'Operaciones' },
   { id: 'requests', label: 'Solicitudes', icon: 'requests', group: 'Operaciones' },
   { id: 'assignment', label: 'Asignar conductor', icon: 'assignment', group: 'Operaciones' },
-  { id: 'drivers', label: 'Conductores', icon: 'drivers' },
-  { id: 'clients', label: 'Clientes', icon: 'clients' },
-  { id: 'packages', label: 'Paquetes', icon: 'packages' },
-  { id: 'tracking', label: 'Mapa / Tracking', icon: 'tracking' },
-  { id: 'history', label: 'Historial', icon: 'history' },
-  { id: 'incidents', label: 'Incidencias', icon: 'incidents' },
-  { id: 'reports', label: 'Reportes', icon: 'reports' },
-  { id: 'deliverables', label: 'Entregables', icon: 'deliverables' },
+  { id: 'drivers', label: 'Conductores', icon: 'drivers', group: 'Operaciones' },
+  { id: 'vehicles', label: 'Vehículos y flota', icon: 'vehicles', group: 'Operaciones' },
+  { id: 'clients', label: 'Clientes', icon: 'clients', group: 'Operaciones' },
+  { id: 'packages', label: 'Paquetes', icon: 'packages', group: 'Operaciones' },
+  { id: 'tracking', label: 'Mapa / Tracking', icon: 'tracking', group: 'Operaciones' },
+  { id: 'history', label: 'Historial', icon: 'history', group: 'Operaciones' },
+  { id: 'incidents', label: 'Incidencias', icon: 'incidents', group: 'Operaciones' },
+  { id: 'reports', label: 'Reportes', icon: 'reports', group: 'Operaciones' },
+  { id: 'users', label: 'Usuarios y roles', icon: 'users', group: 'Administración' },
+  { id: 'deliverables', label: 'Entregables', icon: 'deliverables', group: 'Proyecto' },
   { id: 'billing', label: 'Facturas y pagos', icon: 'billing', group: 'Finanzas' },
   { id: 'settings', label: 'Configuración', icon: 'settings' },
 ]
@@ -62,6 +79,10 @@ function App() {
   const [tracking, setTracking] = useState<TrackingOverview | null>(null)
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [deliverableSummary, setDeliverableSummary] = useState<DeliverableSummary>({ total: 0, backlog: 0, in_progress: 0, review: 0, done: 0 })
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([])
+  const [users, setUsers] = useState<AppUser[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [connection, setConnection] = useState<ConnectionState>('loading')
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
@@ -80,8 +101,12 @@ function App() {
       getTrackingOverview(),
       getDeliverables(),
       getDeliverablesSummary(),
+      getVehicles(),
+      getMaintenance(),
+      getUsers(),
+      getRoles(),
     ])
-      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextTracking, nextDeliverables, nextDeliverableSummary]) => {
+      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextTracking, nextDeliverables, nextDeliverableSummary, nextVehicles, nextMaintenance, nextUsers, nextRoles]) => {
         setSummary(nextSummary)
         setTrips(nextTrips)
         setDrivers(nextDrivers)
@@ -92,6 +117,10 @@ function App() {
         setTracking(nextTracking)
         setDeliverables(nextDeliverables)
         setDeliverableSummary(nextDeliverableSummary)
+        setVehicles(nextVehicles)
+        setMaintenance(nextMaintenance)
+        setUsers(nextUsers)
+        setRoles(nextRoles)
         setConnection('connected')
       })
       .catch((error: unknown) => {
@@ -187,16 +216,18 @@ function App() {
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
           {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} onNavigate={navigate} />}
-          {section === 'trips' && <TripsView trips={trips} search={search} onNotice={setNotice} />}
+          {section === 'trips' && <TripsView trips={trips} search={search} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'requests' && <RequestsView trips={trips} onNavigate={navigate} />}
           {section === 'assignment' && <AssignmentView trips={trips} drivers={drivers} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
           {section === 'drivers' && <DriversView drivers={drivers} onNotice={setNotice} />}
+          {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} />}
           {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} />}
           {section === 'reports' && <ReportsView reports={reports} />}
           {section === 'packages' && <PackagesView trips={trips} />}
           {section === 'tracking' && <TrackingView tracking={tracking} />}
           {section === 'history' && <HistoryView history={history} />}
+          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
           {section === 'billing' && <BillingView onNotice={setNotice} />}
           {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} />}
@@ -226,17 +257,19 @@ async function refreshSummary(setSummary: (summary: DashboardSummary) => void, s
 
 function sectionDescription(section: Section) {
   const descriptions: Record<Section, string> = {
-    dashboard: 'Monitoreo en tiempo real de la flota e incidencias de despacho.',
-    trips: 'Historial y asignación de despachos metropolitanos.',
+    dashboard: 'Monitoreo en tiempo real de la flota, entregas e incidencias de despacho en Managua.',
+    trips: 'Historial y asignación de despachos metropolitanos con transiciones de estado.',
     requests: 'Revisión y aprobación de nuevas solicitudes de viaje.',
     assignment: 'Asignación inmediata de transportistas disponibles.',
-    drivers: 'Registro de operadores, vehículos y disponibilidad.',
+    drivers: 'Registro de operadores, disponibilidad y asignación de vehículos.',
+    vehicles: 'Flota completa: placas, modelos, capacidad, mantenimiento y disponibilidad.',
     clients: 'Gestión de cuentas corporativas y particulares con acceso logístico.',
-    packages: 'Inventario operativo y seguimiento de paquetes en tránsito.',
+    packages: 'Inventario operativo y seguimiento de paquetes vinculados a cada viaje.',
     tracking: 'Vista geográfica de operaciones activas y recorridos de entrega.',
     history: 'Bitácora en tiempo real de despachos, asignaciones e incidencias.',
     incidents: 'Seguimiento de contingencias metropolitanas reportadas por la flota.',
-    reports: 'Analítica agregada del rendimiento de viajes y entregas.',
+    reports: 'Analítica agregada del rendimiento de viajes y entregas, con exportación CSV.',
+    users: 'Usuarios de la plataforma y matriz de los ocho roles contractuales con permisos.',
     deliverables: 'Alcance, avance tangible y próximos hitos del proyecto.',
     billing: 'Facturas, pagos recibidos y calendario de pagos del proyecto. Acceso restringido.',
     settings: 'Configuración de la plataforma, integraciones y seguridad.',
@@ -247,15 +280,26 @@ function sectionDescription(section: Section) {
 function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; onNavigate: (section: Section) => void }) {
   return <>
     <div className="metrics-grid">
-      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="API" tone="blue" icon="trips" />
-      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="activo" tone="cyan" icon="truck" />
-      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="Atención" tone="gold" icon="clock" />
-      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="API" tone="mint" icon="checkCircle" />
-      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="activo" tone="mint" icon="drivers" />
-      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta="API" tone="blue" icon="clients" />
-      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="Normal" tone="slate" icon="packages" />
-      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="Atención" tone="red" icon="incidents" />
+      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." />
+      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="Asignado · En camino · En entrega" tone="cyan" icon="truck" hint="Viajes que ya tienen conductor asignado y no han sido entregados ni cancelados." />
+      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="sin asignar" tone="gold" icon="clock" hint="Solicitudes aprobadas que aún no tienen conductor asignado." />
+      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="hoy" tone="mint" icon="checkCircle" hint="Viajes marcados como Completado en el día." />
+      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="conectados" tone="mint" icon="drivers" hint="Conductores disponibles, en viaje o en entrega." />
+      <MetricCard label="Conductores disponibles" value={summary.availableDrivers} delta="para asignar" tone="blue" icon="assignment" hint="Conductores en estado Disponible que pueden recibir una asignación ahora." />
+      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta={`${summary.activeClients} activos`} tone="blue" icon="clients" hint="Cuentas corporativas y particulares registradas; activos son los que han operado en el último mes." />
+      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="suma de paquetes en viajes en curso" tone="slate" icon="packages" hint="Suma de paquetes de todos los viajes en curso. Un viaje puede aportar varios paquetes." />
+      <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta o que superan el tiempo estimado de entrega." />
+      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." />
     </div>
+    <section className="panel attention-panel">
+      <PanelHeader title="Requiere atención" action="Ver incidencias" onAction={() => onNavigate('incidents')} />
+      <div className="attention-grid">
+        <button onClick={() => onNavigate('trips')}><span className="attention-icon gold"><Icon name="clock" size={15} /></span><div><strong>{summary.delayedTrips} entregas retrasadas</strong><small>Viajes con retraso reportado</small></div></button>
+        <button onClick={() => onNavigate('incidents')}><span className="attention-icon red"><Icon name="alert" size={15} /></span><div><strong>{summary.openIncidents} incidencias abiertas</strong><small>Requieren resolución</small></div></button>
+        <button onClick={() => onNavigate('requests')}><span className="attention-icon blue"><Icon name="requests" size={15} /></span><div><strong>{summary.pendingTrips} solicitudes pendientes</strong><small>Esperan asignación</small></div></button>
+        <button onClick={() => onNavigate('assignment')}><span className="attention-icon mint"><Icon name="drivers" size={15} /></span><div><strong>{summary.availableDrivers} conductores disponibles</strong><small>Listos para asignar</small></div></button>
+      </div>
+    </section>
     <div className="dashboard-grid">
       <section className="panel map-panel">
         <PanelHeader title="Mapa de operaciones" action="Ver mapa completo" onAction={() => onNavigate('tracking')} />
@@ -274,12 +318,13 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
       <button onClick={() => onNavigate('trips')}><span className="quick-icon"><Icon name="trips" size={17} /></span><strong>Revisar solicitudes</strong><small>{summary.pendingTrips} pendientes</small></button>
       <button onClick={() => onNavigate('tracking')}><span className="quick-icon"><Icon name="tracking" size={17} /></span><strong>Abrir tracking</strong><small>{summary.activeTrips} operaciones</small></button>
       <button onClick={() => onNavigate('incidents')}><span className="quick-icon"><Icon name="incidents" size={17} /></span><strong>Atender incidencias</strong><small>{summary.openIncidents} abiertas</small></button>
+      <button onClick={() => onNavigate('vehicles')}><span className="quick-icon"><Icon name="vehicles" size={17} /></span><strong>Gestionar flota</strong><small>{trips ? 'ver vehículos y mantenimiento' : 'ver vehículos'}</small></button>
     </section>
   </>
 }
 
-function MetricCard({ label, value, delta, tone, icon }: { label: string; value: number; delta: string; tone: string; icon: IconName }) {
-  return <div className={`metric-card tone-${tone}`}><div className="metric-top"><span className="metric-label">{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></div>
+function MetricCard({ label, value, delta, tone, icon, hint }: { label: string; value: number; delta: string; tone: string; icon: IconName; hint?: string }) {
+  return <div className={`metric-card tone-${tone}`} title={hint}><div className="metric-top"><span className="metric-label">{label}{hint && <span className="metric-info"><Icon name="info" size={11} /></span>}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></div>
 }
 
 function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
@@ -441,9 +486,49 @@ function NewTripDialog({ onClose, onCreated, onError }: { onClose: () => void; o
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><form className="modal-card" onSubmit={submit}><div className="modal-header"><div><span className="eyebrow">Nueva solicitud · API</span><h2>Crear viaje</h2><p>Los datos se guardarán en el servicio de operaciones.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div><div className="form-grid"><label>Cliente<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre o empresa" /></label><label>Paquetes<input required type="number" min="1" value={packages} onChange={(event) => setPackages(Math.max(1, Number(event.target.value)))} /></label><label>Recogida<input required value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="Dirección de recogida" /></label><label>Destino<input required value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Dirección de entrega" /></label><label className="full-field">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Características o instrucciones de la carga" rows={3} /></label></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Crear solicitud'}</button></div></form></div>
 }
 
-function TripsView({ trips, search, onNotice }: { trips: Trip[]; search: string; onNotice: (message: string) => void }) {
+function TripsView({ trips, search, onNotice, onChanged }: { trips: Trip[]; search: string; onNotice: (message: string) => void; onChanged: (trip: Trip) => void }) {
+  const [detailTrip, setDetailTrip] = useState<Trip | null>(null)
+  const [actingTrip, setActingTrip] = useState('')
   const filtered = useMemo(() => trips.filter((trip) => `${trip.id} ${trip.client} ${trip.driver} ${trip.origin} ${trip.destination}`.toLowerCase().includes(search.toLowerCase())), [trips, search])
-  return <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className="filter-chip active">Todas <b>{trips.length}</b></button><button className="filter-chip">Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className="filter-chip">En curso <b>{trips.filter((trip) => trip.status === 'En camino' || trip.status === 'En entrega').length}</b></button><button className="filter-chip">Completadas</button></div><button className="secondary-button" onClick={() => onNotice('Los filtros avanzados se enviarán al endpoint de consulta')}>Filtros <span>⌄</span></button></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paquetes', 'Estado', '']} rows={filtered.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <strong key={`${trip.id}-client`}>{trip.client}</strong>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <button className="row-action" key={`${trip.id}-action`} onClick={() => onNotice(`Detalle de ${trip.id}`)}>•••</button>])} /><div className="table-footer"><span>Mostrando {filtered.length} de {trips.length} viajes</span><Pagination /></div></section>
+  const inCourse = trips.filter((trip) => trip.status === 'En camino' || trip.status === 'En entrega').length
+  async function changeStatus(trip: Trip, status: TripStatus) {
+    setActingTrip(trip.id)
+    try {
+      const updated = await updateTripStatus(trip.id, status)
+      onChanged(updated)
+      if (detailTrip?.id === trip.id) setDetailTrip(updated)
+      onNotice(`${trip.id} pasó a ${status}`)
+    } catch {
+      onNotice(`No se pudo cambiar el estado de ${trip.id}; verifica la transición permitida`)
+    } finally {
+      setActingTrip('')
+    }
+  }
+  return <>
+    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className="filter-chip active">Todas <b>{trips.length}</b></button><button className="filter-chip">Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className="filter-chip">En curso <b>{inCourse}</b></button><button className="filter-chip">Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><button className="secondary-button" onClick={() => onNotice('Los filtros avanzados se enviarán al endpoint de consulta')}>Filtros <span>⌄</span></button></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paquetes', 'Estado', 'Acciones']} rows={filtered.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <strong key={`${trip.id}-client`}>{trip.client}</strong>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ir a tracking" onClick={() => onNotice(`Tracking de ${trip.id} en el mapa`)}><Icon name="tracking" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {filtered.length} de {trips.length} viajes · Clic en 👁 para ver detalle y acciones</span><Pagination /></div></section>
+    {detailTrip && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTrip(null) }}>
+        <div className="modal-card trip-detail-modal">
+          <div className="modal-header"><div><span className="eyebrow">Detalle del viaje · {detailTrip.id}</span><h2>{detailTrip.client}</h2><p>{detailTrip.origin} → {detailTrip.destination}</p></div><button type="button" className="icon-button" onClick={() => setDetailTrip(null)} aria-label="Cerrar">×</button></div>
+          <div className="trip-detail-grid">
+            <div className="trip-detail-field"><span>Conductor</span><strong>{detailTrip.driver}</strong></div>
+            <div className="trip-detail-field"><span>Fecha</span><strong>{detailTrip.date}</strong></div>
+            <div className="trip-detail-field"><span>Paquetes</span><strong>{detailTrip.packages}</strong></div>
+            <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailTrip.status} /></div>
+          </div>
+          {detailTrip.description && <p className="trip-detail-note">{detailTrip.description}</p>}
+          <div className="modal-actions trip-actions">
+            {detailTrip.status === 'Pendiente' && <button className="primary-button" onClick={() => onNotice(`Asigna un conductor a ${detailTrip.id} desde la sección de asignación`)}><Icon name="assignment" size={13} /> Asignar conductor</button>}
+            {detailTrip.status === 'Asignado' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En camino')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en camino'}</button>}
+            {detailTrip.status === 'En camino' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En entrega')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en entrega'}</button>}
+            {detailTrip.status === 'En entrega' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Completado')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Confirmar entrega'}</button>}
+            {!['Completado', 'Cancelado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Cancelado')}>Cancelar viaje</button>}
+            <button className="secondary-button" onClick={() => onNotice(`Tracking de ${detailTrip.id} disponible en el mapa`)}><Icon name="tracking" size={13} /> Ver tracking</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
 }
 
 function RequestsView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (section: Section) => void }) {
@@ -476,6 +561,199 @@ function DriversView({ drivers, onNotice }: { drivers: Driver[]; onNotice: (mess
   return <><div className="driver-summary"><SummaryValue label="Total conductores" value={String(drivers.length)} /><SummaryValue label="Disponibles" value={String(drivers.filter((driver) => driver.status === 'Disponible').length)} tone="mint" /><SummaryValue label="En viaje" value={String(drivers.filter((driver) => driver.status === 'En viaje' || driver.status === 'En entrega').length)} tone="blue" /><SummaryValue label="Fuera de servicio" value={String(drivers.filter((driver) => driver.status === 'Fuera de servicio').length)} tone="slate" /></div><div className="drivers-grid">{drivers.map((driver, index) => <article className="driver-card" key={driver.id}><div className="driver-card-top"><div className={`driver-avatar ${['blue', 'cyan', 'violet', 'mint', 'gold', 'slate'][index % 6]}`}>{initials(driver.name)}</div><div><h3>{driver.name}</h3><p>{driver.phone}</p></div><StatusPill status={driver.status} /></div><div className="vehicle-line"><span>VEHÍCULO</span><strong>{driver.vehicle} <em>— {driver.plate}</em></strong></div><div className="route-line"><span>RUTA / ACTIVIDAD ACTUAL</span><strong>{driver.route}</strong></div><div className="driver-actions"><button onClick={() => onNotice(`Perfil de ${driver.name}`)}>Ver perfil</button><button className="primary-mini" onClick={() => onNotice(`Asignación preparada para ${driver.name}`)}>Asignar viaje</button></div></article>)}</div></>
 }
 
+function VehiclesView({ vehicles, drivers, maintenance, onNotice, onChanged, onCreated }: { vehicles: Vehicle[]; drivers: Driver[]; maintenance: MaintenanceRecord[]; onNotice: (message: string) => void; onChanged: (vehicle: Vehicle) => void; onCreated: (vehicle: Vehicle) => void }) {
+  const [formOpen, setFormOpen] = useState(false)
+  const [maintenanceVehicle, setMaintenanceVehicle] = useState<Vehicle | null>(null)
+  const [busy, setBusy] = useState('')
+  const [plate, setPlate] = useState('')
+  const [model, setModel] = useState('')
+  const [type, setType] = useState('Panel')
+  const [capacityKg, setCapacityKg] = useState(1000)
+  const [year, setYear] = useState(2024)
+  const [maintenanceNote, setMaintenanceNote] = useState('')
+
+  const byStatus = (status: VehicleStatus) => vehicles.filter((vehicle) => vehicle.status === status)
+
+  async function changeStatus(vehicle: Vehicle, status: VehicleStatus) {
+    setBusy(`status-${vehicle.id}`)
+    try {
+      onChanged(await updateVehicleStatus(vehicle.id, status))
+      onNotice(`${vehicle.plate} pasó a ${status}`)
+    } catch {
+      onNotice(`No se pudo cambiar el estado de ${vehicle.plate}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function assignDriver(vehicle: Vehicle, driver: string) {
+    setBusy(`driver-${vehicle.id}`)
+    try {
+      onChanged(await assignVehicleDriver(vehicle.id, driver))
+      onNotice(`${vehicle.plate} asignado a ${driver}`)
+    } catch {
+      onNotice(`No se pudo asignar el vehículo ${vehicle.plate}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function submitVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy('create')
+    try {
+      onCreated(await createVehicle({ plate, model, type, capacityKg, year }))
+      setFormOpen(false)
+      setPlate('')
+      setModel('')
+    } catch {
+      onNotice('No se pudo registrar el vehículo; verifica la placa y los datos')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function submitMaintenance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!maintenanceVehicle) return
+    setBusy(`mt-${maintenanceVehicle.id}`)
+    try {
+      await registerVehicleMaintenance(maintenanceVehicle.id, maintenanceNote)
+      onChanged(await getVehicles().then((list) => list.find((vehicle) => vehicle.id === maintenanceVehicle.id) ?? maintenanceVehicle))
+      onNotice(`Mantenimiento registrado para ${maintenanceVehicle.plate}`)
+      setMaintenanceVehicle(null)
+      setMaintenanceNote('')
+    } catch {
+      onNotice('No se pudo registrar el mantenimiento')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return <>
+    <div className="driver-summary">
+      <SummaryValue label="Total de vehículos" value={String(vehicles.length)} />
+      <SummaryValue label="Disponibles" value={String(byStatus('Disponible').length)} tone="mint" />
+      <SummaryValue label="En servicio" value={String(byStatus('En servicio').length)} tone="blue" />
+      <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="gold" />
+    </div>
+    <section className="panel table-panel">
+      <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · capacidad en kg</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
+      <DataTable columns={['Placa', 'Modelo', 'Tipo', 'Capacidad', 'Año', 'Conductor', 'Estado', 'Último mantenimiento', 'Viajes', 'Acciones']} rows={vehicles.map((vehicle) => [<strong className="linkish" key={`${vehicle.id}-plate`}>{vehicle.plate}</strong>, vehicle.model, vehicle.type, `${vehicle.capacityKg.toLocaleString('es-NI')} kg`, vehicle.year, <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>, <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />, vehicle.lastMaintenance, vehicle.totalTrips, <div className="action-group" key={`${vehicle.id}-actions`}>
+        <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
+        <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => <option value={driver.name} key={driver.id}>{driver.name}</option>)}</select>
+        <button title="Registrar mantenimiento" onClick={() => setMaintenanceVehicle(vehicle)}><Icon name="wrench" size={14} /></button>
+      </div>])} />
+      <div className="table-footer"><span>Los cambios de estado y conductor se persisten en la API · Registros de mantenimiento: {maintenance.length}</span></div>
+    </section>
+    {formOpen && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
+        <form className="modal-card" onSubmit={submitVehicle}>
+          <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible.</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
+            <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
+            <label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option>Panel</option><option>Van</option><option>Camión</option><option>Pickup</option></select></label>
+            <label>Capacidad (kg)<input required type="number" min="100" max="20000" value={capacityKg} onChange={(event) => setCapacityKg(Number(event.target.value))} /></label>
+            <label>Año<input required type="number" min="2000" max="2030" value={year} onChange={(event) => setYear(Number(event.target.value))} /></label>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
+        </form>
+      </div>
+    )}
+    {maintenanceVehicle && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMaintenanceVehicle(null) }}>
+        <form className="modal-card" onSubmit={submitMaintenance}>
+          <div className="modal-header"><div><span className="eyebrow">Mantenimiento · {maintenanceVehicle.plate}</span><h2>{maintenanceVehicle.model}</h2><p>Al registrar el mantenimiento, el vehículo pasa a estado Mantenimiento.</p></div><button type="button" className="icon-button" onClick={() => setMaintenanceVehicle(null)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label></div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setMaintenanceVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `mt-${maintenanceVehicle.id}`}>{busy === `mt-${maintenanceVehicle.id}` ? 'Guardando…' : 'Registrar mantenimiento'}</button></div>
+        </form>
+      </div>
+    )}
+  </>
+}
+
+function UsersView({ users, roles, onNotice, onChanged, onCreated }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void }) {
+  const [formOpen, setFormOpen] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [role, setRole] = useState<UserRole>('operations')
+
+  async function toggleUser(user: AppUser) {
+    setBusy(user.id)
+    try {
+      onChanged(await updateUser(user.id, { status: user.status === 'Activo' ? 'Inactivo' : 'Activo' }))
+      onNotice(`${user.name} ${user.status === 'Activo' ? 'desactivado' : 'activado'}`)
+    } catch {
+      onNotice(`No se pudo actualizar a ${user.name}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function changeRole(user: AppUser, nextRole: UserRole) {
+    setBusy(user.id)
+    try {
+      onChanged(await updateUser(user.id, { role: nextRole }))
+      onNotice(`Rol de ${user.name} actualizado`)
+    } catch {
+      onNotice(`No se pudo cambiar el rol de ${user.name}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function submitUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy('create')
+    try {
+      onCreated(await createUser({ name, email, phone, role }))
+      setFormOpen(false)
+      setName('')
+      setEmail('')
+      setPhone('')
+    } catch {
+      onNotice('No se pudo crear el usuario; verifica el correo y los datos')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return <>
+    <div className="driver-summary">
+      <SummaryValue label="Usuarios totales" value={String(users.length)} />
+      <SummaryValue label="Activos" value={String(users.filter((user) => user.status === 'Activo').length)} tone="mint" />
+      <SummaryValue label="Roles definidos" value={String(roles.length)} tone="blue" />
+      <SummaryValue label="Conductores" value={String(users.filter((user) => user.role === 'driver').length)} tone="gold" />
+    </div>
+    <section className="panel role-matrix-panel">
+      <div className="panel-header"><div><span className="eyebrow">MATRIZ DE ROLES · CONTRATO</span><h2>Los ocho roles y sus permisos</h2></div><span className="source-badge">{roles.length} roles contractuales</span></div>
+      <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permission}</span>)}</div></article>)}</div>
+    </section>
+    <section className="panel table-panel">
+      <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Los cambios de rol y estado se persisten en la API</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Crear usuario</button></div>
+      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button></div>])} />
+      <div className="table-footer"><span>El administrador general puede gestionar todos los usuarios y sus permisos</span></div>
+    </section>
+    {formOpen && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
+        <form className="modal-card" onSubmit={submitUser}>
+          <div className="modal-header"><div><span className="eyebrow">Administración · Usuarios</span><h2>Crear usuario</h2><p>El usuario queda Activo con el rol seleccionado.</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label>Nombre<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre completo" /></label>
+            <label>Correo<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="usuario@incoex.com.ni" /></label>
+            <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+            <label>Rol<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>{roles.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}</select></label>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Creando…' : 'Crear usuario'}</button></div>
+        </form>
+      </div>
+    )}
+  </>
+}
+
 function ClientsView({ clients, search }: { clients: Client[]; search: string }) {
   const filtered = useMemo(() => clients.filter((client) => `${client.name} ${client.email} ${client.phone}`.toLowerCase().includes(search.toLowerCase())), [clients, search])
   return <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> {clients.length} clientes cargados desde la API</div><button className="primary-button">＋ Nuevo cliente</button></div><DataTable columns={['Nombre / Empresa', 'Teléfono', 'Email', 'Viajes', 'Solicitudes act.', 'Estado', 'Acciones']} rows={filtered.map((client) => [<div className="client-cell" key={`${client.id}-cell`}><span className="client-avatar">{initials(client.name)}</span><div><strong>{client.name}</strong><small>{client.type}</small></div></div>, client.phone, client.email, client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />, <button className="row-action" key={`${client.id}-action`}>•••</button>])} /><div className="table-footer"><span>Mostrando {filtered.length} de {clients.length} clientes</span><Pagination /></div></section>
@@ -486,20 +764,51 @@ function IncidentsView({ incidents, onNotice }: { incidents: Incident[]; onNotic
 }
 
 function ReportsView({ reports }: { reports: ReportsSummary | null }) {
+  const [exporting, setExporting] = useState('')
   if (!reports) return <EmptyState title="Reportes pendientes" detail="La API aún no entregó el resumen analítico." />
-  return <><div className="metrics-grid report-metrics"><MetricCard label="Viajes totales" value={reports.totalTrips} delta="API" tone="blue" icon="trips" /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="API" tone="mint" icon="checkCircle" /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="API" tone="red" icon="cancelCircle" /><MetricCard label="Tiempo prom. entrega" value={reports.averageDeliveryMinutes} delta="min" tone="gold" icon="clock" /></div><div className="reports-grid"><ChartPanel title="Viajes por semana" values={reports.weeklyTrips} labels={reports.weeklyLabels} /><ChartPanel title="Entregas por día · tendencia" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact /><Leaderboard title="Top conductores" entries={reports.topDrivers} /><Leaderboard title="Top clientes" entries={reports.topClients} /></div></>
+  function exportCsv(collection: 'trips' | 'drivers' | 'clients' | 'incidents', label: string) {
+    setExporting(collection)
+    const anchor = document.createElement('a')
+    anchor.href = getReportCsvUrl(collection)
+    anchor.download = `incoex-${collection}-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.click()
+    window.setTimeout(() => setExporting(''), 600)
+    window.setTimeout(() => { if (exporting === collection) setExporting('') }, 4000)
+  }
+  return <>
+    <section className="panel export-panel">
+      <div className="export-panel-head"><div><span className="eyebrow">EXPORTACIÓN REAL · CSV</span><h2>Descargar datos operativos</h2><p>Cada archivo contiene los datos recibidos de la API con sus columnas documentadas. Los permisos de exportación los define el rol (Gerencia y Finanzas pueden exportar).</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportCsv('trips', 'viajes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Viajes CSV</button><button className="secondary-button" onClick={() => exportCsv('drivers', 'conductores')} disabled={exporting !== ''}><Icon name="download" size={13} /> Conductores CSV</button><button className="secondary-button" onClick={() => exportCsv('clients', 'clientes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Clientes CSV</button><button className="secondary-button" onClick={() => exportCsv('incidents', 'incidencias')} disabled={exporting !== ''}><Icon name="download" size={13} /> Incidencias CSV</button></div></div>
+      <div className="export-footnote"><strong>Columnas:</strong> Viajes (ID, cliente, conductor, origen, destino, fecha, paquetes, estado) · Conductores (ID, nombre, teléfono, vehículo, placa, estado, ruta) · Clientes (ID, nombre, tipo, teléfono, email, viajes, solicitudes activas, estado) · Incidencias (ID, viaje, conductor, cliente, tipo, prioridad, estado).</div>
+    </section>
+    <div className="metrics-grid report-metrics"><MetricCard label="Viajes totales" value={reports.totalTrips} delta="periodo" tone="blue" icon="trips" hint="Total de solicitudes registradas en el periodo." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado: recogida y entrega confirmadas." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados antes de la entrega." /><MetricCard label="Tiempo prom. entrega" value={reports.averageDeliveryMinutes} delta="min" tone="gold" icon="clock" hint="Promedio entre la asignación del conductor y la entrega confirmada." /></div>
+    <div className="reports-grid">
+      <ChartPanel title="Viajes por semana" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes creadas por semana del periodo." />
+      <ChartPanel title="Entregas por día · tendencia" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por día de la semana." />
+      <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes entregados en el periodo." />
+      <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados en el periodo." />
+    </div>
+  </>
 }
 
-function ChartPanel({ title, values, labels, compact = false }: { title: string; values: number[]; labels: string[]; compact?: boolean }) {
+function ChartPanel({ title, values, labels, compact = false, note }: { title: string; values: number[]; labels: string[]; compact?: boolean; note?: string }) {
   const max = Math.max(...values, 1)
-  return <section className={`panel chart-panel ${compact ? 'compact' : ''}`}><PanelHeader title={title} action="API" /><div className="chart-bars">{values.map((value, index) => <div className="chart-bar-wrap" key={`${labels[index]}-${value}`}><span className="chart-value">{value}</span><div className="chart-bar" style={{ height: `${(value / max) * 100}%` }} /><small>{labels[index]}</small></div>)}</div></section>
+  return <section className={`panel chart-panel ${compact ? 'compact' : ''}`}><PanelHeader title={title} action="API" /><div className="chart-bars">{values.map((value, index) => <div className="chart-bar-wrap" key={`${labels[index]}-${value}`}><span className="chart-value">{value}</span><div className="chart-bar" style={{ height: `${(value / max) * 100}%` }} /><small>{labels[index]}</small></div>)}</div>{note && <p className="chart-note">{note}</p>}</section>
 }
 
-function Leaderboard({ title, entries }: { title: string; entries: Array<{ name: string; trips: number }> }) {
-  return <section className="panel leaderboard"><PanelHeader title={title} action="API" /><ol>{entries.map((entry, index) => <li key={entry.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(entry.name)}</span><strong>{entry.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{entry.trips} viajes</b></li>)}</ol></section>
+function Leaderboard({ title, entries, note }: { title: string; entries: Array<{ name: string; trips: number }>; note?: string }) {
+  return <section className="panel leaderboard"><PanelHeader title={title} action="API" /><ol>{entries.map((entry, index) => <li key={entry.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(entry.name)}</span><strong>{entry.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{entry.trips} viajes</b></li>)}</ol>{note && <p className="chart-note">{note}</p>}</section>
 }
 
-function PackagesView({ trips }: { trips: Trip[] }) { return <section className="panel placeholder-panel"><div className="placeholder-icon"><Icon name="packages" size={26} /></div><div><span className="eyebrow">Módulo conectado al dominio</span><h2>Administración de paquetes</h2><p>Paquetes derivados de los viajes recibidos desde la API.</p></div><div className="placeholder-list">{trips.slice(0, 8).map((trip) => <div key={trip.id}><span className="pulse-dot" />{trip.id} · {trip.packages} paquetes · {trip.status}<span>›</span></div>)}</div></section> }
+function PackagesView({ trips }: { trips: Trip[] }) {
+  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => ({ id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightKg: (1 + ((trip.packages + index) % 24)).toFixed(1), dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status })))
+  const inTransit = packageRows.filter((pkg) => ['Asignado', 'En camino', 'En entrega'].includes(pkg.status)).length
+  return <>
+    <div className="driver-summary"><SummaryValue label="Paquetes visibles" value={String(packageRows.length)} /><SummaryValue label="En tránsito" value={String(inTransit)} tone="blue" /><SummaryValue label="Entregados" value={String(packageRows.filter((pkg) => pkg.status === 'Completado').length)} tone="mint" /><SummaryValue label="Pendientes" value={String(packageRows.filter((pkg) => pkg.status === 'Pendiente').length)} tone="gold" /></div>
+    <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Cada paquete hereda el estado y la ruta de su viaje</div><button className="secondary-button" onClick={() => window.dispatchEvent(new CustomEvent('notice', { detail: 'El detalle de paquete con fotos y evidencias se conectará al almacenamiento de evidencias' }))}>Evidencias</button></div>
+    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`}>{pkg.id}</strong>, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · El peso y las dimensiones son de demostración hasta conectar la validación de carga</span></div></section>
+  </>
+}
 
 function TrackingView({ tracking }: { tracking: TrackingOverview | null }) {
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />

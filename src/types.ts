@@ -4,12 +4,14 @@ export type Section =
   | 'requests'
   | 'assignment'
   | 'drivers'
+  | 'vehicles'
   | 'clients'
   | 'packages'
   | 'tracking'
   | 'history'
   | 'incidents'
   | 'reports'
+  | 'users'
   | 'deliverables'
   | 'billing'
   | 'settings'
@@ -22,8 +24,11 @@ export interface DashboardSummary {
   pendingTrips: number
   completedTrips: number
   activeDrivers: number
+  availableDrivers: number
   registeredClients: number
+  activeClients: number
   packagesInTransit: number
+  delayedTrips: number
   openIncidents: number
 }
 
@@ -36,6 +41,10 @@ export interface Trip {
   date: string
   packages: number
   status: TripStatus
+  description?: string
+  recipientName?: string
+  recipientPhone?: string
+  fragile?: boolean
 }
 
 export interface Driver {
@@ -99,6 +108,51 @@ export interface TrackingOverview {
   drivers: Driver[]
   trips: Trip[]
   incidents: Incident[]
+}
+
+export type VehicleStatus = 'Disponible' | 'En servicio' | 'Mantenimiento' | 'Fuera de servicio'
+
+export interface Vehicle {
+  id: string
+  plate: string
+  model: string
+  type: string
+  capacityKg: number
+  year: number
+  status: VehicleStatus
+  driver: string
+  lastMaintenance: string
+  nextMaintenance: string
+  totalTrips: number
+}
+
+export interface MaintenanceRecord {
+  id: string
+  vehicleId: string
+  plate: string
+  date: string
+  description: string
+  cost: number
+}
+
+export type UserRole = 'admin' | 'management' | 'operations' | 'finance' | 'support' | 'driver' | 'corporate' | 'store'
+
+export interface Role {
+  code: UserRole
+  name: string
+  description: string
+  permissions: string[]
+}
+
+export interface AppUser {
+  id: string
+  name: string
+  email: string
+  phone: string
+  role: UserRole
+  roleName: string
+  status: 'Activo' | 'Inactivo'
+  lastLogin: string
 }
 
 export type DeliverableStatus = 'backlog' | 'in_progress' | 'review' | 'done'
