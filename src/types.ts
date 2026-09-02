@@ -60,6 +60,7 @@ export interface Driver {
   id: string
   name: string
   phone: string
+  email?: string
   vehicle: string
   plate: string
   status: 'Disponible' | 'En viaje' | 'En entrega' | 'Fuera de servicio'
@@ -75,6 +76,10 @@ export interface Client {
   phone: string
   email: string
   address?: string
+  contact?: string
+  taxId?: string
+  notes?: string
+  existed?: boolean
   trips: number
   activeRequests: number
   status: 'Activo' | 'Suspendido'

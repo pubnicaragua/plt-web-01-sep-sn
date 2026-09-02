@@ -20,12 +20,25 @@ async function getJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
-async function sendJson<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+async function sendJson<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown, attempt = 0): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch (error) {
+    if (attempt < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      return sendJson(path, method, body, attempt + 1)
+    }
+    throw error
+  }
+  if ([502, 503, 504].includes(response.status) && attempt < 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    return sendJson(path, method, body, attempt + 1)
+  }
   if (!response.ok) throw await apiError(response)
   const text = await response.text()
   return (text ? JSON.parse(text) : {}) as T
@@ -38,10 +51,10 @@ export function getDashboardSummary() {
 export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
-export function createDriver(body: { name: string; phone?: string; vehicle?: string; plate?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function createDriver(body: { name: string; phone?: string; email?: string; vehicle?: string; plate?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
-export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string }) { return sendJson<Client>('/clients', 'POST', body) }
+export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string }) { return sendJson<Client>('/clients', 'POST', body) }
 export function deleteClient(id: string) { return sendJson<{ deleted: string }>(`/clients/${encodeURIComponent(id)}`, 'DELETE') }
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
 export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
@@ -105,8 +118,8 @@ export function resolveImageUrl(path: string) {
 
 export function getUsers() { return getJson<AppUser[]>('/admin/users') }
 export function getRoles() { return getJson<Role[]>('/admin/roles') }
-export function createUser(body: { name: string; email: string; phone?: string; role: UserRole }) { return sendJson<AppUser>('/admin/users', 'POST', body) }
-export function updateUser(id: string, body: { role?: UserRole; status?: 'Activo' | 'Inactivo' }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createUser(body: { name: string; email: string; phone?: string; role: UserRole; password?: string }) { return sendJson<AppUser>('/admin/users', 'POST', body) }
+export function updateUser(id: string, body: { role?: UserRole; status?: 'Activo' | 'Inactivo'; password?: string }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteUser(id: string) { return sendJson<{ deleted: string }>(`/admin/users/${encodeURIComponent(id)}`, 'DELETE') }
 
 export function getReportCsvUrl(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages') {

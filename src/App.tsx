@@ -285,7 +285,7 @@ function App() {
           {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
           {section === 'billing' && <BillingView onNotice={setNotice} />}
-          {section === 'settings' && <SettingsView apiBase={getApiBase()} connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
+          {section === 'settings' && <SettingsView connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
         </div>
       </main>
       {notice && <div className="toast"><span className="toast-check">✓</span>{notice}</div>}
@@ -558,6 +558,7 @@ type LatLng = { lat: number; lng: number }
 function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (driver: Driver) => void; onError: (message: string) => void }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [vehicle, setVehicle] = useState('')
   const [plate, setPlate] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -565,7 +566,9 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
     event.preventDefault()
     setSubmitting(true)
     try {
-      onCreated(await createDriver({ name, phone, vehicle, plate }))
+      const driver = await createDriver({ name, phone, email, vehicle, plate })
+      onCreated(driver)
+      if ((driver as Driver & { existed?: boolean }).existed) onError('Ese conductor ya existía: sus datos se actualizaron, no se duplicó')
     } catch {
       onError('No se pudo registrar el conductor; revisa la conexión con la API')
     } finally {
@@ -574,13 +577,14 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   }
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <form className="modal-card" onSubmit={submit}>
-        <div className="modal-header"><div><span className="eyebrow">Operaciones · Conductores</span><h2>Agregar conductor</h2><p>Queda en estado Disponible con posición inicial en Managua.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+      <form className="modal-card wide" onSubmit={submit}>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Conductores</span><h2>Agregar conductor</h2><p>Queda en estado Disponible con posición inicial en Managua. Si el teléfono ya existe, se actualizan sus datos (sin duplicar).</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="form-grid">
-          <label className="full-field">Nombre completo<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre y apellidos" /></label>
+          <label>Nombre completo<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre y apellidos" /></label>
           <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
-          <label>Vehículo<input value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="Ej: Toyota Hilux 2024" /></label>
+          <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="conductor@empresa.com.ni" /></label>
           <label>Placa<input value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
+          <label className="full-field">Vehículo<input value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="Ej: Toyota Hilux 2024" /></label>
         </div>
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar conductor'}</button></div>
       </form>
@@ -594,12 +598,17 @@ function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [address, setAddress] = useState('')
+  const [contact, setContact] = useState('')
+  const [taxId, setTaxId] = useState('')
+  const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     try {
-      onCreated(await createClient({ name, type, phone, email, address }))
+      const client = await createClient({ name, type, phone, email, address, contact, taxId, notes })
+      onCreated(client)
+      if ((client as Client & { existed?: boolean }).existed) onError('Ese cliente ya existía: sus datos se actualizaron, no se duplicó')
     } catch {
       onError('No se pudo registrar el cliente; revisa el nombre o la conexión con la API')
     } finally {
@@ -608,14 +617,17 @@ function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   }
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <form className="modal-card" onSubmit={submit}>
-        <div className="modal-header"><div><span className="eyebrow">Operaciones · Clientes</span><h2>Nuevo cliente</h2><p>Se registra Activo y queda disponible para solicitar viajes.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+      <form className="modal-card wide" onSubmit={submit}>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Clientes</span><h2>Nuevo cliente</h2><p>Se registra Activo y queda disponible para solicitar viajes. Si el nombre o el correo ya existen, se actualizan sus datos (sin duplicar).</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="form-grid">
-          <label className="full-field">Nombre o empresa<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre de la empresa o persona" /></label>
+          <label>Nombre o empresa<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre de la empresa o persona" /></label>
           <label>Tipo de cliente<select value={type} onChange={(event) => setType(event.target.value)}><option>Corporativo</option><option>Particular</option></select></label>
           <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
           <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="contacto@empresa.com.ni" /></label>
+          <label>Persona de contacto<input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Quién levanta las solicitudes" /></label>
+          <label>NIT / RUC<input value={taxId} onChange={(event) => setTaxId(event.target.value)} placeholder="Ej: J0310000123456" /></label>
           <label className="full-field">Dirección<input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Dirección principal en Managua" /></label>
+          <label className="full-field">Notas internas<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Horarios de entrega, puntos de referencia, condiciones…" /></label>
         </div>
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar cliente'}</button></div>
       </form>
@@ -1038,8 +1050,15 @@ function TripsView({ trips, search, settings, onNavigate, onNotice, onChanged, o
       onDeleted(trip.id)
       if (detailTrip?.id === trip.id) setDetailTrip(null)
       onNotice(`Viaje ${trip.id} eliminado`)
-    } catch {
-      onNotice(`No se pudo eliminar ${trip.id}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (message.includes('no encontrado')) {
+        onDeleted(trip.id)
+        if (detailTrip?.id === trip.id) setDetailTrip(null)
+        onNotice(`Viaje ${trip.id} ya no existía en la API: se quitó de la lista`)
+      } else {
+        onNotice(`No se pudo eliminar ${trip.id}; reintenta en un momento`)
+      }
     } finally {
       setActingTrip('')
     }
@@ -1328,7 +1347,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.target.value = '' }} />
     {formOpen && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
-        <form className="modal-card" onSubmit={submitVehicle}>
+        <form className="modal-card wide" onSubmit={submitVehicle}>
           <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible. Precios en córdobas (C$).</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
@@ -1398,6 +1417,40 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   </>
 }
 
+const PERMISSION_LABELS: Record<string, string> = {
+  '*': 'Acceso total',
+  'dashboard:read': 'Panel de control',
+  'reports:read': 'Reportes',
+  'reports:export': 'Exportar reportes',
+  'trips:read': 'Consultar viajes',
+  'trips:create': 'Crear viajes',
+  'trips:assign': 'Asignar viajes',
+  'trips:update': 'Actualizar viajes',
+  'trips:assigned:read': 'Viajes asignados',
+  'trips:status:update': 'Estados de viaje',
+  'trips:own:read': 'Viajes propios',
+  'tracking:read': 'Tracking en vivo',
+  'tracking:own:read': 'Tracking propio',
+  'tracking:position:write': 'Enviar ubicación',
+  'drivers:read': 'Conductores',
+  'vehicles:read': 'Vehículos',
+  'incidents:read': 'Incidencias',
+  'incidents:update': 'Resolver incidencias',
+  'incidents:create': 'Reportar incidencias',
+  'finance:read': 'Finanzas',
+  'finance:write': 'Caja y montos',
+  'clients:read': 'Clientes',
+  'payments:own:read': 'Pagos propios',
+  'support:create': 'Abrir soporte',
+  'chat:read': 'Mensajes',
+  'chat:write': 'Responder mensajes',
+  'delivery:evidence:write': 'Evidencias de entrega',
+  'delivery:validate:write': 'Validar entregas',
+  'packages:update': 'Paquetes',
+  'evidence:write': 'Evidencias y fotografías',
+}
+function permissionLabel(permission: string) { return PERMISSION_LABELS[permission] ?? permission }
+
 function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void; onDeleted: (id: string) => void }) {
   const [formOpen, setFormOpen] = useState(false)
   const [busy, setBusy] = useState('')
@@ -1405,6 +1458,9 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState<UserRole>('operations')
+  const [password, setPassword] = useState('')
+  const [passwordUser, setPasswordUser] = useState<AppUser | null>(null)
+  const [newPassword, setNewPassword] = useState('')
 
   async function toggleUser(user: AppUser) {
     setBusy(user.id)
@@ -1448,13 +1504,33 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createUser({ name, email, phone, role }))
+      onCreated(await createUser({ name, email, phone, role, password: password || undefined }))
       setFormOpen(false)
       setName('')
       setEmail('')
       setPhone('')
+      setPassword('')
+      onNotice(password ? `Usuario creado con contraseña personalizada` : 'Usuario creado con contraseña Incoex2026 (cámbiala en su primera sesión)')
     } catch {
       onNotice('No se pudo crear el usuario; verifica el correo y los datos')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function savePassword(user: AppUser) {
+    if (newPassword.length < 8) {
+      onNotice('La contraseña debe tener al menos 8 caracteres')
+      return
+    }
+    setBusy(`pwd-${user.id}`)
+    try {
+      onChanged(await updateUser(user.id, { password: newPassword }))
+      setPasswordUser(null)
+      setNewPassword('')
+      onNotice(`Contraseña de ${user.name} actualizada`)
+    } catch {
+      onNotice(`No se pudo cambiar la contraseña de ${user.name}`)
     } finally {
       setBusy('')
     }
@@ -1469,11 +1545,11 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
     </div>
     <section className="panel role-matrix-panel">
       <div className="panel-header"><div><span className="eyebrow">MATRIZ DE ROLES · CONTRATO</span><h2>Los ocho roles y sus permisos</h2><p className="panel-sub">Los roles son fijos del contrato: no se eliminan; se asignan a cada usuario desde la tabla.</p></div><span className="source-badge">{roles.length} roles contractuales</span></div>
-      <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permission}</span>)}</div></article>)}</div>
+      <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}</div></article>)}</div>
     </section>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Los cambios de rol y estado se persisten en la API</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Crear usuario</button></div>
-      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
+      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title="Cambiar contraseña" onClick={() => { setPasswordUser(user); setNewPassword('') }}><Icon name="lock" size={14} /></button><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
       <div className="table-footer"><span>El administrador general puede gestionar todos los usuarios y sus permisos</span></div>
     </section>
     {formOpen && (
@@ -1485,8 +1561,20 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
             <label>Correo<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="usuario@incoex.com.ni" /></label>
             <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
             <label>Rol<select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>{roles.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}</select></label>
+            <label className="full-field">Contraseña inicial<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 8 caracteres · vacío = Incoex2026" /></label>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Creando…' : 'Crear usuario'}</button></div>
+        </form>
+      </div>
+    )}
+    {passwordUser && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPasswordUser(null) }}>
+        <form className="modal-card" onSubmit={(event) => { event.preventDefault(); void savePassword(passwordUser) }}>
+          <div className="modal-header"><div><span className="eyebrow">Seguridad · {passwordUser.email}</span><h2>Cambiar contraseña de {passwordUser.name}</h2><p>La contraseña se guarda cifrada en la API; mínima de 8 caracteres.</p></div><button type="button" className="icon-button" onClick={() => setPasswordUser(null)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label className="full-field">Nueva contraseña<input autoFocus type="password" minLength={8} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Ej: Incoex2026!" /></label>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setPasswordUser(null)}>Cancelar</button><button className="primary-button" disabled={busy === `pwd-${passwordUser.id}`}>{busy === `pwd-${passwordUser.id}` ? 'Guardando…' : 'Guardar contraseña'}</button></div>
         </form>
       </div>
     )}
@@ -1950,7 +2038,7 @@ function BillingMetric({ icon, label, value, detail, tone }: { icon: IconName; l
   return <div className={`deliverable-metric billing-metric ${tone}`}><span className="metric-label"><Icon name={icon} size={13} /> {label}</span><strong>{value}</strong><small>{detail}</small></div>
 }
 
-function SettingsView({ apiBase, connection, settings, onSaved, onNotice }: { apiBase: string; connection: ConnectionState; settings: AppSettings | null; onSaved: (settings: AppSettings) => void; onNotice: (message: string) => void }) {
+function SettingsView({ connection, settings, onSaved, onNotice }: { connection: ConnectionState; settings: AppSettings | null; onSaved: (settings: AppSettings) => void; onNotice: (message: string) => void }) {
   const [dollarRate, setDollarRate] = useState(settings?.dollarRate ?? 36.5)
   const [gasoline, setGasoline] = useState(settings?.fuelPriceGasolineCs ?? 61.5)
   const [diesel, setDiesel] = useState(settings?.fuelPriceDieselCs ?? 54)
@@ -1989,9 +2077,9 @@ function SettingsView({ apiBase, connection, settings, onSaved, onNotice }: { ap
   }
 
   return <div className="settings-grid settings-form-grid">
-    <section className="panel settings-card"><span className="setting-icon"><Icon name="globe" size={19} /></span><h2>Conexión API</h2><p>El panel consulta todos sus módulos desde el backend de la plataforma.</p><code>{apiBase}</code><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'Conectado' : connection === 'loading' ? 'Conectando…' : 'No disponible'}</div></section>
-    <section className="panel settings-card"><span className="setting-icon"><Icon name="map" size={19} /></span><h2>Mapas y tracking</h2><p>Mapas en vivo con Google Maps y las posiciones de los conductores registradas en la operación.</p><div className="setting-status"><span className="pulse-dot" /> Google Maps conectado</div></section>
-    <section className="panel settings-card"><span className="setting-icon"><Icon name="shield" size={19} /></span><h2>Accesos y permisos</h2><p>Empresa, conductor y administrador trabajan con los ocho roles definidos en contrato.</p><div className="setting-status muted-status">Protección de accesos en preparación</div></section>
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="globe" size={19} /></span><h2>Estado del sistema</h2><p>Todos los módulos del panel (viajes, flota, clientes, reportes) operan conectados al mismo servicio de la plataforma.</p><div className={`setting-status ${connection === 'error' ? 'error-status' : ''}`}><span className="pulse-dot" /> {connection === 'connected' ? 'Todos los servicios operando' : connection === 'loading' ? 'Comprobando servicios…' : 'Servicio no disponible'}</div></section>
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="map" size={19} /></span><h2>Mapas y seguimiento</h2><p>Los viajes se rastrean en mapas con las posiciones reales de los conductores de la operación.</p><div className="setting-status"><span className="pulse-dot" /> Mapa en vivo dentro de la zona de cobertura (Nicaragua)</div></section>
+    <section className="panel settings-card"><span className="setting-icon"><Icon name="shield" size={19} /></span><h2>Roles del personal</h2><p>Empresa, conductor y administración trabajan con los ocho roles definidos en contrato; cada rol echa a andar sus propios permisos.</p><div className="setting-status"><span className="pulse-dot" /> 8 roles contractuales activos</div></section>
     <section className="panel settings-card company-card">
       <div className="settings-card-head"><span className="setting-icon"><Icon name="billing" size={19} /></span><div><h2>Información de la empresa</h2><p>Datos que aparecen en los reportes, comprobantes y comunicaciones de INCOEX.</p></div></div>
       <form className="settings-form" onSubmit={save}>
