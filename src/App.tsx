@@ -41,7 +41,7 @@ import {
   updateVehicleStatus,
   uploadVehicleImage,
 } from './lib/api'
-import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER } from './lib/googleMaps'
+import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
@@ -465,13 +465,12 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
             center: MANAGUA_CENTER,
             zoom: 12,
             disableDefaultUI: true,
-            zoomControl: true,
-            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
-            fullscreenControl: true,
+            zoomControl: false,
+            fullscreenControl: false,
             streetViewControl: false,
             mapTypeControl: false,
             gestureHandling: 'greedy',
-            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+            styles: INCOEX_MAP_STYLE,
           })
           setMapState('ready')
         } catch {
@@ -499,15 +498,7 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
             position: { lat: driver.latitude, lng: driver.longitude },
             map,
             title: `${driver.name} · ${driver.status}`,
-            icon: {
-              path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-              fillColor: googleStatusColor(driver.status),
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 1.6,
-              scale: 1.15,
-              anchor: new maps.Point(12, 24),
-            },
+            icon: incoexPin(maps, googleStatusColor(driver.status), 1.15),
           })
           marker.addListener('click', () => {
             new maps.InfoWindow({
@@ -522,8 +513,8 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
         .map((trip) => new maps.Polyline({
           path: [{ lat: trip.originLat, lng: trip.originLng }, { lat: trip.destinationLat, lng: trip.destinationLng }],
           map,
-          strokeColor: '#e9a23b',
-          strokeOpacity: 0.85,
+          strokeColor: '#f1b84c',
+          strokeOpacity: 0.9,
           strokeWeight: 2.5,
         }))
     } catch {
@@ -542,6 +533,7 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
   return (
     <div className="google-map-wrap">
       <div ref={containerRef} className="google-map-canvas" />
+      <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
       {mapState === 'loading' && (
         <div className="map-status">
           <span className="map-status-card"><span className="map-spinner" />Cargando mapa en vivo…</span>
@@ -818,13 +810,12 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
             center: MANAGUA_CENTER,
             zoom: 12,
             disableDefaultUI: true,
-            zoomControl: true,
-            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
-            fullscreenControl: true,
+            zoomControl: false,
+            fullscreenControl: false,
             streetViewControl: false,
             mapTypeControl: false,
             gestureHandling: 'greedy',
-            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+            styles: INCOEX_MAP_STYLE,
           })
           mapRef.current = map
           map.addListener('click', (event: any) => {
@@ -858,15 +849,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
           map,
           draggable: true,
           title: 'Recogida',
-          icon: {
-            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-            fillColor: '#2562ec',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 1.6,
-            scale: 1.2,
-            anchor: new maps.Point(12, 24),
-          },
+          icon: incoexPin(maps, '#1d5cff', 1.2),
         })
         originMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'origin'))
       }
@@ -876,15 +859,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
           map,
           draggable: true,
           title: 'Destino',
-          icon: {
-            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-            fillColor: '#e5484d',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 1.6,
-            scale: 1.2,
-            anchor: new maps.Point(12, 24),
-          },
+          icon: incoexPin(maps, '#ef6262', 1.2),
         })
         destinationMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'destination'))
       }
@@ -927,6 +902,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
       </div>
       <div className="map-picker-canvas">
         <div ref={containerRef} className="google-map-canvas" />
+        <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
         {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando mapa…</span></div>}
         {mapState === 'error' && (
           <div className="map-status error">
@@ -957,13 +933,12 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             center: MANAGUA_CENTER,
             zoom: 12,
             disableDefaultUI: true,
-            zoomControl: true,
-            zoomControlOptions: { position: maps.ControlPosition.RIGHT_BOTTOM },
+            zoomControl: false,
             fullscreenControl: false,
             streetViewControl: false,
             mapTypeControl: false,
             gestureHandling: 'greedy',
-            styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }],
+            styles: INCOEX_MAP_STYLE,
           })
           mapRef.current = map
           try {
@@ -976,15 +951,15 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             position: origin,
             map,
             title: 'Recogida',
-            icon: { path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z', fillColor: '#2562ec', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 1.6, scale: 1.1, anchor: new maps.Point(12, 24) },
+            icon: incoexPin(maps, '#1d5cff', 1.15),
           })
           new maps.Marker({
             position: destination,
             map,
             title: 'Destino',
-            icon: { path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z', fillColor: '#e5484d', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 1.6, scale: 1.1, anchor: new maps.Point(12, 24) },
+            icon: incoexPin(maps, '#ef6262', 1.15),
           })
-          new maps.Polyline({ path: [origin, destination], map, strokeColor: '#2562ec', strokeOpacity: 0.9, strokeWeight: 3 })
+          new maps.Polyline({ path: [origin, destination], map, strokeColor: '#1d5cff', strokeOpacity: 0.9, strokeWeight: 3 })
           setMapState('ready')
         } catch {
           if (!cancelled) setMapState('error')
@@ -1001,6 +976,7 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
   return (
     <div className="route-map-wrap">
       <div ref={containerRef} className="google-map-canvas" />
+      <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
       {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando ruta…</span></div>}
       {mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>Mapa no disponible</strong><small>Revisa la API key o la conexión.</small><button onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button></span></div>}
     </div>
