@@ -50,11 +50,18 @@ import {
   payCorte,
   annulCorte,
   markCorteSent,
+  getFuelRecords,
+  getFuelStats,
+  addFuelRecord,
+  deleteFuelRecord,
+  getClientProfile,
+  type FuelRecord,
+  type FuelStatsRow,
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import { LiveMap } from './components/LiveMap'
-import type { AppSettings, AppUser, BillingPeriod, Client, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
 interface NumInputProps {
@@ -170,8 +177,8 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 const navItems: Array<{ id: Section; label: string; icon: IconName; group?: string }> = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'trips', label: 'Viajes', icon: 'trips', group: 'Operaciones' },
-  { id: 'requests', label: 'Solicitudes', icon: 'requests', group: 'Operaciones' },
-  { id: 'assignment', label: 'Asignar conductor', icon: 'assignment', group: 'Operaciones' },
+  { id: 'requests', label: 'Solicitudes y asignación', icon: 'requests', group: 'Operaciones' },
+  
   { id: 'drivers', label: 'Conductores', icon: 'drivers', group: 'Operaciones' },
   { id: 'vehicles', label: 'Vehículos y flota', icon: 'vehicles', group: 'Operaciones' },
   { id: 'clients', label: 'Clientes', icon: 'clients', group: 'Operaciones' },
@@ -366,9 +373,8 @@ function App() {
 
           {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} />}
           {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
-          {section === 'requests' && <RequestsView trips={trips} onNavigate={navigate} />}
-          {section === 'assignment' && <AssignmentView trips={trips} drivers={drivers} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
-          {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
+          {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
+                    {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
@@ -1305,13 +1311,14 @@ function TripsView({ trips, clients, search, settings, finance, onNavigate, onNo
             {detailTrip.status === 'En entrega' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Completado')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Confirmar entrega'}</button>}
             {!['Completado', 'Cancelado', 'Anulado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Cancelado')}>Cancelar viaje</button>}
             {!['Cancelado', 'Anulado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void anularTrip(detailTrip)}>Anular viaje</button>}
+            <button className="secondary-button" onClick={() => { const client = clients.find((candidate) => candidate.name === detailTrip.client); const link = waLink(client?.whatsapp || client?.phone, `Hola ${detailTrip.client}, le saludamos de INCOEX Logística. Su envío ${detailTrip.id} (${detailTrip.origin} → ${detailTrip.destination}) se encuentra en estado: ${detailTrip.status}. Puede consultar su ubicación en ${window.location.origin}/track/${encodeURIComponent(detailTrip.id)}`); if (link) window.open(link, '_blank'); else onNotice('El cliente no tiene teléfono registrado para WhatsApp') }}><Icon name="whatsapp" size={13} /> Notificar por WhatsApp</button>
             <button className="secondary-button" onClick={() => { setDetailTrip(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button>
           </div>
         </div>
       </div>
     )}
     {invoiceTrip && <InvoiceModal trip={invoiceTrip} client={clients.find((client) => client.name === invoiceTrip.client)} settings={settings} finance={finance} onClose={() => setInvoiceTrip(null)} onSaved={(updated) => { onChanged(updated); setInvoiceTrip(updated) }} onNotice={onNotice} />}
-    {clientDetail && <ClientDetailModal clientName={clientDetail} client={clients.find((client) => client.name === clientDetail)} trips={trips} onClose={() => setClientDetail(null)} onInvoice={(trip) => { setInvoiceTrip(trip); setClientDetail(null) }} />}
+    {clientDetail && <ClientDetailModal clientName={clientDetail} client={clients.find((client) => client.name === clientDetail)} trips={trips} onClose={() => setClientDetail(null)} onInvoice={(trip) => { setInvoiceTrip(trip); setClientDetail(null) }} onWhatsApp={(phone, message) => { const link = waLink(phone, message); if (link) window.open(link, '_blank'); else onNotice('El cliente no tiene teléfono registrado para WhatsApp') }} />}
   </>
 }
 
@@ -1443,30 +1450,105 @@ async function openInvoicePrint(trip: Trip, client: Client | undefined, settings
   windowRef.document.close()
 }
 
-function ClientDetailModal({ clientName, client, trips, onClose, onInvoice }: { clientName: string; client: Client | undefined; trips: Trip[]; onClose: () => void; onInvoice: (trip: Trip) => void }) {
+function ClientDetailModal({ clientName, client, trips, onClose, onInvoice, onWhatsApp }: { clientName: string; client: Client | undefined; trips: Trip[]; onClose: () => void; onInvoice: (trip: Trip) => void; onWhatsApp?: (phone: string | undefined, message: string) => void }) {
+  const [tab, setTab] = useState<'info' | 'trips' | 'services' | 'billing'>('info')
+  const [profile, setProfile] = useState<ClientProfile | null>(null)
   const clientTrips = trips.filter((trip) => trip.client === clientName).sort((a, b) => a.date < b.date ? 1 : -1)
   const completed = clientTrips.filter((trip) => trip.status === 'Completado')
   const incomeCs = completed.reduce((sum, trip) => sum + (trip.estimatedCostCs ?? 0), 0)
   const km = clientTrips.reduce((sum, trip) => sum + (trip.distanceKm ?? 0), 0)
+
+  useEffect(() => {
+    let active = true
+    if (client?.id) {
+      getClientProfile(client.id).then((data) => { if (active) setProfile(data) }).catch(() => {})
+    }
+    return () => { active = false }
+  }, [client?.id])
+
+  const stats = profile?.stats
+  const billing = profile?.billing
+  const totalToShow = profile?.trips?.length ?? clientTrips.length
+  const tripsToShow = profile?.trips ?? clientTrips.slice(0, 20)
+
+  const sendWhatsApp = (message: string) => {
+    if (onWhatsApp) onWhatsApp(profile?.whatsapp || client?.phone || client?.whatsapp, message)
+  }
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div className="modal-card trip-detail-modal">
-        <div className="modal-header"><div><span className="eyebrow">Resumen del cliente · {clientName}</span><h2>{clientName}</h2><p>{client ? [client.phone, client.email, client.taxId ? `RUC ${client.taxId}` : '', client.contact ? `Atención: ${client.contact}` : ''].filter(Boolean).join(' · ') : 'cliente sin ficha completa en la API'}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="modal-header"><div><span className="eyebrow">Perfil del cliente · {clientName}</span><h2>{clientName}</h2><p>{client ? [client.phone, client.email, client.taxId ? `RUC ${client.taxId}` : '', client.contact ? `Atención: ${client.contact}` : ''].filter(Boolean).join(' · ') : 'cliente sin ficha completa en la API'}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="client-summary-grid">
-          <div><span>Viajes con INCOEX</span><strong>{clientTrips.length}</strong></div>
-          <div><span>Completados</span><strong>{completed.length}</strong></div>
+          <div><span>Viajes con INCOEX</span><strong>{stats?.totalTrips ?? clientTrips.length}</strong></div>
+          <div><span>Completados</span><strong>{stats?.completedTrips ?? completed.length}</strong></div>
           <div><span>Ingresos generados</span><strong>{formatCs(incomeCs)}</strong></div>
-          <div><span>Kilómetros recorridos</span><strong>{km.toFixed(1)} km</strong></div>
+          <div><span>Saldo pendiente</span><strong className={billing && billing.pending > 0 ? 'text-danger' : ''}>{billing ? formatCs(billing.pending) : formatCs(incomeCs)}</strong></div>
         </div>
-        {clientTrips.length === 0 && <p className="trip-detail-note">Este cliente no tiene viajes registrados todavía.</p>}
-        {clientTrips.length > 0 && (
-          <div className="client-trip-list">
-            <div className="client-trip-list-head"><span>Viaje</span><span>Fecha</span><span>Ruta</span><span>Tarifa</span><span>Estado</span><span /></div>
-            {clientTrips.slice(0, 6).map((trip) => (
-              <div className="client-trip-row" key={trip.id}><strong>{trip.id}</strong><span>{trip.date}</span><span>{trip.origin} → {trip.destination}</span><span>{trip.estimatedCostCs !== undefined ? formatCs(trip.estimatedCostCs) : '—'}</span><StatusPill status={trip.status} /><button title="Ver factura" onClick={() => onInvoice(trip)}><Icon name="fileText" size={13} /></button></div>
-            ))}
-          </div>
-        )}
+        <div className="client-tabs">
+          {([['info', 'Información'], ['trips', `Viajes (${totalToShow})`], ['services', 'Servicios'], ['billing', 'Facturación']] as Array<[typeof tab, string]>).map(([key, label]) => (
+            <button key={key} type="button" className={tab === key ? 'client-tab active' : 'client-tab'} onClick={() => setTab(key)}>{label}</button>
+          ))}
+        </div>
+        <div className="client-tab-body">
+          {tab === 'info' && (
+            <div className="client-info-grid">
+              <div><span>Tipo</span><strong>{client?.type || '—'}</strong></div>
+              <div><span>Teléfono</span><strong>{client?.phone || '—'}</strong></div>
+              <div><span>Correo</span><strong>{client?.email || '—'}</strong></div>
+              <div><span>Dirección</span><strong>{client?.address || '—'}</strong></div>
+              <div><span>Persona de contacto</span><strong>{client?.contact || '—'}</strong></div>
+              <div><span>RUC</span><strong>{client?.taxId || '—'}</strong></div>
+              <div><span>Crédito</span><strong>{client?.creditDays ? `${client.creditDays} días` : '—'}</strong></div>
+              <div><span>Ciclo de facturación</span><strong>{client?.billingPeriod || '—'}</strong></div>
+              <div><span>WhatsApp</span><strong>{client?.whatsapp || client?.phone || '—'}</strong></div>
+              {client?.notes && <div className="client-notes"><span>Notas</span><strong>{client.notes}</strong></div>}
+              {onWhatsApp && <button type="button" className="secondary-button" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={() => sendWhatsApp(`Hola ${clientName}, le saludamos de INCOEX Logística. Le recordamos que puede consultar sus envíos y saldos directamente con nosotros.`)}><Icon name="whatsapp" size={14} /> Contactar por WhatsApp</button>}
+            </div>
+          )}
+          {tab === 'trips' && (
+            totalToShow === 0 ? <p className="trip-detail-note">Este cliente no tiene viajes registrados todavía.</p> : (
+              <div className="client-trip-list">
+                <div className="client-trip-list-head"><span>Viaje</span><span>Fecha</span><span>Ruta</span><span>Servicio</span><span>Tarifa</span><span>Pago</span><span>Estado</span><span /></div>
+                {tripsToShow.map((trip) => (
+                  <div className="client-trip-row" key={trip.id}><strong>{trip.id}</strong><span>{trip.date}</span><span>{trip.origin} → {trip.destination}</span><span>{trip.serviceType || 'Urbano'}</span><span>{trip.costCs !== undefined ? formatCs(trip.costCs) : '—'}</span><span className={trip.paymentStatus === 'Pagado' ? 'text-success' : 'text-warn'}>{trip.paymentStatus || 'Sin pagar'}</span><StatusPill status={trip.status as TripStatus} /><button title="Ver factura" onClick={() => onInvoice({ ...trip, estimatedCostCs: trip.costCs } as Trip)}><Icon name="fileText" size={13} /></button></div>
+                ))}
+              </div>
+            )
+          )}
+          {tab === 'services' && (
+            <div className="client-services">
+              {(profile?.services?.length ?? 0) === 0 && <p className="trip-detail-note">Sin servicios registrados.</p>}
+              {(profile?.services ?? []).map((service) => (
+                <div className="client-service-card" key={service.type}>
+                  <span className="client-service-name">{service.type}</span>
+                  <span><strong>{service.count}</strong> envíos</span>
+                  <span><strong>{formatCs(service.total)}</strong> generados</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {tab === 'billing' && (
+            <div className="client-billing">
+              <div className="client-billing-summary">
+                <div><span>Facturado</span><strong>{formatCs(billing?.invoiced ?? incomeCs)}</strong></div>
+                <div><span>Pagado</span><strong>{formatCs(billing?.paid ?? 0)}</strong></div>
+                <div><span>Pendiente</span><strong className={billing && billing.pending > 0 ? 'text-danger' : ''}>{formatCs(billing?.pending ?? incomeCs)}</strong></div>
+              </div>
+              {(billing?.unpaidTrips?.length ?? 0) === 0 ? <p className="trip-detail-note">Sin saldos pendientes.</p> : (
+                <div className="client-trip-list">
+                  <div className="client-trip-list-head"><span>Viaje</span><span>Fecha</span><span>Ruta</span><span>Monto</span><span>Estado pago</span><span>Vence</span></div>
+                  {(billing?.unpaidTrips ?? []).map((item) => (
+                    <div className="client-trip-row" key={item.id}><strong>{item.id}</strong><span>{item.date}</span><span>{item.origin} → {item.destination}</span><span>{formatCs(item.costCs)}</span><span className="text-warn">{item.paymentStatus}</span><span>{item.dueDate || '—'}</span></div>
+                  ))}
+                </div>
+              )}
+              {onWhatsApp && (billing?.pending ?? 0) > 0 && (
+                <button type="button" className="secondary-button" style={{ marginTop: 12 }} onClick={() => sendWhatsApp(`Hola ${clientName}, le saludamos de INCOEX Logística. Su saldo pendiente es de ${formatCs(billing?.pending ?? 0)}. Agradecemos su pronto pago.`)}><Icon name="whatsapp" size={14} /> Recordatorio de saldo por WhatsApp</button>
+              )}
+            </div>
+          )}
+        </div>
         <div className="modal-actions trip-actions"><button className="secondary-button" onClick={onClose}>Cerrar</button></div>
       </div>
     </div>
@@ -1526,6 +1608,18 @@ function PaymentBlock({ trip, acting, onSaved, onNotice }: { trip: Trip; acting:
   )
 }
 
+
+function RequestsAssignmentView({ trips, drivers, initialTab, onNavigate, onAssigned, onNotice }: { trips: Trip[]; drivers: Driver[]; initialTab: 'solicitudes' | 'asignacion'; onNavigate: (section: Section) => void; onAssigned: (trip: Trip) => void; onNotice: (message: string) => void }) {
+  const [tab, setTab] = useState<'solicitudes' | 'asignacion'>(initialTab)
+  return <>
+    <div className="report-tabs" style={{ margin: '0 0 12px' }}>
+      <button className={`filter-chip ${tab === 'solicitudes' ? 'active' : ''}`} onClick={() => setTab('solicitudes')}>Solicitudes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button>
+      <button className={`filter-chip ${tab === 'asignacion' ? 'active' : ''}`} onClick={() => setTab('asignacion')}>Asignación de conductores</button>
+    </div>
+    {tab === 'solicitudes' && <RequestsView trips={trips} onNavigate={onNavigate} />}
+    {tab === 'asignacion' && <AssignmentView trips={trips} drivers={drivers} onAssigned={onAssigned} onNotice={onNotice} />}
+  </>
+}
 
 function RequestsView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (section: Section) => void }) {
   const pending = trips.filter((trip) => trip.status === 'Pendiente')
@@ -1630,7 +1724,138 @@ function DriversView({ drivers, vehicles, onNavigate, onNotice, onDeleted, onVeh
     )}</>
 }
 
+function FuelPanel({ vehicles, onNotice }: { vehicles: Vehicle[]; onNotice: (message: string) => void }) {
+  const [records, setRecords] = useState<FuelRecord[]>([])
+  const [stats, setStats] = useState<FuelStatsRow[]>([])
+  const [busy, setBusy] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
+  const [plate, setPlate] = useState(vehicles[0]?.plate ?? '')
+  const [liters, setLiters] = useState(10)
+  const [pricePerLiterCs, setPricePerLiterCs] = useState(0)
+  const [odometerKm, setOdometerKm] = useState(0)
+  const [note, setNote] = useState('')
+  async function refresh() {
+    try {
+      const [rec, stat] = await Promise.all([getFuelRecords(), getFuelStats()])
+      setRecords(rec)
+      setStats(stat)
+    } catch {
+      onNotice('No se pudieron cargar los registros de combustible')
+    }
+  }
+  useEffect(() => { void refresh() }, [])
+  async function removeRecord(record: FuelRecord) {
+    if (!window.confirm(`Eliminar la recarga de ${record.plate} del ${record.date} (${record.liters} L, C$ ${record.totalCs.toFixed(2)})?`)) return
+    setBusy(record.id)
+    try {
+      await deleteFuelRecord(record.id)
+      await refresh()
+      onNotice('Recarga eliminada')
+    } catch {
+      onNotice('No se pudo eliminar la recarga')
+    } finally {
+      setBusy('')
+    }
+  }
+  async function submitAdd(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!plate) {
+      onNotice('Selecciona un vehículo')
+      return
+    }
+    setBusy('add')
+    try {
+      await addFuelRecord({ plate, liters, pricePerLiterCs: pricePerLiterCs || undefined, odometerKm: odometerKm || undefined, note: note || undefined })
+      setAddOpen(false)
+      setLiters(10)
+      setPricePerLiterCs(0)
+      setOdometerKm(0)
+      setNote('')
+      await refresh()
+      onNotice('Recarga registrada')
+    } catch {
+      onNotice('No se pudo registrar la recarga')
+    } finally {
+      setBusy('')
+    }
+  }
+  const totalLiters = stats.reduce((sum, row) => sum + row.totalLiters, 0)
+  const totalCs = stats.reduce((sum, row) => sum + row.totalCs, 0)
+  return <section className="panel export-panel">
+    <div className="export-panel-head">
+      <div>
+        <span className="eyebrow">COMBUSTIBLE POR VEHÍCULO</span>
+        <h2>Control de combustible y consumo real</h2>
+        <p>Registra cada carga (litros, precio al que compra ese vehículo, odómetro). Aquí se cruza el <b>concepto del tanque</b> con el <b>precio propio</b> y el <b>consumo real</b> para sacar costo por km, autonomía con un tanque lleno y presupuesto mensual.</p>
+      </div>
+      <div className="export-buttons">
+        <button className="secondary-button" onClick={() => { void refresh() }}><Icon name="refresh" size={13} /> Actualizar</button>
+        <button className="primary-button" onClick={() => setAddOpen(true)}><Icon name="plus" size={13} /> Registrar recarga</button>
+      </div>
+    </div>
+    <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 14 }}>
+      <div className="metric-card"><span className="metric-label">Recargas registradas</span><strong className="metric-value" style={{ fontSize: 22 }}>{records.length}</strong><small style={{ fontSize: 11 }}>en la operación actual</small></div>
+      <div className="metric-card"><span className="metric-label">Litros totales</span><strong className="metric-value" style={{ fontSize: 22 }}>{totalLiters.toLocaleString('es-NI')}</strong><small style={{ fontSize: 11 }}>suma de todas las cargas</small></div>
+      <div className="metric-card"><span className="metric-label">Gasto acumulado</span><strong className="metric-value" style={{ fontSize: 22 }}>{formatCs(totalCs)}</strong><small style={{ fontSize: 11 }}>combustible real comprado</small></div>
+      <div className="metric-card"><span className="metric-label">Costo por km promedio</span><strong className="metric-value" style={{ fontSize: 22 }}>{formatCs(stats.filter((row) => row.costPerKmCs > 0).reduce((sum, row) => sum + row.costPerKmCs, 0) / Math.max(1, stats.filter((row) => row.costPerKmCs > 0).length))}</strong><small style={{ fontSize: 11 }}>por km, según datos de cada flota</small></div>
+    </div>
+    <div style={{ overflowX: 'auto', marginTop: 14 }}>
+      <table className="trips-table" style={{ minWidth: 1050 }}>
+        <thead><tr><th>Vehículo</th><th>Precio propio (C$/L)</th><th>Consumo real (L/100km)</th><th>Costo / km</th><th>Autonomía tanque</th><th>Recargas</th><th>Litros</th><th>Gasto C$</th></tr></thead>
+        <tbody>
+          {stats.map((row) => <tr key={row.plate} style={row.refuels === 0 ? { opacity: 0.55 } : undefined}>
+            <td><b className="linkish">{row.plate}</b></td>
+            <td>{row.literPriceCs > 0 ? formatCs(row.literPriceCs) : '—'}</td>
+            <td>{row.realConsumptionLPer100Km > 0 ? row.realConsumptionLPer100Km + ' L/100km' : 'sin datos'}</td>
+            <td><b>{formatCs(row.costPerKmCs)}</b></td>
+            <td>{row.autonomyKm > 0 ? row.autonomyKm.toLocaleString('es-NI') + ' km' : '—'}</td>
+            <td>{row.refuels}</td>
+            <td>{row.totalLiters.toFixed(1)} L</td>
+            <td>{formatCs(row.totalCs)}</td>
+          </tr>)}
+          {stats.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 18 }}>Sin vehículos cargados</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div className="export-panel-head" style={{ marginTop: 18 }}><div><span className="eyebrow">HISTORIAL DE RECARGAS</span><h2>Recargas registradas</h2></div></div>
+    <div style={{ overflowX: 'auto', marginTop: 8 }}>
+      <table className="trips-table" style={{ minWidth: 900 }}>
+        <thead><tr><th>Fecha</th><th>Vehículo</th><th>Litros</th><th>Precio C$/L</th><th>Total C$</th><th>Odómetro</th><th>Nota</th><th /></tr></thead>
+        <tbody>
+          {records.map((record) => <tr key={record.id}>
+            <td>{record.date}</td>
+            <td><b className="linkish">{record.plate}</b></td>
+            <td>{record.liters.toFixed(1)} L</td>
+            <td>{formatCs(record.pricePerLiterCs)}</td>
+            <td><b>{formatCs(record.totalCs)}</b></td>
+            <td>{record.odometerKm.toLocaleString('es-NI')} km</td>
+            <td className="muted">{record.note}</td>
+            <td><div className="action-group"><button title="Eliminar recarga" disabled={busy === record.id} onClick={() => void removeRecord(record)}><Icon name="trash" size={14} /></button></div></td>
+          </tr>)}
+          {records.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 18 }}>Aún no hay recargas registradas</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    {addOpen && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAddOpen(false) }}>
+        <form className="modal-card" onSubmit={submitAdd}>
+          <div className="modal-header"><div><span className="eyebrow">Combustible · Recarga</span><h2>Registrar recarga</h2><p>El costo por km y la autonomía se recalculan con el precio propio de cada vehículo.</p></div><button type="button" className="icon-button" onClick={() => setAddOpen(false)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label>Vehículo<select value={plate} onChange={(event) => setPlate(event.target.value)} required>{vehicles.map((vehicle) => <option value={vehicle.plate} key={vehicle.id}>{vehicle.plate} · {vehicle.model}</option>)}</select></label>
+            <label>Litros<NumInput required min={0.1} step={1} value={liters} onChange={setLiters} /></label>
+            <label>Precio por litro (C$)<NumInput min={0} step={0.5} value={pricePerLiterCs} onChange={setPricePerLiterCs} /></label>
+            <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label>
+            <label className="full-field">Nota<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ej: estación Texaco, factura #1234" /></label>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setAddOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'add'}>{busy === 'add' ? 'Guardando…' : 'Registrar recarga'}</button></div>
+        </form>
+      </div>
+    )}
+  </section>
+}
+
 function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onChanged, onCreated, onDeleted }: { vehicles: Vehicle[]; drivers: Driver[]; maintenance: MaintenanceRecord[]; settings: AppSettings | null; onNotice: (message: string) => void; onChanged: (vehicle: Vehicle) => void; onCreated: (vehicle: Vehicle) => void; onDeleted: (id: string) => void }) {
+  const [fleetTab, setFleetTab] = useState<'flota' | 'combustible'>('flota')
   const [formOpen, setFormOpen] = useState(false)
   const [maintenanceVehicle, setMaintenanceVehicle] = useState<Vehicle | null>(null)
   const [detailVehicle, setDetailVehicle] = useState<Vehicle | null>(null)
@@ -1639,11 +1864,14 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   const [plate, setPlate] = useState('')
   const [model, setModel] = useState('')
   const [type, setType] = useState('Panel')
+  const [typeOther, setTypeOther] = useState('')
   const [capacityKg, setCapacityKg] = useState(1000)
   const [year, setYear] = useState(2024)
   const [fuelType, setFuelType] = useState<FuelType>('Gasolina')
   const [consumptionLPerKm, setConsumptionLPerKm] = useState(0.1)
   const [priceCs, setPriceCs] = useState(0)
+  const [fuelPriceCs, setFuelPriceCs] = useState(0)
+  const [tankCapacityL, setTankCapacityL] = useState(0)
   const [odometerKm, setOdometerKm] = useState(0)
   const [external, setExternal] = useState(false)
   const [vehicleFunction, setVehicleFunction] = useState<Vehicle['vehicleFunction']>('delivery')
@@ -1712,10 +1940,12 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createVehicle({ plate, model, type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct }))
+      onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct }))
       setFormOpen(false)
       setPlate('')
       setModel('')
+      setType('Panel')
+      setTypeOther('')
       setConsumptionLPerKm(0.1)
       setPriceCs(0)
       setOdometerKm(0)
@@ -1757,7 +1987,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     if (!editVehicle) return
     setBusy(`edit-${editVehicle.id}`)
     try {
-      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct })
+      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct })
       onChanged(updated)
       if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
       onNotice(`Datos económicos de ${updated.plate} actualizados`)
@@ -1787,9 +2017,13 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
 
   function openEconomicEditor(vehicle: Vehicle) {
     setEditVehicle(vehicle)
+    setType(vehicle.type)
+    setTypeOther(vehicle.type === 'Otro' ? vehicle.type : '')
     setFuelType(vehicle.fuelType)
     setConsumptionLPerKm(vehicle.consumptionLPerKm)
     setPriceCs(vehicle.priceCs)
+    setFuelPriceCs(vehicle.fuelPriceCs ?? 0)
+    setTankCapacityL(vehicle.tankCapacityL ?? 0)
     setOdometerKm(vehicle.odometerKm)
     setExternal(vehicle.external ?? false)
     setVehicleFunction(vehicle.vehicleFunction)
@@ -1805,6 +2039,12 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   }
 
   return <>
+    <div className="report-tabs" style={{ margin: '0 0 12px' }}>
+      <button className={`filter-chip ${fleetTab === 'flota' ? 'active' : ''}`} onClick={() => setFleetTab('flota')}>Flota <b>{vehicles.length}</b></button>
+      <button className={`filter-chip ${fleetTab === 'combustible' ? 'active' : ''}`} onClick={() => setFleetTab('combustible')}>Combustible</button>
+    </div>
+    {fleetTab === 'combustible' && <FuelPanel vehicles={vehicles} onNotice={onNotice} />}
+    {fleetTab === 'flota' && <>
     <div className="driver-summary">
       <SummaryValue label="Total de vehículos" value={String(vehicles.length)} />
       <SummaryValue label="Disponibles" value={String(byStatus('Disponible').length)} tone="mint" />
@@ -1840,12 +2080,12 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.target.value = '' }} />
     {formOpen && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
-        <form className="modal-card wide" onSubmit={submitVehicle}>
+        <form className="modal-card wide vehicle-form-modal" onSubmit={submitVehicle}>
           <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible. Precios en córdobas (C$).</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
             <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
-            <label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option>Panel</option><option>Van</option><option>Camión</option><option>Pickup</option></select></label>
+            <label>Tipo<select value={type} onChange={(event) => { setType(event.target.value); if (event.target.value !== 'Otro') setTypeOther('') }}><option>Moto</option><option>Panel</option><option>Van</option><option>Pickup</option><option>Camion</option><option>Sedan</option><option>SUV</option><option>Furgon</option><option>Microbus</option><option>Chasis camion</option><option>Otro</option></select>{type === 'Otro' && <input value={typeOther} onChange={(event) => setTypeOther(event.target.value)} placeholder="Escribe el tipo" />}</label>
             <label>Capacidad (kg)<NumInput required min={100} max={20000} value={capacityKg} onChange={setCapacityKg} /></label>
             <label>Año<NumInput required min={2000} max={2030} value={year} onChange={setYear} /></label>
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
@@ -1871,11 +2111,13 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     )}
     {editVehicle && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
-        <form className="modal-card wide" onSubmit={submitEconomicData}>
+        <form className="modal-card wide vehicle-form-modal" onSubmit={submitEconomicData}>
           <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), odómetro, función, sistema logístico, meta de viajes y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
+            <label>Capacidad del tanque (L)<NumInput min={0} step={5} value={tankCapacityL} onChange={setTankCapacityL} /></label>
+            <label>Precio combustible propio (C$/L)<NumInput min={0} step={0.5} value={fuelPriceCs} onChange={setFuelPriceCs} /></label>
             <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
             <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
             <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
@@ -1919,6 +2161,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
                 <div className="trip-detail-field"><span>Consumo</span><strong>{detailVehicle.consumptionLPerKm} L/km</strong></div>
                 <div className="trip-detail-field"><span>Precio de compra</span><strong>{formatCs(detailVehicle.priceCs)}<small className="cell-sub">US$ {detailVehicle.priceUsd.toLocaleString('es-NI')}</small></strong></div>
                 <div className="trip-detail-field"><span>Costo por km</span><strong>{formatCs(detailVehicle.fuelCostPerKmC$)}<small className="cell-sub">solo combustible</small></strong></div>
+                <div className="trip-detail-field"><span>Autonomía del tanque</span><strong>{detailVehicle.tankCapacityL && detailVehicle.consumptionLPerKm > 0 ? Math.round(detailVehicle.tankCapacityL / detailVehicle.consumptionLPerKm).toLocaleString('es-NI') + ' km' : '—'}</strong></div>
                 <div className="trip-detail-field"><span>Odómetro</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
                 <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}<small className="cell-sub">meta {detailVehicle.minTripsMonth || '—'} / mes</small></strong></div>
                 <div className="trip-detail-field"><span>Función</span><strong>{FUNCTION_LABELS[detailVehicle.vehicleFunction] ?? '—'}</strong></div>
@@ -1947,14 +2190,15 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
         </div>
       </div>
     )}
+    </>}
   </>
 }
 
-const FUNCTION_LABELS: Record<string, string> = { taxi: 'Taxi privado', delivery: 'Delivery', mixto: 'Mixto', '': 'Sin función' }
+const FUNCTION_LABELS: Record<string, string> = { privado: 'Vehículo Privado', delivery: 'Delivery (solo motos)', camion: 'Camión (carga)', '': 'Sin función' }
 const FUNCTION_OPTIONS: Array<{ value: Vehicle['vehicleFunction']; label: string }> = [
-  { value: 'taxi', label: 'Taxi privado (servicio ejecutivo / corporativo)' },
-  { value: 'delivery', label: 'Delivery (reparto de mercadería y paquetería)' },
-  { value: 'mixto', label: 'Mixto (taxi y delivery según demanda)' },
+  { value: 'privado', label: 'Vehículo Privado (ejecutivo / corporativo)' },
+  { value: 'delivery', label: 'Delivery (reparto de mercadería; únicamente motos)' },
+  { value: 'camion', label: 'Camión (transporte de carga; camiones y pick-ups)' },
 ]
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -2001,6 +2245,24 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
   const [password, setPassword] = useState('')
   const [passwordUser, setPasswordUser] = useState<AppUser | null>(null)
   const [newPassword, setNewPassword] = useState('')
+  const [editUser, setEditUser] = useState<AppUser | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editUser) return
+    setBusy(`edit-${editUser.id}`)
+    try {
+      onChanged(await updateUser(editUser.id, { name: editName.trim() || undefined, phone: editPhone.trim() || undefined }))
+      setEditUser(null)
+      onNotice(`Información de ${editName.trim() || editUser.name} actualizada`)
+    } catch {
+      onNotice('No se pudo actualizar la información del usuario')
+    } finally {
+      setBusy('')
+    }
+  }
 
   async function toggleUser(user: AppUser) {
     setBusy(user.id)
@@ -2103,7 +2365,7 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
     </section>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Los cambios de rol y estado se persisten en la API</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Crear usuario</button></div>
-      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title="Cambiar contraseña" onClick={() => { setPasswordUser(user); setNewPassword('') }}><Icon name="lock" size={14} /></button><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Cerrar sesión activa (robo o sesión compartida)" disabled={(user.sessionState ?? 'Activa') === 'Cerrada' || busy === user.id} onClick={() => void revokeUserRow(user)}><Icon name='logout' size={14} /></button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
+      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title="Editar nombre y teléfono" onClick={() => { setEditUser(user); setEditName(user.name); setEditPhone(user.phone ?? '') }}><Icon name="edit" size={14} /></button><button title="Cambiar contraseña" onClick={() => { setPasswordUser(user); setNewPassword('') }}><Icon name="lock" size={14} /></button><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Cerrar sesión activa (robo o sesión compartida)" disabled={(user.sessionState ?? 'Activa') === 'Cerrada' || busy === user.id} onClick={() => void revokeUserRow(user)}><Icon name='logout' size={14} /></button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
       <div className="table-footer"><span>El administrador general puede gestionar todos los usuarios y sus permisos</span></div>
     </section>
     {formOpen && (
@@ -2129,6 +2391,18 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
             <label className="full-field">Nueva contraseña<input autoFocus type="password" minLength={8} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Ej: Incoex2026!" /></label>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setPasswordUser(null)}>Cancelar</button><button className="primary-button" disabled={busy === `pwd-${passwordUser.id}`}>{busy === `pwd-${passwordUser.id}` ? 'Guardando…' : 'Guardar contraseña'}</button></div>
+        </form>
+      </div>
+    )}
+    {editUser && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditUser(null) }}>
+        <form className="modal-card" onSubmit={saveEdit}>
+          <div className="modal-header"><div><span className="eyebrow">Administración · Usuarios</span><h2>Editar {editUser.name}</h2><p>Cambia nombre, teléfono o correo; el rol y el estado se ajustan desde la tabla.</p></div><button type="button" className="icon-button" onClick={() => setEditUser(null)} aria-label="Cerrar">×</button></div>
+          <div className="form-grid">
+            <label>Nombre<input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
+            <label>Teléfono<input value={editPhone} onChange={(event) => setEditPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditUser(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editUser.id}`}>{busy === `edit-${editUser.id}` ? 'Guardando…' : 'Guardar cambios'}</button></div>
         </form>
       </div>
     )}
@@ -2204,7 +2478,10 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
             <div className="trip-detail-field"><span>Conductor</span><strong>{detailIncident.driver}</strong></div>
             <div className="trip-detail-field"><span>Prioridad</span><PriorityPill priority={detailIncident.priority} /></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailIncident.status} /></div>
+            <div className="trip-detail-field"><span>Ubicación GPS</span><strong>{detailIncident.latitude !== undefined && detailIncident.longitude !== undefined ? `${detailIncident.latitude.toFixed(5)}, ${detailIncident.longitude.toFixed(5)}` : 'No reportada'}</strong></div>
+            <div className="trip-detail-field"><span>Evidencia</span><strong>{detailIncident.evidence ? <a href={detailIncident.evidence} target="_blank" rel="noreferrer" className="evidence-link">Ver fotografía</a> : 'Sin fotografía'}</strong></div>
           </div>
+          {detailIncident.description && <div className="incident-description"><span>Descripción del problema</span><p>{detailIncident.description}</p></div>}
           <div className="modal-actions trip-actions">
             {detailIncident.status !== 'En proceso' && detailIncident.status !== 'Resuelta' && <button className="primary-button" disabled={acting === detailIncident.id} onClick={() => void changeStatus(detailIncident, 'En proceso')}>{acting === detailIncident.id ? 'Actualizando…' : 'Poner en proceso'}</button>}
             {detailIncident.status !== 'Resuelta' && <button className="primary-button" disabled={acting === detailIncident.id} onClick={() => void changeStatus(detailIncident, 'Resuelta')}>{acting === detailIncident.id ? 'Actualizando…' : 'Marcar resuelta'}</button>}
@@ -2255,6 +2532,7 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
   const [tab, setTab] = useState<'resumen' | 'flota' | 'viajes' | 'conductores' | 'clientes' | 'incidencias' | 'paquetes'>('resumen')
   const [exporting, setExporting] = useState('')
   const dollarRate = settings?.dollarRate ?? 36.5
+  const reportDate = new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
   if (!reports) return <EmptyState title="Reportes pendientes" detail="La API aún no entregó el resumen analítico." />
   const profitable = trips.filter((trip) => trip.status === 'Completado' && (trip.profitCs ?? 0) >= 0).length
   const losses = trips.filter((trip) => trip.status === 'Completado' && (trip.profitCs ?? 0) < 0).length
@@ -2265,7 +2543,7 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
     if (collection === 'drivers') for (const driver of drivers) rows.push({ 'ID': driver.id, 'Nombre': driver.name, 'Teléfono': driver.phone, 'Vehículo': driver.vehicle, 'Placa': driver.plate, 'Estado': driver.status, 'Ruta': driver.route })
     if (collection === 'clients') for (const client of clients) rows.push({ 'ID': client.id, 'Nombre': client.name, 'Tipo': client.type, 'Teléfono': client.phone, 'Email': client.email, 'Dirección': client.address ?? '', 'Viajes': client.trips, 'Solicitudes activas': client.activeRequests, 'Estado': client.status })
     if (collection === 'incidents') for (const incident of incidents) rows.push({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })
-    if (collection === 'packages') for (const trip of trips) for (let index = 1; index <= Math.min(trip.packages, 3); index += 1) rows.push({ 'Guía': `PKG-${trip.id.replace('#', '')}-${index}`, 'Viaje': trip.id, 'Cliente': trip.client, 'Peso kg': (1 + ((trip.packages + index) % 24)).toFixed(1), 'Dimensiones': `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, 'Estado': trip.status })
+    if (collection === 'packages') for (const trip of trips) for (let index = 1; index <= Math.min(trip.packages, 3); index += 1) { const weightKg = trip.weight ?? (1 + ((trip.packages + index) % 24)); rows.push({ 'Guía': `PKG-${trip.id.replace('#', '')}-${index}`, 'Viaje': trip.id, 'Cliente': trip.client, 'Peso': trip.weightUnit === 'lb' ? `${(weightKg * 2.20462).toFixed(1)} lb` : `${weightKg.toFixed(1)} kg`, 'Dimensiones': `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, 'Estado': trip.status }) }
     if (collection === 'vehicles') for (const vehicle of vehicles) rows.push({ 'Placa': vehicle.plate, 'Modelo': vehicle.model, 'Tipo': vehicle.type, 'Función': FUNCTION_LABELS[vehicle.vehicleFunction] ?? '', 'Sistema logístico': vehicle.logistics, 'Estado': vehicle.status, 'Conductor': vehicle.driver, 'Combustible': vehicle.fuelType, 'Precio C$': vehicle.priceCs, 'Odómetro km': vehicle.odometerKm, 'Financiado': vehicle.financing.financed ? 'Sí' : 'No', 'Pago mensual C$': vehicle.financing.leaseMonthlyPaymentCs, 'Meses restantes': vehicle.financing.monthsRemaining, 'Deuda restante C$': vehicle.financing.remainingDebtCs, 'Depreciación/mes C$': vehicle.financing.monthlyDepreciationCs, 'Costo mensual C$': vehicle.financing.monthlyCostCs, 'Meta viajes/mes': vehicle.minTripsMonth })
     exportExcel(`incoex-${collection}-${new Date().toISOString().slice(0, 10)}.xlsx`, label, rows)
     onNotice(`Reporte ${label} en Excel descargado`)
@@ -2285,8 +2563,16 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
     { id: 'incidencias', label: 'Incidencias' },
     { id: 'paquetes', label: 'Paquetes' },
   ]
-  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => ({ id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightKg: (1 + ((trip.packages + index) % 24)).toFixed(1), dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status })))
+  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => {
+    const weightKg = trip.weight ?? (1 + ((trip.packages + index) % 24))
+    const weightDisplay = trip.weightUnit === 'lb' ? `${(weightKg * 2.20462).toFixed(1)} lb` : `${weightKg.toFixed(1)} kg`
+    return { id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightDisplay, dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status }
+  }))
   return <>
+    <div className="report-header">
+      <div><span className="eyebrow">INFORME DE OPERACIÓN · {reportDate.toUpperCase()}</span><h2 className="report-title">Reporte analítico INCOEX</h2><p className="panel-sub">Información consolidada y detallada de la operación, separada de la vista general del dashboard. Incluye flota, financiamiento, resultados por viaje y seguimiento de incidencias.</p></div>
+      <div className="report-header-meta"><span><b>{reports.totalTrips}</b> viajes registrados</span><span><b>{drivers.length}</b> conductores</span><span><b>{clients.length}</b> clientes</span><span><b>{incidents.filter((incident) => incident.status !== 'Resuelta').length}</b> incidencias abiertas</span></div>
+    </div>
     <div className="report-tabs">
       {reportTabs.map((item) => <button key={item.id} className={`filter-chip ${tab === item.id ? 'active' : ''}`} onClick={() => setTab(item.id)}>{item.label}</button>)}
     </div>
@@ -2363,7 +2649,7 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
         <div className="export-panel-head"><div><span className="eyebrow">GUÍAS DERIVADAS</span><h2>Paquetes</h2><p>Cada paquete hereda el estado y la ruta de su viaje.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('packages', 'Paquetes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Paquetes Excel</button></div></div>
       </section>
       <section className="panel table-panel">
-        <DataTable className="packages-table" columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+        <DataTable className="packages-table" columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, pkg.weightDisplay, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
       </section>
     </>}
   </>
@@ -2385,27 +2671,31 @@ function Leaderboard({ title, entries, note }: { title: string; entries: Array<{
 }
 
 function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (section: Section) => void }) {
-  const [detailPkg, setDetailPkg] = useState<{ id: string; trip: string; client: string; weightKg: string; dimensions: string; status: TripStatus } | null>(null)
-  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => ({ id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightKg: (1 + ((trip.packages + index) % 24)).toFixed(1), dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status })))
+  const [detailPkg, setDetailPkg] = useState<{ id: string; trip: string; client: string; weightDisplay: string; dimensions: string; status: TripStatus } | null>(null)
+  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => {
+    const weightKg = trip.weight ?? (1 + ((trip.packages + index) % 24))
+    const weightDisplay = trip.weightUnit === 'lb' ? `${(weightKg * 2.20462).toFixed(1)} lb` : `${weightKg.toFixed(1)} kg`
+    return { id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightDisplay, dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status }
+  }))
   const inTransit = packageRows.filter((pkg) => ['Asignado', 'En camino', 'En entrega'].includes(pkg.status)).length
   function exportExcelFile() {
-    exportExcel(`incoex-paquetes-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Paquetes', packageRows.map((pkg) => ({ 'Guía': pkg.id, 'Viaje': pkg.trip, 'Cliente': pkg.client, 'Peso (kg)': pkg.weightKg, 'Dimensiones': pkg.dimensions, 'Estado': pkg.status })))
+    exportExcel(`incoex-paquetes-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Paquetes', packageRows.map((pkg) => ({ 'Guía': pkg.id, 'Viaje': pkg.trip, 'Cliente': pkg.client, 'Peso': pkg.weightDisplay, 'Dimensiones': pkg.dimensions, 'Estado': pkg.status })))
   }
   function exportPdfFile() {
-    exportPdf('Paquetes · INCOEX Logistics', 'Guías derivadas de los viajes registrados en la operación de Managua', ['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado'], packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, pkg.status]))
+    exportPdf('Paquetes · INCOEX Logistics', 'Guías derivadas de los viajes registrados en la operación de Managua', ['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado'], packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, pkg.weightDisplay, pkg.dimensions, pkg.status]))
   }
   return <>
     <div className="driver-summary"><SummaryValue label="Paquetes visibles" value={String(packageRows.length)} /><SummaryValue label="En tránsito" value={String(inTransit)} tone="blue" /><SummaryValue label="Entregados" value={String(packageRows.filter((pkg) => pkg.status === 'Completado').length)} tone="mint" /><SummaryValue label="Pendientes" value={String(packageRows.filter((pkg) => pkg.status === 'Pendiente').length)} tone="gold" /></div>
     <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Cada paquete hereda el estado y la ruta de su viaje</div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={13} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> PDF</button></div></div>
-    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`} onClick={() => setDetailPkg(pkg)}>{pkg.id}</strong>, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
-    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · clic en la guía para ver el detalle · el peso y las dimensiones son de demostración hasta conectar la validación de carga</span></div></section>
+    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`} onClick={() => setDetailPkg(pkg)}>{pkg.id}</strong>, pkg.trip, pkg.client, pkg.weightDisplay, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · clic en la guía para ver el detalle · el peso puede registrarse en kg o libras según el cliente</span></div></section>
     {detailPkg && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailPkg(null) }}>
         <div className="modal-card trip-detail-modal">
           <div className="modal-header"><div><span className="eyebrow">Detalle del paquete · {detailPkg.id}</span><h2>{detailPkg.client}</h2><p>Guía vinculada al viaje {detailPkg.trip}</p></div><button type="button" className="icon-button" onClick={() => setDetailPkg(null)} aria-label="Cerrar">×</button></div>
           <div className="trip-detail-grid">
             <div className="trip-detail-field"><span>Guía</span><strong>{detailPkg.id}</strong></div>
-            <div className="trip-detail-field"><span>Peso</span><strong>{detailPkg.weightKg} kg</strong></div>
+            <div className="trip-detail-field"><span>Peso</span><strong>{detailPkg.weightDisplay}</strong></div>
             <div className="trip-detail-field"><span>Dimensiones</span><strong>{detailPkg.dimensions}</strong></div>
             <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailPkg.status} /></div>
           </div>
@@ -2772,6 +3062,13 @@ function formatCorteDate(iso: string) {
 }
 function clientByName(clients: Client[], name: string) {
   return clients.find((client) => client.name.trim().toLowerCase() === name.trim().toLowerCase())
+}
+function waLink(phone: string | undefined, message: string) {
+  const raw = (phone ?? '').replace(/\D/g, '')
+  if (!raw) return ''
+  let wa = raw.replace(/^0+/, '')
+  if (!/^505/.test(wa)) wa = '505' + wa
+  return 'https://wa.me/' + wa + '?text=' + encodeURIComponent(message)
 }
 function waLinkOf(corte: Corte, client?: Client) {
   const raw = (client?.whatsapp || client?.phone || '').replace(/\D/g, '')

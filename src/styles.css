@@ -811,3 +811,42 @@ body { min-width: 0; background: var(--paper); }
 .corte-receipt-client small { color: #6e6a78; font-size: 11.5px; }
 .corte-receipt .invoice-item { grid-template-columns: 90px 70px 1fr 130px 12px; }
 @media (max-width: 900px) { .cortes-summary { flex: 0 0 100%; grid-template-columns: repeat(3, 1fr); } .billing-cfg-grid { grid-template-columns: 1fr 1fr; } }
+
+.client-tabs { display: flex; gap: 6px; margin: 2px 0 10px; border-bottom: 1px solid #E0DBE4; }
+.client-tab { padding: 7px 14px; border: 0; background: none; color: #6e6a78; font: 600 12.5px 'Acumin Pro'; cursor: pointer; border-bottom: 2px solid transparent; }
+.client-tab.active { color: #0d75b3; border-bottom-color: #32AAF0; }
+.client-tab-body { min-height: 220px; }
+.client-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.client-info-grid > div { padding: 9px 11px; border: 1px solid #E0DBE4; border-radius: 9px; background: #FAFAFD; }
+.client-info-grid span { display: block; color: #8e8998; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.client-info-grid strong { display: block; margin-top: 3px; color: #2b2636; font-size: 13px; }
+.client-info-grid .client-notes { grid-column: 1 / -1; }
+.client-services { display: grid; gap: 8px; }
+.client-service-card { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid #E0DBE4; border-radius: 10px; background: #FAFAFD; }
+.client-service-name { font: 700 13px 'Acumin Pro'; color: #0d75b3; }
+.client-service-card span { color: #544f5d; font-size: 12.5px; }
+.client-service-card strong { color: #262038; }
+.client-billing { display: grid; gap: 12px; }
+.client-billing-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.client-billing-summary > div { padding: 10px 12px; border: 1px solid #E0DBE4; border-radius: 10px; background: #F7FAFE; }
+.client-billing-summary span { display: block; color: #8e8998; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.client-billing-summary strong { display: block; margin-top: 3px; color: #0d75b3; font: 700 15px 'Acumin Pro'; }
+.text-warn { color: #b7791f !important; }
+.text-success { color: #1e7e46 !important; }
+.live-popup-desc { margin-top: 4px; padding: 6px 8px; border-radius: 7px; background: #FFF4E5; color: #7a5b1e; font-size: 11.5px; line-height: 1.35; }
+.live-popup-evidence { margin-top: 6px; width: 100%; max-height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #E0DBE4; }
+.incident-description { margin-top: 12px; padding: 10px 12px; border: 1px solid #F0D9B8; border-radius: 9px; background: #FFF8EC; }
+.incident-description span { display: block; color: #8e8998; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.incident-description p { margin-top: 4px; color: #5a4520; font-size: 13px; line-height: 1.45; }
+.evidence-link { color: #1273b0; font-weight: 600; }
+.report-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 16px 18px; border: 1px solid #E0DBE4; border-radius: 14px; background: linear-gradient(135deg, #F7FAFE 0%, #EFF4FB 100%); margin-bottom: 14px; }
+.report-title { margin-top: 2px; color: #14223c; }
+.report-header-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.report-header-meta span { padding: 8px 12px; border-radius: 9px; background: white; border: 1px solid #E0DBE4; color: #6e6a78; font-size: 11.5px; }
+.report-header-meta b { display: block; color: #0d75b3; font-size: 15px; }
+/* === Vehículos: modal amplio (3 columnas) + combustible === */
+.vehicle-form-modal { width: min(1140px, 96vw); }
+.vehicle-form-modal .form-grid { grid-template-columns: repeat(3, 1fr); }
+.vehicle-form-modal .full-field { grid-column: 1 / -1; }
+@media (max-width: 900px) { .vehicle-form-modal .form-grid { grid-template-columns: 1fr; } }
+.checkbox-chip { border: 1px solid #DED9E2; border-radius: 8px; padding: 7px 12px; background: #FBFAFD; color: #504b59; font-size: 12px; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

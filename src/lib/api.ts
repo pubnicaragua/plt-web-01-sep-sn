@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
+import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -58,6 +58,7 @@ export function createDriver(body: { name: string; phone?: string; email?: strin
 export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
+export function getClientProfile(id: string) { return getJson<ClientProfile>(`/clients/${encodeURIComponent(id)}`) }
 export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string }) { return sendJson<Client>('/clients', 'POST', body) }
 export function deleteClient(id: string) { return sendJson<{ deleted: string }>(`/clients/${encodeURIComponent(id)}`, 'DELETE') }
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
@@ -122,9 +123,38 @@ export function payCorte(id: string, body: { method?: string; notes?: string; am
 export function annulCorte(id: string) { return sendJson<Corte>(`/cortes/${encodeURIComponent(id)}/annul`, 'POST') }
 export function markCorteSent(id: string) { return sendJson<Corte>(`/cortes/${encodeURIComponent(id)}/sent-whatsapp`, 'POST') }
 
+export interface FuelRecord {
+  id: string
+  plate: string
+  liters: number
+  pricePerLiterCs: number
+  totalCs: number
+  odometerKm: number
+  date: string
+  note: string
+  createdAt: number
+}
+
+export interface FuelStatsRow {
+  plate: string
+  literPriceCs: number
+  costPerKmCs: number
+  realConsumptionLPer100Km: number
+  autonomyKm: number
+  autonomyDays: number
+  refuels: number
+  totalLiters: number
+  totalCs: number
+}
+
+export function getFuelRecords(plate?: string) { return getJson<FuelRecord[]>(`/fuel${plate ? `?plate=${encodeURIComponent(plate)}` : ''}`) }
+export function getFuelStats(plate?: string) { return getJson<FuelStatsRow[]>(`/fuel/stats${plate ? `?plate=${encodeURIComponent(plate)}` : ''}`) }
+export function addFuelRecord(body: { plate: string; liters: number; pricePerLiterCs?: number; odometerKm?: number; note?: string }) { return sendJson<FuelRecord>('/fuel', 'POST', body) }
+export function deleteFuelRecord(id: string) { return sendJson<{ deleted: string }>(`/fuel/${encodeURIComponent(id)}`, 'DELETE') }
+
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
-export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
-export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function updateVehicle(id: string, body: { type?: string; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
 export async function uploadVehicleImage(id: string, file: File) {
   const formData = new FormData()
   formData.append('image', file)
@@ -151,7 +181,7 @@ export function resolveImageUrl(path: string) {
 export function getUsers() { return getJson<AppUser[]>('/admin/users') }
 export function getRoles() { return getJson<Role[]>('/admin/roles') }
 export function createUser(body: { name: string; email: string; phone?: string; role: UserRole; password?: string }) { return sendJson<AppUser>('/admin/users', 'POST', body) }
-export function updateUser(id: string, body: { role?: UserRole; status?: 'Activo' | 'Inactivo'; password?: string }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function updateUser(id: string, body: { name?: string; phone?: string; email?: string; role?: UserRole; status?: 'Activo' | 'Inactivo'; password?: string }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function revokeUserSession(id: string) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}/revoke-session`, 'PATCH', {}) }
 export function deleteUser(id: string) { return sendJson<{ deleted: string }>(`/admin/users/${encodeURIComponent(id)}`, 'DELETE') }
 

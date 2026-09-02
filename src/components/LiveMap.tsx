@@ -79,7 +79,10 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       if (!Number.isFinite(incident.latitude) || !Number.isFinite(incident.longitude)) continue
       const position: [number, number] = [incident.latitude as number, incident.longitude as number]
       bounds.push(L.latLng(position))
-      L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority}</span><span>${incident.type}</span><span class="live-popup-row">${incident.driver} · ${incident.status}</span></div>`).addTo(layers.incidents)
+      const evidence = incident.evidence ? `<img class="live-popup-evidence" src="${incident.evidence}" alt="evidencia" loading="lazy" />` : ''
+      L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority} · ${incident.id}</span><span>${incident.type}</span><span class="live-popup-row"><i style="background:#d64545"></i>${incident.driver} · ${incident.status}</span>${incident.description ? `<span class="live-popup-desc">${incident.description}</span>` : ''}${evidence}<button class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`, { className: 'live-popup-wrap' }).on('popupopen', (event) => {
+        event.target.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('incidents'))
+      }).addTo(layers.incidents)
     }
 
     if (bounds.length > 0) {

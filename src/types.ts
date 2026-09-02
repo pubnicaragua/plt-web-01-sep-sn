@@ -101,6 +101,8 @@ export interface Trip {
   paymentDate?: string
   paymentStatus?: 'Sin pagar' | 'Parcial' | 'Pagado'
   dueDate?: string
+  weight?: number
+  weightUnit?: 'kg' | 'lb'
 }
 
 export interface Driver {
@@ -142,6 +144,58 @@ export interface Client {
 }
 
 export type BillingPeriod = '' | 'semanal' | 'quincenal' | 'mensual' | 'personalizado'
+
+export interface ClientProfile {
+  id: string
+  name: string
+  type: string
+  phone: string
+  email: string
+  address: string
+  contact: string
+  taxId: string
+  notes: string
+  creditDays?: number
+  dueDay?: number
+  billingPeriod?: BillingPeriod
+  whatsapp?: string
+  status: string
+  stats: {
+    totalTrips: number
+    activeTrips: number
+    completedTrips: number
+    cancelledTrips: number
+    pendingBalance: number
+    byStatus: Record<string, number>
+  }
+  billing: {
+    invoiced: number
+    paid: number
+    pending: number
+    unpaidTrips: Array<{
+      id: string
+      date: string
+      origin: string
+      destination: string
+      costCs: number
+      paymentStatus: string
+      dueDate: string
+    }>
+  }
+  services: Array<{ type: string; count: number; total: number }>
+  trips: Array<{
+    id: string
+    date: string
+    origin: string
+    destination: string
+    driver: string
+    packages: number
+    status: string
+    serviceType: string
+    costCs: number
+    paymentStatus: string
+  }>
+}
 
 export interface CorteItem {
   id: string
@@ -231,6 +285,9 @@ export interface ReportsSummary {
     kmMonth: number
     incomeMonthCs: number
     fuelEstimateCs: number
+    fuelPriceCs: number
+    costPerKmCs: number
+    breakEvenFareCs: number
     marginCs: number
     breakEvenTrips: number
   }>
@@ -288,9 +345,11 @@ export interface Vehicle {
   odometerKm: number
   imageUrl: string
   external?: boolean
-  vehicleFunction: 'taxi' | 'delivery' | 'mixto' | ''
+  vehicleFunction: 'privado' | 'delivery' | 'camion' | ''
   logistics: string
   minTripsMonth: number
+  fuelPriceCs?: number
+  tankCapacityL?: number
   financing: {
     financed: boolean
     downPaymentCs: number
