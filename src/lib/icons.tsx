@@ -1,6 +1,19 @@
-import type { ReactNode } from 'react'
+﻿import type { ReactNode } from 'react'
 
 const ICONS = {
+  menu: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M3 12h18" />
+      <path d="M3 18h18" />
+    </>
+  ),
+  trendingUp: (
+    <>
+      <path d="m22 7-8.5 8.5-5-5L2 17" />
+      <path d="M16 7h6v6" />
+    </>
+  ),
   dashboard: (
     <>
       <rect x="3" y="3" width="7" height="9" rx="1.5" />

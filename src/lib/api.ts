@@ -107,8 +107,8 @@ export function updateClient(id: string, body: { phone?: string; email?: string;
 }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
-export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
-export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
 export async function uploadVehicleImage(id: string, file: File) {
   const formData = new FormData()
   formData.append('image', file)

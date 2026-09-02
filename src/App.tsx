@@ -48,6 +48,7 @@ import {
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
+import { LiveMap } from './components/LiveMap'
 import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
@@ -210,6 +211,8 @@ function App() {
   const [clientFormOpen, setClientFormOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -266,6 +269,15 @@ function App() {
   function navigate(next: Section) {
     setSection(next)
     setSearch('')
+    setSidebarOpen(false)
+  }
+
+  async function refreshTracking() {
+    try {
+      setTracking(await getTrackingOverview())
+    } catch {
+      // el polling sigue; el último dato conocido queda en pantalla
+    }
   }
 
   function logout() {
@@ -277,7 +289,8 @@ function App() {
   if (!authed) return <LoginView onLogin={() => { sessionStorage.setItem('incoex-auth', '1'); setAuthed(true) }} />
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} />
       <aside className="sidebar">
         <div className="brand-lockup">
           <BrandMark />
@@ -309,7 +322,10 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
-          <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
+          <div className="topbar-leading">
+            <button className="icon-button sidebar-toggle" aria-label="Mostrar u ocultar menú" title="Mostrar u ocultar menú" onClick={() => { if (window.innerWidth <= 900) setSidebarOpen((open) => !open); else setSidebarCollapsed((collapsed) => !collapsed) }}><Icon name="menu" size={17} /></button>
+            <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
+          </div>
           <div className="topbar-actions">
             <div className="search-box">
               <span className="search-icon"><Icon name="search" size={15} /></span>
@@ -351,9 +367,9 @@ function App() {
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
-          {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} onNotice={setNotice} />}
+          {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
           {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
-          {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} />}
+          {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} onRefresh={refreshTracking} />}
           {section === 'history' && <HistoryView history={history} />}
           {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
@@ -1218,7 +1234,7 @@ function TripsView({ trips, clients, search, settings, finance, onNavigate, onNo
   }
   const avgFuelPerKm = finance?.fleet.avgFuelPerKmCs ?? 0
   const fuelOf = (trip: Trip) => (trip.distanceKm ?? 0) * avgFuelPerKm
-  return <>    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{trips.length}</b></button><button className={`filter-chip ${statusFilter === 'Pendiente' ? 'active' : ''}`} onClick={() => { setStatusFilter('Pendiente'); setPage(1) }}>Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className={`filter-chip ${statusFilter === 'En curso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En curso'); setPage(1) }}>En curso <b>{inCourse}</b></button><button className={`filter-chip ${statusFilter === 'Completado' ? 'active' : ''}`} onClick={() => { setStatusFilter('Completado'); setPage(1) }}>Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><select className="mini-select type-filter" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as typeof typeFilter); setPage(1) }} title="Filtrar por tipo de servicio"><option value="all">Todos los servicios</option><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></div><DataTable className="trips-table" rowClassName={(_row, index) => ['Cancelado', 'Anulado'].includes(visible[index]?.status ?? '') ? 'row-off' : ''} columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paq.', 'Dist. (km)', 'Tarifa', 'Estado', 'Acciones']} rows={visible.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <button className="client-name-btn" key={`${trip.id}-client`} onClick={() => setClientDetail(trip.client)} title="Ver detalle del cliente: viajes y montos">{trip.client}</button>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, trip.distanceKm !== undefined ? trip.distanceKm.toFixed(1) : '—', <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? <><b>{formatCs(trip.estimatedCostCs)}</b><small className="cell-sub">{trip.serviceType ?? 'Urbano'}</small></> : '—'}</span>, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ver en el mapa" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={14} /></button><button title="Ver y descargar factura PDF" onClick={() => setInvoiceTrip(trip)}><Icon name="fileText" size={14} /></button><button title="Anular viaje (no se elimina; queda invalidado)" disabled={actingTrip === trip.id || trip.status == 'Anulado' || trip.status == 'Cancelado'} onClick={() => void anularTrip(trip)}><Icon name="close" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} viajes · clic en Cliente abre su resumen · factura PDF por viaje · anular invalida sin borrar</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  return <>    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{trips.length}</b></button><button className={`filter-chip ${statusFilter === 'Pendiente' ? 'active' : ''}`} onClick={() => { setStatusFilter('Pendiente'); setPage(1) }}>Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className={`filter-chip ${statusFilter === 'En curso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En curso'); setPage(1) }}>En curso <b>{inCourse}</b></button><button className={`filter-chip ${statusFilter === 'Completado' ? 'active' : ''}`} onClick={() => { setStatusFilter('Completado'); setPage(1) }}>Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><select className="mini-select type-filter" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as typeof typeFilter); setPage(1) }} title="Filtrar por tipo de servicio"><option value="all">Todos los servicios</option><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></div><DataTable className="trips-table" rowClassName={(_row, index) => ['Cancelado', 'Anulado'].includes(visible[index]?.status ?? '') ? 'row-off' : ''} columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paq.', 'Dist. (km)', 'Tarifa', 'Estado', 'Acciones']} rows={visible.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <button className="client-name-btn" key={`${trip.id}-client`} onClick={() => setClientDetail(trip.client)} title="Ver detalle del cliente: viajes y montos">{trip.client}</button>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, trip.distanceKm !== undefined ? trip.distanceKm.toFixed(1) : '—', <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? <><b>{formatCs(trip.estimatedCostCs)}</b><small className="cell-sub">{trip.serviceType ?? 'Urbano'}</small></> : '—'}</span>, <ProfitChip key={`${trip.id}-profit`} trip={trip} />, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ver en el mapa" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={14} /></button><button title="Ver y descargar factura PDF" onClick={() => setInvoiceTrip(trip)}><Icon name="fileText" size={14} /></button><button title="Anular viaje (no se elimina; queda invalidado)" disabled={actingTrip === trip.id || trip.status == 'Anulado' || trip.status == 'Cancelado'} onClick={() => void anularTrip(trip)}><Icon name="close" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} viajes · clic en Cliente abre su resumen · factura PDF por viaje · anular invalida sin borrar</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {detailTrip && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTrip(null) }}>
         <div className="modal-card trip-detail-modal">
@@ -1230,6 +1246,8 @@ function TripsView({ trips, clients, search, settings, finance, onNavigate, onNo
             <div className="trip-detail-field"><span>Tipo de servicio</span><strong>{detailTrip.serviceType ?? 'Urbano'}</strong></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailTrip.status} /></div>
             <div className="trip-detail-field"><span>Tarifa estimada</span><strong>{detailTrip.estimatedCostCs !== undefined ? `${formatCs(detailTrip.estimatedCostCs)}${settings ? ` · US$ ${csToUsd(detailTrip.estimatedCostCs, settings.dollarRate).toFixed(2)}` : ''}` : '—'}</strong></div>
+            <div className="trip-detail-field"><span>Resultado del viaje</span><ProfitChip trip={detailTrip} /></div>
+            {detailTrip.costCs !== undefined && detailTrip.costCs > 0 && <div className="trip-detail-field"><span>Costo de operación</span><strong>{formatCs(detailTrip.costCs)}<small className="cell-sub">combustible + desgaste estimado</small></strong></div>}
           </div>
           {(detailTrip.contactName || detailTrip.contactPhone || detailTrip.recipientName) && (
             <div className="trip-detail-grid compact">
@@ -1605,6 +1623,16 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   const [priceCs, setPriceCs] = useState(0)
   const [odometerKm, setOdometerKm] = useState(0)
   const [external, setExternal] = useState(false)
+  const [vehicleFunction, setVehicleFunction] = useState<Vehicle['vehicleFunction']>('delivery')
+  const [logistics, setLogistics] = useState('')
+  const [minTripsMonth, setMinTripsMonth] = useState(100)
+  const [financed, setFinanced] = useState(false)
+  const [downPaymentCs, setDownPaymentCs] = useState(0)
+  const [leaseStart, setLeaseStart] = useState('')
+  const [leaseTermMonths, setLeaseTermMonths] = useState(60)
+  const [leaseMonthlyPaymentCs, setLeaseMonthlyPaymentCs] = useState(0)
+  const [residualValueCs, setResidualValueCs] = useState(0)
+  const [depreciationPct, setDepreciationPct] = useState(20)
   const [maintenanceNote, setMaintenanceNote] = useState('')
   const [maintenanceCost, setMaintenanceCost] = useState(0)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -1661,13 +1689,21 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createVehicle({ plate, model, type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external }))
+      onCreated(await createVehicle({ plate, model, type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct }))
       setFormOpen(false)
       setPlate('')
       setModel('')
       setConsumptionLPerKm(0.1)
       setPriceCs(0)
       setOdometerKm(0)
+      setLogistics('')
+      setMinTripsMonth(100)
+      setFinanced(false)
+      setDownPaymentCs(0)
+      setLeaseStart('')
+      setLeaseTermMonths(60)
+      setLeaseMonthlyPaymentCs(0)
+      setResidualValueCs(0)
     } catch {
       onNotice('No se pudo registrar el vehículo; verifica la placa y los datos')
     } finally {
@@ -1698,7 +1734,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     if (!editVehicle) return
     setBusy(`edit-${editVehicle.id}`)
     try {
-      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, odometerKm })
+      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct })
       onChanged(updated)
       if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
       onNotice(`Datos económicos de ${updated.plate} actualizados`)
@@ -1732,6 +1768,17 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     setConsumptionLPerKm(vehicle.consumptionLPerKm)
     setPriceCs(vehicle.priceCs)
     setOdometerKm(vehicle.odometerKm)
+    setExternal(vehicle.external ?? false)
+    setVehicleFunction(vehicle.vehicleFunction)
+    setLogistics(vehicle.logistics)
+    setMinTripsMonth(vehicle.minTripsMonth)
+    setFinanced(vehicle.financing.financed)
+    setDownPaymentCs(vehicle.financing.downPaymentCs)
+    setLeaseStart(vehicle.financing.leaseStart)
+    setLeaseTermMonths(vehicle.financing.leaseTermMonths)
+    setLeaseMonthlyPaymentCs(vehicle.financing.leaseMonthlyPaymentCs)
+    setResidualValueCs(vehicle.financing.residualValueCs)
+    setDepreciationPct(vehicle.financing.depreciationPct)
   }
 
   return <>
@@ -1739,17 +1786,19 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       <SummaryValue label="Total de vehículos" value={String(vehicles.length)} />
       <SummaryValue label="Disponibles" value={String(byStatus('Disponible').length)} tone="mint" />
       <SummaryValue label="En servicio" value={String(byStatus('En servicio').length)} tone="blue" />
-      <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="gold" />
+      <SummaryValue label="Financiados (leasing)" value={String(vehicles.filter((vehicle) => vehicle.financing.financed).length)} tone="gold" />
+      <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="red" />
     </div>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
-      <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Consumo', 'Precio', 'Odómetro (km)', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
+      <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Función', 'Consumo', 'Precio', 'Odómetro (km)', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
         <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
-        <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong>{vehicle.external && <span className="badge-external">3P</span>}</span>,
+        <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Financiado (leasing)">Leasing</span>}</span>,
         vehicle.model,
         vehicle.type,
+        <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b><small className="cell-sub">{vehicle.logistics || 'sin sistema logístico'}</small></span>,
         <span key={`${vehicle.id}-cons`}><b>{vehicle.fuelType}</b><small className="cell-sub">{vehicle.consumptionLPerKm} L/km</small></span>,
-        <span key={`${vehicle.id}-odo`}>{vehicle.odometerKm.toLocaleString('es-NI')}</span>,<span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>,
+        <span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>,<span key={`${vehicle.id}-odo`}>{vehicle.odometerKm.toLocaleString('es-NI')}</span>,
         <span key={`${vehicle.id}-costkm`}><b>{formatCs(vehicle.fuelCostPerKmC$)}</b><small className="cell-sub">solo combustible</small></span>,
         <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>,
         <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />,
@@ -1780,6 +1829,18 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
             <label>Precio de compra (C$)<NumInput min={0} step={1000} value={priceCs} onChange={setPriceCs} placeholder="Ej: 1850000" /></label>
             <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
+            <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+            <label>Sistema logístico<select value={logistics} onChange={(event) => setLogistics(event.target.value)}><option value="">Sin sistema asignado</option><option>Entregas urbanas</option><option>Reparto a tiendas</option><option>Recolección y reparto</option><option>Distribución programada</option><option>Servicio ejecutivo a empresas</option><option>Paquetería exprés</option></select></label>
+            <label>Mínimo de viajes / mes (meta)<NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+            <label className="full-field check-field"><input type="checkbox" checked={financed} onChange={(event) => setFinanced(event.target.checked)} /> Financiado por leasing / banco (pago mensual y deuda)</label>
+            {financed && <>
+              <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
+              <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
+              <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
+              <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
+              <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
+              <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
+            </>}
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
         </form>
@@ -1787,13 +1848,25 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     )}
     {editVehicle && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
-        <form className="modal-card" onSubmit={submitEconomicData}>
-          <div className="modal-header"><div><span className="eyebrow">Datos económicos · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$) y odómetro. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
+        <form className="modal-card wide" onSubmit={submitEconomicData}>
+          <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), odómetro, función, sistema logístico, meta de viajes y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
             <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
             <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
+            <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+            <label>Sistema logístico<select value={logistics} onChange={(event) => setLogistics(event.target.value)}><option value="">Sin sistema asignado</option><option>Entregas urbanas</option><option>Reparto a tiendas</option><option>Recolección y reparto</option><option>Distribución programada</option><option>Servicio ejecutivo a empresas</option><option>Paquetería exprés</option></select></label>
+            <label>Mínimo de viajes / mes (meta)<NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+            <label className="full-field check-field"><input type="checkbox" checked={financed} onChange={(event) => setFinanced(event.target.checked)} /> Financiado por leasing / banco (pago mensual y deuda)</label>
+            {financed && <>
+              <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
+              <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
+              <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
+              <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
+              <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
+              <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
+            </>}
             <div className="full-field conversion-note"><span>Equivalente en dólares:</span><strong>US$ {csToUsd(priceCs, dollarRate).toLocaleString('es-NI')} · tasa {dollarRate}</strong></div>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editVehicle.id}`}>{busy === `edit-${editVehicle.id}` ? 'Guardando…' : 'Guardar datos'}</button></div>
@@ -1824,9 +1897,25 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
                 <div className="trip-detail-field"><span>Precio de compra</span><strong>{formatCs(detailVehicle.priceCs)}<small className="cell-sub">US$ {detailVehicle.priceUsd.toLocaleString('es-NI')}</small></strong></div>
                 <div className="trip-detail-field"><span>Costo por km</span><strong>{formatCs(detailVehicle.fuelCostPerKmC$)}<small className="cell-sub">solo combustible</small></strong></div>
                 <div className="trip-detail-field"><span>Odómetro</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
-                <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}</strong></div>
+                <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}<small className="cell-sub">meta {detailVehicle.minTripsMonth || '—'} / mes</small></strong></div>
+                <div className="trip-detail-field"><span>Función</span><strong>{FUNCTION_LABELS[detailVehicle.vehicleFunction] ?? '—'}</strong></div>
+                <div className="trip-detail-field full"><span>Sistema logístico</span><strong>{detailVehicle.logistics || 'Sin sistema asignado'}</strong></div>
                 <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
                 <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
+              </div>
+              <div className="finance-card">
+                <div className="finance-card-head"><span className="eyebrow">FINANCIAMIENTO Y RENTABILIDAD</span>{detailVehicle.financing.financed ? <span className="financed-badge">Leasing activo</span> : <span className="financed-badge cash">Al contado</span>}</div>
+                <div className="finance-grid">
+                  <div className="finance-cell"><span>Pago mensual</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.leaseMonthlyPaymentCs) : '—'}</strong></div>
+                  <div className="finance-cell"><span>Deuda restante</span><strong className={detailVehicle.financing.remainingDebtCs > 0 ? 'text-danger' : ''}>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.remainingDebtCs) : '—'}</strong></div>
+                  <div className="finance-cell"><span>Meses restantes</span><strong>{detailVehicle.financing.financed ? `${detailVehicle.financing.monthsRemaining} de ${detailVehicle.financing.leaseTermMonths}` : '—'}</strong></div>
+                  <div className="finance-cell"><span>Total pagado</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.totalPaidCs) : '—'}</strong></div>
+                  <div className="finance-cell"><span>Depreciación / mes</span><strong>{formatCs(detailVehicle.financing.monthlyDepreciationCs)}</strong></div>
+                  <div className="finance-cell"><span>Depreciación anual</span><strong>{formatCs(detailVehicle.financing.annualDepreciationCs)}<small className="cell-sub">{detailVehicle.financing.depreciationPct}% / año</small></strong></div>
+                  <div className="finance-cell"><span>Costo fijo mensual</span><strong>{formatCs(detailVehicle.financing.monthlyCostCs)}<small className="cell-sub">cuota + depreciación</small></strong></div>
+                  <div className="finance-cell"><span>Punto de equilibrio</span><strong>{detailVehicle.minTripsMonth ? `~${detailVehicle.minTripsMonth} viajes/mes` : 'sin meta'}<small className="cell-sub">cubre cuota y depreciación</small></strong></div>
+                </div>
+                <p className="chart-note">Con el leasing, cada viaje del mes debe cubrir su parte de la cuota, el combustible y la depreciación. El módulo de Reportes → Flota y financiamiento proyecta mes a mes si cada vehículo es rentable.</p>
               </div>
               <div className="maintenance-mini"><span className="eyebrow">HISTORIAL DE MANTENIMIENTO</span>{maintenance.filter((record) => record.vehicleId === detailVehicle.id).length === 0 && <p className="muted">Sin registros para este vehículo.</p>}{maintenance.filter((record) => record.vehicleId === detailVehicle.id).map((record) => <div className="maintenance-row" key={record.id}><span>{record.date}</span><p>{record.description}</p><b>{formatCs(record.cost)}</b></div>)}</div>
             </div>
@@ -1837,6 +1926,13 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     )}
   </>
 }
+
+const FUNCTION_LABELS: Record<string, string> = { taxi: 'Taxi privado', delivery: 'Delivery', mixto: 'Mixto', '': 'Sin función' }
+const FUNCTION_OPTIONS: Array<{ value: Vehicle['vehicleFunction']; label: string }> = [
+  { value: 'taxi', label: 'Taxi privado (servicio ejecutivo / corporativo)' },
+  { value: 'delivery', label: 'Delivery (reparto de mercadería y paquetería)' },
+  { value: 'mixto', label: 'Mixto (taxi y delivery según demanda)' },
+]
 
 const PERMISSION_LABELS: Record<string, string> = {
   '*': 'Acceso total',
@@ -1908,14 +2004,14 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
   }
 
   async function revokeUserRow(user: AppUser) {
-    if (!window.confirm("¿Cerrar la sesión activa de ? Se usará para bloquear accesos futuros de esta sesión.")) return
+    if (!window.confirm(`¿Cerrar la sesión activa de ${user.name}? Se usará para bloquear accesos futuros de esta sesión.`)) return
     setBusy(user.id)
     try {
       const updated = await revokeUserSession(user.id)
       onChanged(updated)
-      onNotice("Sesión de  cerrada")
+      onNotice(`Sesión de ${user.name} cerrada`)
     } catch {
-      onNotice("No se pudo cerrar la sesión de ")
+      onNotice(`No se pudo cerrar la sesión de ${user.name}`)
     } finally {
       setBusy('')
     }
@@ -2132,40 +2228,128 @@ function IncidentFormDialog({ onClose, onCreated, onError }: { onClose: () => vo
   )
 }
 
-function ReportsView({ reports, trips, drivers, clients, incidents, onNotice }: { reports: ReportsSummary | null; trips: Trip[]; drivers: Driver[]; clients: Client[]; incidents: Incident[]; onNotice: (message: string) => void }) {
+function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, settings, onNotice }: { reports: ReportsSummary | null; trips: Trip[]; drivers: Driver[]; clients: Client[]; incidents: Incident[]; vehicles: Vehicle[]; settings: AppSettings | null; onNotice: (message: string) => void }) {
+  const [tab, setTab] = useState<'resumen' | 'flota' | 'viajes' | 'conductores' | 'clientes' | 'incidencias' | 'paquetes'>('resumen')
   const [exporting, setExporting] = useState('')
+  const dollarRate = settings?.dollarRate ?? 36.5
   if (!reports) return <EmptyState title="Reportes pendientes" detail="La API aún no entregó el resumen analítico." />
-  function exportExcelFile(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages', label: string) {
+  const profitable = trips.filter((trip) => trip.status === 'Completado' && (trip.profitCs ?? 0) >= 0).length
+  const losses = trips.filter((trip) => trip.status === 'Completado' && (trip.profitCs ?? 0) < 0).length
+  function exportExcelFile(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages' | 'vehicles', label: string) {
     setExporting(collection)
     const rows: Array<Record<string, ExportCell>> = []
-    if (collection === 'trips') for (const trip of trips) rows.push({ 'ID': trip.id, 'Cliente': trip.client, 'Conductor': trip.driver, 'Origen': trip.origin, 'Destino': trip.destination, 'Fecha': trip.date, 'Paquetes': trip.packages, 'Estado': trip.status, 'Distancia km': trip.distanceKm ?? '', 'Costo C$': trip.estimatedCostCs ?? '', 'Servicio': trip.serviceType ?? 'Urbano' })
+    if (collection === 'trips') for (const trip of trips) rows.push({ 'ID': trip.id, 'Cliente': trip.client, 'Conductor': trip.driver, 'Origen': trip.origin, 'Destino': trip.destination, 'Fecha': trip.date, 'Paquetes': trip.packages, 'Estado': trip.status, 'Distancia km': trip.distanceKm ?? '', 'Tarifa C$': trip.estimatedCostCs ?? '', 'Costo C$': trip.costCs ?? '', 'Resultado C$': trip.profitCs ?? '', 'Servicio': trip.serviceType ?? 'Urbano' })
     if (collection === 'drivers') for (const driver of drivers) rows.push({ 'ID': driver.id, 'Nombre': driver.name, 'Teléfono': driver.phone, 'Vehículo': driver.vehicle, 'Placa': driver.plate, 'Estado': driver.status, 'Ruta': driver.route })
     if (collection === 'clients') for (const client of clients) rows.push({ 'ID': client.id, 'Nombre': client.name, 'Tipo': client.type, 'Teléfono': client.phone, 'Email': client.email, 'Dirección': client.address ?? '', 'Viajes': client.trips, 'Solicitudes activas': client.activeRequests, 'Estado': client.status })
     if (collection === 'incidents') for (const incident of incidents) rows.push({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })
     if (collection === 'packages') for (const trip of trips) for (let index = 1; index <= Math.min(trip.packages, 3); index += 1) rows.push({ 'Guía': `PKG-${trip.id.replace('#', '')}-${index}`, 'Viaje': trip.id, 'Cliente': trip.client, 'Peso kg': (1 + ((trip.packages + index) % 24)).toFixed(1), 'Dimensiones': `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, 'Estado': trip.status })
+    if (collection === 'vehicles') for (const vehicle of vehicles) rows.push({ 'Placa': vehicle.plate, 'Modelo': vehicle.model, 'Tipo': vehicle.type, 'Función': FUNCTION_LABELS[vehicle.vehicleFunction] ?? '', 'Sistema logístico': vehicle.logistics, 'Estado': vehicle.status, 'Conductor': vehicle.driver, 'Combustible': vehicle.fuelType, 'Precio C$': vehicle.priceCs, 'Odómetro km': vehicle.odometerKm, 'Financiado': vehicle.financing.financed ? 'Sí' : 'No', 'Pago mensual C$': vehicle.financing.leaseMonthlyPaymentCs, 'Meses restantes': vehicle.financing.monthsRemaining, 'Deuda restante C$': vehicle.financing.remainingDebtCs, 'Depreciación/mes C$': vehicle.financing.monthlyDepreciationCs, 'Costo mensual C$': vehicle.financing.monthlyCostCs, 'Meta viajes/mes': vehicle.minTripsMonth })
     exportExcel(`incoex-${collection}-${new Date().toISOString().slice(0, 10)}.xlsx`, label, rows)
     onNotice(`Reporte ${label} en Excel descargado`)
     window.setTimeout(() => setExporting(''), 600)
   }
+  const fleetReport = reports.fleetReport ?? []
+  const fleetSummary = (key: keyof typeof fleetReport[number]) => fleetReport.reduce((sum, row) => sum + (Number(row[key]) || 0), 0)
+  const totalMonthlyCost = fleetSummary('monthlyCostCs')
+  const totalIncome = fleetSummary('incomeMonthCs')
+  const totalMargin = fleetSummary('marginCs')
+  const reportTabs: Array<{ id: typeof tab; label: string }> = [
+    { id: 'resumen', label: 'Resumen ejecutivo' },
+    { id: 'flota', label: 'Flota y financiamiento' },
+    { id: 'viajes', label: 'Viajes' },
+    { id: 'conductores', label: 'Conductores' },
+    { id: 'clientes', label: 'Clientes' },
+    { id: 'incidencias', label: 'Incidencias' },
+    { id: 'paquetes', label: 'Paquetes' },
+  ]
+  const packageRows = trips.flatMap((trip) => Array.from({ length: Math.min(trip.packages, 3) }, (_, index) => ({ id: `PKG-${trip.id.replace('#', '')}-${index + 1}`, trip: trip.id, client: trip.client, weightKg: (1 + ((trip.packages + index) % 24)).toFixed(1), dimensions: `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, status: trip.status })))
   return <>
-    <section className="panel export-panel">
-      <div className="export-panel-head"><div><span className="eyebrow">EXPORTACIÓN · EXCEL Y PDF</span><h2>Descargar datos operativos</h2><p>Cada archivo se genera con los datos reales de la API (viajes, conductores, clientes, incidencias y paquetes). Los permisos de exportación los define el rol (Gerencia y Finanzas pueden exportar).</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('trips', 'Viajes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Viajes Excel</button><button className="secondary-button" onClick={() => exportExcelFile('drivers', 'Conductores')} disabled={exporting !== ''}><Icon name="download" size={13} /> Conductores Excel</button><button className="secondary-button" onClick={() => exportExcelFile('clients', 'Clientes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Clientes Excel</button><button className="secondary-button" onClick={() => exportExcelFile('incidents', 'Incidencias')} disabled={exporting !== ''}><Icon name="download" size={13} /> Incidencias Excel</button><button className="secondary-button" onClick={() => exportExcelFile('packages', 'Paquetes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Paquetes Excel</button><button className="secondary-button" onClick={() => { exportPdf('Reporte de operaciones · INCOEX Logistics', 'Datos reales de la operación de Managua', ['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Estado', 'Distancia km', 'Costo C$'], trips.map((trip) => [trip.id, trip.client, trip.driver, trip.origin, trip.destination, trip.status, trip.distanceKm ?? '—', trip.estimatedCostCs ?? '—'])); onNotice('Reporte PDF preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Viajes PDF</button></div></div>
-      <div className="export-footnote"><strong>Datos:</strong> Viajes (ID, cliente, conductor, origen, destino, fecha, paquetes, estado, distancia km, costo C$, servicio) · Conductores (ID, nombre, teléfono, vehículo, placa, estado, ruta) · Clientes (ID, nombre, tipo, teléfono, email, dirección, viajes, solicitudes, estado) · Incidencias (ID, viaje, conductor, cliente, tipo, prioridad, estado) · Paquetes (guía, viaje, cliente, peso, dimensiones, estado).</div>
-    </section>
-    <div className="metrics-grid report-metrics"><MetricCard label="Viajes registrados" value={reports.totalTrips} delta="en la base real" tone="blue" icon="trips" hint="Total de solicitudes registradas en la API." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados antes de la entrega." /><MetricCard label="Ingresos estimados" value={reports.totalRevenueCs} delta="C$ · tarifas calculadas" tone="gold" icon="wallet" hint="Suma de la tarifa estimada de todos los viajes en córdobas." /><MetricCard label="Kilómetros recorridos" value={reports.totalDistanceKm} delta="km en rutas registradas" tone="slate" icon="tracking" hint="Suma de la distancia en km de los viajes con ruta." /><MetricCard label="Distancia promedio" value={reports.averageDistanceKm} delta="km por viaje" tone="cyan" icon="truck" hint="Distancia media de los viajes con ruta." /></div>
-    {(reports.topVehicles?.length ?? 0) > 0 && (
-      <div className="reports-grid">
-        <section className="panel leaderboard"><PanelHeader title="Top vehículos por viajes" action="kilometraje" /><ol>{reports.topVehicles!.map((vehicle, index) => <li key={vehicle.plate}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(vehicle.model)}</span><strong>{vehicle.plate} · {vehicle.model}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{vehicle.trips} viajes · {vehicle.km.toLocaleString('es-NI')} km</b></li>)}</ol><p className="chart-note">Viajes completados y kilómetros por vehículo, con su conductor asignado.</p></section>
-        <section className="panel leaderboard"><PanelHeader title="Conductores con su vehículo" action="quién viaja más" /><ol>{reports.driverVehicle!.map((driver, index) => <li key={driver.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(driver.name)}</span><strong>{driver.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{driver.trips} viajes · {formatCs(driver.incomeCs)}</b></li>)}</ol><p className="chart-note">Cada conductor vinculado al vehículo que usa: viajes completados e ingresos que genera.</p></section>
-      </div>
-    )}
-    <div className="reports-grid">
-      <ChartPanel title="Viajes por fecha" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes registradas por fecha en la API." />
-      <ChartPanel title="Entregas por fecha" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por fecha." />
-      <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes registrados." />
-      <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados." />
+    <div className="report-tabs">
+      {reportTabs.map((item) => <button key={item.id} className={`filter-chip ${tab === item.id ? 'active' : ''}`} onClick={() => setTab(item.id)}>{item.label}</button>)}
     </div>
+    {tab === 'resumen' && <>
+      <div className="metrics-grid report-metrics"><MetricCard label="Viajes registrados" value={reports.totalTrips} delta="en la base real" tone="blue" icon="trips" hint="Total de solicitudes registradas en la API." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados o anulados." /><MetricCard label="Ingresos estimados" value={reports.totalRevenueCs} delta="C$ · tarifas calculadas" tone="gold" icon="wallet" hint="Suma de la tarifa estimada de los viajes completados." /><MetricCard label="Ganancia total" value={reports.profitSummary?.totalProfitCs ?? 0} delta="C$ · tarifa menos costo" tone="mint" icon="trendingUp" hint={`${reports.profitSummary?.profitableTrips ?? 0} viajes con ganancia · ${reports.profitSummary?.lossTrips ?? 0} con pérdida`} /><MetricCard label="Kilómetros recorridos" value={reports.totalDistanceKm} delta="km en rutas registradas" tone="slate" icon="tracking" hint="Suma de la distancia en km de los viajes con ruta." /></div>
+      {(reports.topVehicles?.length ?? 0) > 0 && (
+        <div className="reports-grid">
+          <section className="panel leaderboard"><PanelHeader title="Top vehículos por viajes" action="kilometraje" /><ol>{reports.topVehicles!.map((vehicle, index) => <li key={vehicle.plate}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(vehicle.model)}</span><strong>{vehicle.plate} · {vehicle.model}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{vehicle.trips} viajes · {vehicle.km.toLocaleString('es-NI')} km</b></li>)}</ol><p className="chart-note">Viajes completados y kilómetros por vehículo, con su conductor asignado.</p></section>
+          <section className="panel leaderboard"><PanelHeader title="Conductores con su vehículo" action="quién viaja más" /><ol>{reports.driverVehicle!.map((driver, index) => <li key={driver.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(driver.name)}</span><strong>{driver.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{driver.trips} viajes · {formatCs(driver.incomeCs)}</b></li>)}</ol><p className="chart-note">Cada conductor vinculado al vehículo que usa: viajes completados e ingresos que genera.</p></section>
+        </div>
+      )}
+      <div className="reports-grid">
+        <ChartPanel title="Viajes por fecha" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes registradas por fecha en la API." />
+        <ChartPanel title="Entregas por fecha" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por fecha." />
+        <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes registrados." />
+        <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados." />
+      </div>
+    </>}
+    {tab === 'flota' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">PROYECCIÓN MENSUAL DE LA FLOTA</span><h2>Flota y financiamiento</h2><p>Por cada vehículo: función, sistema logístico, meta mínima de viajes, leasing (cuota, deuda restante, meses), depreciación, ingreso del mes y margen proyectado. Los números en rojo indican que el vehículo no se cubre a sí mismo este mes.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('vehicles', 'Flota y financiamiento')} disabled={exporting !== ''}><Icon name="download" size={13} /> Flota Excel</button><button className="secondary-button" onClick={() => { exportPdf('Flota y financiamiento · INCOEX Logistics', 'Proyección mensual y leasing por vehículo', ['Placa', 'Modelo', 'Función', 'Financiado', 'Pago mensual', 'Deuda restante', 'Meses', 'Depreciación/mes', 'Costo fijo/mes', 'Viajes mes', 'Meta/mes', 'Ingreso mes', 'Margen'], fleetReport.map((row) => [row.plate, row.model, FUNCTION_LABELS[row.vehicleFunction] ?? '', row.financed ? 'Sí' : 'No', row.leaseMonthlyPaymentCs ? `C$ ${row.leaseMonthlyPaymentCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.remainingDebtCs ? `C$ ${row.remainingDebtCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.monthsRemaining || '—', `C$ ${row.monthlyDepreciationCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.monthlyCostCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, row.tripsMonth, row.minTripsMonth || '—', `C$ ${row.incomeMonthCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.marginCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`])); onNotice('Reporte de flota preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Flota PDF</button></div></div>
+        <div className="fleet-totals"><span>Costo fijo mensual de la flota: <b>{formatCs(totalMonthlyCost)}</b></span><span>Ingresos del mes: <b>{formatCs(totalIncome)}</b></span><span>Margen proyectado: <b className={totalMargin < 0 ? 'text-danger' : ''}>{formatCs(totalMargin)}</b></span><span className={fleetSummary('tripsMonth') >= fleetSummary('minTripsMonth') ? '' : 'text-danger'}>Viajes del mes: <b>{fleetSummary('tripsMonth')}</b> · meta <b>{fleetSummary('minTripsMonth')}</b></span></div>
+      </section>
+      <section className="panel table-panel">
+        <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Leasing, depreciación y rentabilidad por vehículo (US$ {dollarRate})</div></div>
+        <DataTable className="fleet-report-table" columns={['Vehículo', 'Función / logística', 'Financiamiento', 'Deuda restante', 'Costo fijo / mes', 'Meta viajes', 'Viajes del mes', 'Ingreso mes', 'Margen proyectado']} rows={fleetReport.map((row) => [
+          <span key={`${row.plate}-fleet`}><b className="linkish">{row.plate}</b><small className="cell-sub">{row.model}</small></span>,
+          <span key={`${row.plate}-fn`}><b className="function-label">{FUNCTION_LABELS[row.vehicleFunction] ?? '—'}</b><small className="cell-sub">{row.logistics || '—'}</small></span>,
+          <span key={`${row.plate}-fin`}>{row.financed ? <span className="financed-badge">Leasing</span> : <span className="financed-badge cash">Contado</span>}<small className="cell-sub">{row.financed ? `cuota ${formatCs(row.leaseMonthlyPaymentCs)} · ${row.monthsRemaining} meses` : 'sin cuota'}</small></span>,
+          <span key={`${row.plate}-debt`}><b className={row.remainingDebtCs > 0 ? 'text-danger' : ''}>{row.financed ? formatCs(row.remainingDebtCs) : '—'}</b><small className="cell-sub">{row.financed ? 'capital + residual' : 'pagado'}</small></span>,
+          <span key={`${row.plate}-cost`}><b>{formatCs(row.monthlyCostCs)}</b><small className="cell-sub">depre. {formatCs(row.monthlyDepreciationCs)}</small></span>,
+          <span key={`${row.plate}-target`}><b>{row.minTripsMonth || '—'}</b><small className="cell-sub">p.e. {row.breakEvenTrips || '—'} viajes</small></span>,
+          <span key={`${row.plate}-trips`} className={row.tripsMonth < row.minTripsMonth && row.minTripsMonth > 0 ? 'text-danger' : ''}><b>{row.tripsMonth}</b><small className="cell-sub">{row.kmMonth.toLocaleString('es-NI')} km</small></span>,
+          <span key={`${row.plate}-income`}><b>{formatCs(row.incomeMonthCs)}</b><small className="cell-sub">comb. {formatCs(row.fuelEstimateCs)}</small></span>,
+          <span key={`${row.plate}-margin`} className={row.marginCs < 0 ? 'text-danger' : ''}><b>{row.marginCs < 0 ? '−' : '+'}{formatCs(Math.abs(row.marginCs))}</b><small className="cell-sub">{row.marginCs < 0 ? 'pierde este mes' : 'cubre su costo'}</small></span>,
+        ])} />
+        <div className="table-footer"><span>Margen = ingresos del mes − combustible estimado − cuota de leasing − depreciación. El mínimo de viajes por vehículo se define en Vehículos y flota → Datos económicos.</span></div>
+      </section>
+    </>}
+    {tab === 'viajes' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">RESULTADO POR VIAJE</span><h2>Viajes · ganancia o pérdida</h2><p>Cada viaje completado muestra su resultado: tarifa menos costo de operación (combustible + desgaste estimado).</p></div><div className="profit-summary-chips"><span className="profit-chip gain">+{profitable} con ganancia</span><span className="profit-chip loss">−{losses} con pérdida</span><span className="profit-chip neutral">Total {formatCs(reports.profitSummary?.totalProfitCs ?? 0)}</span></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('trips', 'Viajes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Viajes Excel</button><button className="secondary-button" onClick={() => { exportPdf('Viajes · INCOEX Logistics', 'Datos reales de la operación de Managua', ['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Estado', 'Distancia km', 'Tarifa', 'Costo', 'Resultado'], trips.map((trip) => [trip.id, trip.client, trip.driver, trip.origin, trip.destination, trip.status, trip.distanceKm ?? '—', trip.estimatedCostCs ?? '—', trip.costCs ?? '—', trip.profitCs ?? '—'])); onNotice('Reporte de viajes preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Viajes PDF</button></div></div>
+      </section>
+      <section className="panel table-panel">
+        <DataTable className="trips-table" rowClassName={(_row, index) => ['Cancelado', 'Anulado'].includes(trips[index]?.status ?? '') ? 'row-off' : ''} columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paq.', 'Dist. (km)', 'Tarifa', 'Costo', 'Resultado', 'Estado']} rows={trips.map((trip) => [<strong key={`${trip.id}-id`}>{trip.id}</strong>, trip.client, trip.driver, trip.origin, trip.destination, trip.date, trip.packages, trip.distanceKm !== undefined ? trip.distanceKm.toFixed(1) : '-', <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? formatCs(trip.estimatedCostCs) : '-'}</span>, <span key={`${trip.id}-cost`}>{trip.costCs !== undefined && trip.costCs > 0 ? formatCs(trip.costCs) : '—'}</span>, <ProfitChip key={`${trip.id}-profit`} trip={trip} />, <StatusPill key={`${trip.id}-status`} status={trip.status} />])} />
+      </section>
+    </>}
+    {tab === 'conductores' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">RECURSO HUMANO OPERATIVO</span><h2>Conductores</h2><p>Flota de conductores con su vehículo asignado, estado y ruta actual.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('drivers', 'Conductores')} disabled={exporting !== ''}><Icon name="download" size={13} /> Conductores Excel</button></div></div>
+      </section>
+      <section className="panel table-panel">
+        <DataTable className="drivers-table" columns={['ID', 'Nombre', 'Teléfono', 'Vehículo', 'Placa', 'Estado', 'Ruta', 'Tipo']} rows={drivers.map((driver) => [driver.id, <span key={driver.id}>{driver.name}{driver.external && <span className="badge-external">3P</span>}</span>, driver.phone, driver.vehicle, driver.plate, <StatusPill key={`${driver.id}-status`} status={driver.status} />, driver.route, driver.external ? 'Proveedor tercerizado' : 'Flota propia'])} />
+      </section>
+    </>}
+    {tab === 'clientes' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">BASE COMERCIAL</span><h2>Clientes</h2><p>Empresas y personas con su volumen de viajes y estado de crédito.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('clients', 'Clientes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Clientes Excel</button></div></div>
+      </section>
+      <section className="panel table-panel">
+        <DataTable className="clients-table" columns={['ID', 'Nombre', 'Tipo', 'Teléfono', 'Email', 'Dirección', 'Viajes', 'Solicitudes activas', 'Estado']} rows={clients.map((client) => [client.id, client.name, client.type, client.phone, client.email, client.address ?? '—', client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />])} />
+      </section>
+    </>}
+    {tab === 'incidencias' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">CONTROL OPERATIVO</span><h2>Incidencias</h2><p>Eventos registrados en la operación: retrasos, daños, reclamos.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('incidents', 'Incidencias')} disabled={exporting !== ''}><Icon name="download" size={13} /> Incidencias Excel</button></div></div>
+      </section>
+      <section className="panel table-panel">
+        <DataTable className="incidents-table" columns={['ID', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado']} rows={incidents.map((incident) => [incident.id, incident.trip, incident.driver, incident.client, incident.type, <span className={`priority-${incident.priority.toLowerCase()}`} key={incident.id}>{incident.priority}</span>, <StatusPill key={`${incident.id}-status`} status={incident.status} />])} />
+      </section>
+    </>}
+    {tab === 'paquetes' && <>
+      <section className="panel export-panel">
+        <div className="export-panel-head"><div><span className="eyebrow">GUÍAS DERIVADAS</span><h2>Paquetes</h2><p>Cada paquete hereda el estado y la ruta de su viaje.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('packages', 'Paquetes')} disabled={exporting !== ''}><Icon name="download" size={13} /> Paquetes Excel</button></div></div>
+      </section>
+      <section className="panel table-panel">
+        <DataTable className="packages-table" columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [pkg.id, pkg.trip, pkg.client, `${pkg.weightKg} kg`, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+      </section>
+    </>}
   </>
+}
+function ProfitChip({ trip }: { trip: Trip }) {
+  const profit = trip.profitCs
+  if (profit === undefined || Number.isNaN(profit)) return <span className="profit-chip neutral" title="Sin costo registrado">—</span>
+  const loss = profit < 0
+  return <span className={`profit-chip ${loss ? 'loss' : 'gain'}`} title={loss ? `Pérdida: costo C$ ${(trip.costCs ?? 0).toFixed(2)} supera la tarifa` : `Ganancia: tarifa menos costo estimado de operación`}>{loss ? '−' : '+'}{formatCs(Math.abs(profit))}<small className="cell-sub">{loss ? 'pérdida' : 'ganancia'}</small></span>
 }
 
 function ChartPanel({ title, values, labels, compact = false, note }: { title: string; values: number[]; labels: string[]; compact?: boolean; note?: string }) {
@@ -2210,10 +2394,22 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
   </>
 }
 
-function TrackingView({ tracking, onNavigate }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void }) {
+function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
+  const [refreshing, setRefreshing] = useState(false)
+  useEffect(() => {
+    const timer = window.setInterval(() => { setRefreshing(true); window.setTimeout(() => setRefreshing(false), 600) }, 20000)
+    return () => window.clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    const timer = window.setInterval(onRefresh, 20000)
+    return () => window.clearInterval(timer)
+  }, [onRefresh])
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
   const withRoute = tracking.trips.filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat))
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">Posiciones de conductores y rutas de viajes con coordenadas reales registradas en la API.</p></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas · {withRoute.length} rutas dibujadas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} trips={withRoute} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span></div></div></section>
+  const onlineCount = (tracking.live ?? []).filter((position) => position.online).length
+  const realCount = (tracking.live ?? []).filter((position) => position.online && !position.demo).length
+  const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">La app móvil del conductor reporta su GPS cada ~20 s (mientras está abierta). Los puntos “demo” son posiciones de referencia de la API y se apagan solos si no llega señal real.</p></div><div className="tracking-stats"><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span></div></div><div className="large-map"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {
@@ -2548,6 +2744,8 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
   const [vehiculoKm, setVehiculoKm] = useState(settings?.vehicleRates?.Vehículo?.farePerKmCs ?? 8.5)
   const [camionBase, setCamionBase] = useState(settings?.vehicleRates?.Camión?.baseFeeCs ?? 130)
   const [camionKm, setCamionKm] = useState(settings?.vehicleRates?.Camión?.farePerKmCs ?? 13.5)
+  const [prioritario, setPrioritario] = useState(settings?.prioritySurchargePct ?? 25)
+  const [programado, setProgramado] = useState(settings?.scheduledSurchargePct ?? 0)
   const [companyName, setCompanyName] = useState(settings?.companyName ?? 'INCOEX Logistics')
   const [companyPhone, setCompanyPhone] = useState(settings?.companyPhone ?? '')
   const [companyEmail, setCompanyEmail] = useState(settings?.companyEmail ?? '')
@@ -2572,6 +2770,8 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
           'Vehículo': { baseFeeCs: Number(vehiculoBase), farePerKmCs: Number(vehiculoKm) },
           'Camión': { baseFeeCs: Number(camionBase), farePerKmCs: Number(camionKm) },
         },
+        prioritySurchargePct: Number(prioritario),
+        scheduledSurchargePct: Number(programado),
         companyName,
         companyPhone,
         companyEmail,
@@ -2615,7 +2815,11 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
         <div className="vehicle-rates">
           <div className="vehicle-rate-card"><span className="vehicle-rate-icon moto"><Icon name="moto" size={17} /></span><div><strong>Moto</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={motoBase} onChange={setMotoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={motoKm} onChange={setMotoKm} /><em>10 km ≈ {formatCs(rateExample(motoBase, motoKm))}</em></div></div>
           <div className="vehicle-rate-card"><span className="vehicle-rate-icon vehiculo"><Icon name="car" size={17} /></span><div><strong>Vehículo</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={vehiculoBase} onChange={setVehiculoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={vehiculoKm} onChange={setVehiculoKm} /><em>10 km ≈ {formatCs(rateExample(vehiculoBase, vehiculoKm))}</em></div></div>
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camión</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={camionBase} onChange={setCamionBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={camionKm} onChange={setCamionKm} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camíon</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={camionBase} onChange={setCamionBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={camionKm} onChange={setCamionKm} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
+        </div>
+        <div className="service-type-rates">
+          <div className="service-rate-card"><strong>Prioritario</strong><small>Recargo sobre la tarifa · %</small><NumInput required min={0} max={300} step={1} value={prioritario} onChange={setPrioritario} /><em>Viaje de 10 km ≈ {formatCs(Number((rateExample(vehiculoBase, vehiculoKm) * (1 + prioritario / 100)).toFixed(2)))}</em></div>
+          <div className="service-rate-card"><strong>Programado</strong><small>Recargo sobre la tarifa · %</small><NumInput required min={0} max={300} step={1} value={programado} onChange={setProgramado} /><em>Viaje de 10 km ≈ {formatCs(Number((rateExample(vehiculoBase, vehiculoKm) * (1 + programado / 100)).toFixed(2)))}</em></div>
         </div>
         <div className="conversion-strip">
           <span><b>1 USD</b> = {formatCs(dollarRate)}</span>

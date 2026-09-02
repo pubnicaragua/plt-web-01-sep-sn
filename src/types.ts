@@ -88,6 +88,8 @@ export interface Trip {
   destinationLng?: number
   distanceKm?: number
   estimatedCostCs?: number
+  costCs?: number
+  profitCs?: number
   serviceType?: 'Urbano' | 'Express' | 'Programado'
   contactName?: string
   contactPhone?: string
@@ -141,6 +143,10 @@ export interface Incident {
   type: string
   priority: 'Baja' | 'Media' | 'Alta' | 'Crítica'
   status: 'Abierta' | 'En proceso' | 'Resuelta'
+  description?: string
+  latitude?: number
+  longitude?: number
+  evidence?: string
 }
 
 export interface HistoryEvent {
@@ -168,11 +174,53 @@ export interface ReportsSummary {
   topClients: Array<{ name: string; trips: number }>
   topVehicles?: Array<{ plate: string; model: string; trips: number; km: number; incomeCs: number }>
   driverVehicle?: Array<{ name: string; vehicle: string; trips: number; incomeCs: number }>
+  fleetReport?: Array<{
+    plate: string
+    model: string
+    vehicleFunction: string
+    logistics: string
+    external: boolean
+    financed: boolean
+    leaseMonthlyPaymentCs: number
+    monthsRemaining: number
+    remainingDebtCs: number
+    monthlyDepreciationCs: number
+    monthlyCostCs: number
+    minTripsMonth: number
+    tripsMonth: number
+    kmMonth: number
+    incomeMonthCs: number
+    fuelEstimateCs: number
+    marginCs: number
+    breakEvenTrips: number
+  }>
+  profitSummary?: {
+    totalProfitCs: number
+    profitableTrips: number
+    lossTrips: number
+  }
+}
+
+export interface LiveDriverPosition {
+  driver: string
+  latitude: number
+  longitude: number
+  accuracy: number
+  speedKmh: number
+  source: string
+  demo: boolean
+  ageSeconds: number
+  online: boolean
+  status: Driver['status']
+  vehicle: string
+  plate: string
 }
 
 export interface TrackingOverview {
   activeOperations: number
+  trackingAt?: string
   drivers: Driver[]
+  live: LiveDriverPosition[]
   trips: Trip[]
   incidents: Incident[]
 }
@@ -200,6 +248,26 @@ export interface Vehicle {
   odometerKm: number
   imageUrl: string
   external?: boolean
+  vehicleFunction: 'taxi' | 'delivery' | 'mixto' | ''
+  logistics: string
+  minTripsMonth: number
+  financing: {
+    financed: boolean
+    downPaymentCs: number
+    leaseStart: string
+    leaseTermMonths: number
+    leaseMonthlyPaymentCs: number
+    residualValueCs: number
+    depreciationPct: number
+    monthsElapsed: number
+    monthsRemaining: number
+    totalPaidCs: number
+    remainingDebtCs: number
+    monthlyDepreciationCs: number
+    annualDepreciationCs: number
+    monthlyCostCs: number
+    financingLabel: string
+  }
 }
 
 export interface VehicleRate {
@@ -218,6 +286,8 @@ export interface AppSettings {
     Vehículo: VehicleRate
     Camión: VehicleRate
   }
+  prioritySurchargePct: number
+  scheduledSurchargePct: number
   companyName: string
   companyPhone: string
   companyEmail: string

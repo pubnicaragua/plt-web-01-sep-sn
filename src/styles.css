@@ -588,6 +588,12 @@ body { min-width: 0; background: var(--paper); }
 .vehicle-rate-icon.moto { color: #0e7a5f; background: #e3f7f0; }
 .vehicle-rate-icon.vehiculo { color: #2a64e7; background: #eaf0ff; }
 .vehicle-rate-icon.camion { color: #b7791f; background: #fdf3e0; }
+.service-type-rates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+.service-rate-card { padding: 14px; border: 1px solid #e3e9f3; border-radius: 12px; background: #fafcff; }
+.service-rate-card strong { display: block; color: #243554; font-size: 14px; }
+.service-rate-card small { display: block; margin-top: 10px; color: #7e8ca3; font-size: 10.5px; }
+.service-rate-card input { width: 100%; margin-top: 5px; padding: 7px 9px; border: 1px solid #dde4ef; border-radius: 7px; color: #243554; background: white; font-size: 12.5px; }
+.service-rate-card em { display: block; margin-top: 8px; color: #2a64e7; font-size: 11px; font-style: normal; font-weight: 600; }
 
 @media (max-width: 900px) {
   .settings-form-grid { grid-template-columns: 1fr; }
@@ -671,3 +677,82 @@ body { min-width: 0; background: var(--paper); }
 .pac-container { z-index: 4000; font-family: 'Segoe UI', Arial, sans-serif; border-radius: 10px; box-shadow: 0 12px 30px rgba(28, 50, 92, .16); overflow: hidden; }.pac-item { padding: 8px 12px; color: #33425f; font-size: 12.5px; }.pac-item-selected { background: #eef4ff; }
 /* === Tercerizados, sesiones, filas anuladas y factura operativa === */
 .badge-external { display: inline-flex; align-items: center; margin-left: 7px; padding: 2px 7px; border-radius: 999px; color: #fff; background: linear-gradient(135deg, #8a6be8, #6a4dd8); font-size: 9.5px; font-weight: 800; letter-spacing: .04em; vertical-align: middle; }.plate-cell { display: inline-flex; align-items: center; gap: 4px; }.driver-badges { display: flex; align-items: center; gap: 8px; }.driver-badges .status-pill { align-self: auto; }.scope-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 0 0 12px; }.scope-label { color: #8b97ab; font-size: 10px; letter-spacing: .08em; font-weight: 700; margin-right: 3px; }.row-off td { opacity: .5; }.row-off td:first-child, .row-off td:nth-child(2) { text-decoration: line-through; }.check-inline { display: flex; align-items: center; gap: 6px; }.check-inline label { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4c5d78; }.trip-detail-field.full { grid-column: 1 / -1; }.trip-detail-field.full select { width: 100%; padding: 9px 10px; border: 1px solid #dde4ee; border-radius: 8px; font-size: 12.5px; }.session-chip { padding: 4px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }.session-chip.activa { color: #159866; background: #e6faf0; }.session-chip.cerrada { color: #6b7a90; background: #eceff4; }.billing-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 4px; }.billing-tabs .filter-chip { background: white; }.invoices-table { min-width: 1080px; }.invoice-brand-row { display: flex; align-items: center; gap: 13px; }.invoice-logo { height: 44px; border-radius: 8px; }.invoice-brand span { display: block; color: #8b97ab; font-size: 11px; letter-spacing: .06em; }.invoice-brand span span { display: inline; }.invoice-fare-strip { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 9px 11px; border-radius: 9px; background: #f4f7fc; }.invoice-fare-strip span { color: #5b6b84; font-size: 11.5px; }.invoice-fare-strip input { max-width: 130px; }.invoice-fare-strip .primary-mini { flex: 0 0 auto; }
+/* === Sidebar colapsable + responsive === */
+.app-shell.sidebar-collapsed .sidebar { width: 64px; }
+.app-shell.sidebar-collapsed .sidebar .brand-lockup { justify-content: center; padding: 18px 0 12px; }
+.app-shell.sidebar-collapsed .sidebar .sidebar-section-label, .app-shell.sidebar-collapsed .nav-item span:not(.nav-icon), .app-shell.sidebar-collapsed .nav-badge, .app-shell.sidebar-collapsed .nav-lock, .app-shell.sidebar-collapsed .user-info { display: none; }
+.app-shell.sidebar-collapsed .nav-item { justify-content: center; }
+.app-shell.sidebar-collapsed .nav-item.active::before { left: 0; right: auto; }
+.app-shell.sidebar-collapsed .user-card { justify-content: center; padding: 10px 6px; }
+.app-shell.sidebar-collapsed .main-area { margin-left: 64px; }
+.topbar-leading { display: flex; align-items: center; gap: 10px; }
+.sidebar-toggle { flex: 0 0 auto; }
+.sidebar-backdrop { display: none; }
+@media (max-width: 900px) {
+  .sidebar { transform: translateX(-100%); transition: transform .22s ease; position: fixed; z-index: 60; height: 100dvh; box-shadow: none; }
+  .app-shell.sidebar-open .sidebar { transform: translateX(0); box-shadow: 0 0 40px rgba(8, 18, 38, .35); }
+  .app-shell.sidebar-open .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(8, 18, 38, .45); z-index: 55; border: 0; }
+  .main-area, .app-shell.sidebar-collapsed .main-area { margin-left: 0; }
+  .breadcrumb span { display: none; }
+  .topbar { padding-left: 14px; }
+  .table-toolbar { flex-wrap: wrap; }
+  .export-buttons { flex-wrap: wrap; }
+  .reports-grid { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .driver-summary { grid-template-columns: repeat(2, 1fr); }
+  .fleet-report-table, .trips-table, .vehicles-table, .clients-table, .drivers-table, .incidents-table, .packages-table, .invoices-table { min-width: 0; }
+}
+
+/* === Reportes como módulo === */
+.report-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 2px 0 14px; }
+.fleet-totals { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; font-size: 12px; color: #5b6b84; padding-top: 10px; }
+.fleet-totals b { font-size: 13.5px; color: #14223c; }
+.fleet-totals .text-danger b { color: #d64545; }
+.profit-summary-chips { display: flex; gap: 8px; align-items: center; }
+.text-danger { color: #d64545 !important; }
+.priority-alta, .priority-critica, .priority-crítica { color: #d64545; font-weight: 700; }
+.priority-media { color: #d9a21b; font-weight: 700; }
+.priority-baja { color: #5b6b84; font-weight: 700; }
+
+/* === Resultado por viaje === */
+.profit-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.profit-chip.gain { color: #159866; background: #e6faf0; }
+.profit-chip.loss { color: #d64545; background: #fdecec; }
+.profit-chip.neutral { color: #6b7a90; background: #eceff4; font-weight: 700; }
+.profit-chip .cell-sub { font-weight: 600; opacity: .8; }
+
+/* === Flota: badges y financiamiento === */
+.financed-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; margin-left: 6px; color: #fff; background: linear-gradient(135deg, #f2994a, #d97706); }
+.financed-badge.cash { background: linear-gradient(135deg, #6b8aa5, #4c6078); }
+.function-label { font-size: 11px; color: #2c3f5c; }
+.finance-card { margin-top: 14px; padding: 13px 15px; border: 1px solid #e3e9f2; border-radius: 12px; background: linear-gradient(180deg, #f8fafd, #f1f5fa); }
+.finance-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.finance-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.finance-cell { background: #fff; border: 1px solid #e6ecf4; border-radius: 9px; padding: 8px 10px; }
+.finance-cell span { display: block; color: #8b97ab; font-size: 10px; letter-spacing: .05em; font-weight: 700; margin-bottom: 3px; }
+.finance-cell strong { font-size: 12.5px; color: #14223c; }
+.finance-cell small { display: block; }
+@media (max-width: 900px) { .finance-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* === Mapa en vivo === */
+.live-map-container { position: absolute; inset: 0; z-index: 1; }
+.large-map .leaflet-container { width: 100%; height: 100%; font-family: inherit; }
+.live-marker { background: transparent; border: 0; }
+.driver-dot { width: 15px; height: 15px; border-radius: 50%; background: #22c97e; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(34, 201, 126, .28), 0 2px 8px rgba(8, 18, 38, .35); }
+.live-marker.offline .driver-dot { background: #9aa4b5; box-shadow: 0 0 0 4px rgba(154, 164, 181, .25), 0 2px 8px rgba(8, 18, 38, .3); }
+.live-marker .dot-peg { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 900; border: 2.5px solid #fff; box-shadow: 0 2px 8px rgba(8, 18, 38, .35); }
+.live-marker.origin .dot-peg { background: #22c97e; }
+.live-marker.dest .dot-peg { background: #17d3e0; color: #0a2436; }
+.live-marker.incident .dot-peg { background: #e74c3c; }
+.live-popup { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #2c3f5c; min-width: 190px; }
+.live-popup-driver { font-weight: 800; color: #14223c; }
+.live-popup-plate { color: #8b97ab; font-size: 11px; }
+.live-popup-row { display: flex; align-items: center; gap: 6px; }
+.live-popup-row i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.live-popup-action { margin-top: 7px; border: 0; background: #0b6fe0; color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.live-popup-wrap .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 8px 30px rgba(8, 18, 38, .22); }
+.tracking-stats { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.tracking-stat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #4c5d78; background: #f2f6fb; border: 1px solid #e3e9f2; padding: 6px 10px; border-radius: 999px; }
+.tracking-stat .legend { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin: 0; }
+.legend.gray { background: #9aa4b5; }
+.tracking-head .tracking-stat .pulse-dot { margin: 0; }
