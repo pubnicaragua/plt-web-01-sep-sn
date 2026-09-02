@@ -16,7 +16,44 @@ export type Section =
   | 'billing'
   | 'settings'
 
-export type TripStatus = 'Pendiente' | 'Asignado' | 'En camino' | 'En entrega' | 'Completado' | 'Cancelado'
+export type TripStatus = 'Pendiente' | 'Asignado' | 'En camino' | 'En entrega' | 'Completado' | 'Cancelado' | 'Anulado'
+
+export interface FinancePeriod {
+  label: string
+  trips: number
+  km: number
+  incomeCs: number
+  fuelCs: number
+  maintenanceCs: number
+  marginCs: number
+  avgTripCs: number
+  avgPerKmCs: number
+}
+
+export interface FinanceSummary {
+  generatedAt: string
+  currency: string
+  periods: {
+    today: FinancePeriod
+    week: FinancePeriod
+    month: FinancePeriod
+    all: FinancePeriod
+  }
+  invoicingCs: number
+  invoicingTrips: number
+  daily: Array<{ label: string; incomeCs: number; fuelCs: number }>
+  topClients: Array<{ name: string; trips: number; incomeCs: number; fuelCs: number; marginCs: number }>
+  fleet: {
+    vehicles: number
+    drivers: number
+    activeTrips: number
+    completedTrips: number
+    totalDistanceKm: number
+    avgIncomePerKmCs: number
+    avgFuelPerKmCs: number
+    avgTripCs: number
+  }
+}
 
 export interface DashboardSummary {
   tripsToday: number

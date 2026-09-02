@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+﻿import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import {
   assignTrip,
@@ -11,7 +11,6 @@ import {
   createVehicle,
   deleteClient,
   deleteDriver,
-  deleteTrip,
   deleteUser,
   deleteVehicle,
   getApiBase,
@@ -20,6 +19,7 @@ import {
   getDeliverables,
   getDeliverablesSummary,
   getDrivers,
+  getFinanceSummary,
   getHistory,
   getIncidents,
   getMaintenance,
@@ -43,7 +43,7 @@ import {
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
-import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
 interface NumInputProps {
@@ -187,6 +187,7 @@ function App() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [history, setHistory] = useState<HistoryEvent[]>([])
   const [reports, setReports] = useState<ReportsSummary | null>(null)
+  const [finance, setFinance] = useState<FinanceSummary | null>(null)
   const [tracking, setTracking] = useState<TrackingOverview | null>(null)
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [deliverableSummary, setDeliverableSummary] = useState<DeliverableSummary>({ total: 0, backlog: 0, in_progress: 0, review: 0, done: 0 })
@@ -214,6 +215,7 @@ function App() {
       getIncidents(),
       getHistory(),
       getReportsSummary(),
+      getFinanceSummary(),
       getTrackingOverview(),
       getDeliverables(),
       getDeliverablesSummary(),
@@ -223,7 +225,7 @@ function App() {
       getRoles(),
       getSettings(),
     ])
-      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextTracking, nextDeliverables, nextDeliverableSummary, nextVehicles, nextMaintenance, nextUsers, nextRoles, nextSettings]) => {
+      .then(([nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextReports, nextFinance, nextTracking, nextDeliverables, nextDeliverableSummary, nextVehicles, nextMaintenance, nextUsers, nextRoles, nextSettings]) => {
         setSummary(nextSummary)
         setTrips(nextTrips)
         setDrivers(nextDrivers)
@@ -231,6 +233,7 @@ function App() {
         setIncidents(nextIncidents)
         setHistory(nextHistory)
         setReports(nextReports)
+        setFinance(nextFinance)
         setTracking(nextTracking)
         setDeliverables(nextDeliverables)
         setDeliverableSummary(nextDeliverableSummary)
@@ -335,8 +338,8 @@ function App() {
 
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
-          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} onNavigate={navigate} />}
-          {section === 'trips' && <TripsView trips={trips} search={search} settings={settings} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice) }} />}
+          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} />}
+          {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
           {section === 'requests' && <RequestsView trips={trips} onNavigate={navigate} />}
           {section === 'assignment' && <AssignmentView trips={trips} drivers={drivers} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
           {section === 'drivers' && <DriversView drivers={drivers} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
@@ -377,6 +380,14 @@ async function refreshSummary(setSummary: (summary: DashboardSummary) => void, s
   }
 }
 
+async function refreshFinance(setFinance: (finance: FinanceSummary) => void, setNotice: (notice: string) => void) {
+  try {
+    setFinance(await getFinanceSummary())
+  } catch {
+    setNotice('La operación se actualizó, pero no se pudo refrescar la rentabilidad')
+  }
+}
+
 function sectionDescription(section: Section) {
   const descriptions: Record<Section, string> = {
     dashboard: 'Monitoreo en tiempo real de la flota, entregas e incidencias de despacho en Managua.',
@@ -399,7 +410,7 @@ function sectionDescription(section: Section) {
   return descriptions[section]
 }
 
-function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; onNavigate: (section: Section) => void }) {
+function Dashboard({ summary, trips, drivers, history, finance, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void }) {
   return <>
     <div className="metrics-grid">
       <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." onClick={() => onNavigate('trips')} />
@@ -413,6 +424,7 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
       <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta." onClick={() => onNavigate('incidents')} />
       <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." onClick={() => onNavigate('incidents')} />
     </div>
+    {finance && <FinancePanel finance={finance} onNavigate={onNavigate} />}
     <section className="panel attention-panel">
       <PanelHeader title="Requiere atención" action="Ver incidencias" onAction={() => onNavigate('incidents')} />
       <div className="attention-grid">
@@ -447,6 +459,60 @@ function Dashboard({ summary, trips, drivers, history, onNavigate }: { summary: 
 
 function MetricCard({ label, value, delta, tone, icon, hint, onClick }: { label: string; value: number; delta: string; tone: string; icon: IconName; hint?: string; onClick?: () => void }) {
   return <button className={`metric-card tone-${tone} clickable`} title={hint} onClick={onClick} type="button"><div className="metric-top"><span className="metric-label">{label}{hint && <span className="metric-info"><Icon name="info" size={11} /></span>}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></button>
+}
+
+function FinancePanel({ finance, onNavigate }: { finance: FinanceSummary; onNavigate: (section: Section) => void }) {
+  const today = finance.periods.today
+  const marginPct = today.incomeCs > 0 ? Math.max(0, Math.round((today.marginCs / today.incomeCs) * 100)) : 0
+  const fuelPct = today.incomeCs > 0 ? Math.round((today.fuelCs / today.incomeCs) * 100) : 0
+  const maxIncome = Math.max(...finance.daily.map((day) => day.incomeCs), 1)
+  return (
+    <section className="panel finance-panel">
+      <div className="finance-head">
+        <div><span className="eyebrow">Rentabilidad · C$</span><h2>Dinero en limpio</h2><p>Ingresos ejecutados (viajes Completado) contra combustible y mantenimiento · {finance.invoicingTrips} viajes en facturación por {formatCs(finance.invoicingCs)}</p></div>
+        <button className="secondary-button" onClick={() => onNavigate('trips')}><Icon name="trips" size={13} /> Ver viajes</button>
+      </div>
+      <div className="finance-grid">
+        <div className="finance-card income"><span className="finance-card-label">Ingresos hoy</span><strong>{formatCs(today.incomeCs)}</strong><small>{today.trips} viajes completados · {formatCs(today.avgPerKmCs)}/km</small></div>
+        <div className="finance-card fuel"><span className="finance-card-label">Combustible hoy</span><strong>{formatCs(today.fuelCs)}</strong><small>{fuelPct}% de los ingresos · {today.km.toLocaleString('es-NI')} km</small></div>
+        <div className="finance-card maintenance"><span className="finance-card-label">Mantenimiento hoy</span><strong>{formatCs(today.maintenanceCs)}</strong><small>histórico extendido en las columnas</small></div>
+        <div className="finance-card margin"><span className="finance-card-label">Margen hoy</span><strong>{formatCs(today.marginCs)}</strong><small>{marginPct}% de margen bruto</small></div>
+      </div>
+      <div className="finance-periods">
+        {[finance.periods.today, finance.periods.week, finance.periods.month, finance.periods.all].map((period) => (
+          <div className={`finance-period-row ${period.label === 'Hoy' ? 'active' : ''}`} key={period.label}>
+            <div className="fin-period-label"><span>{period.label}</span><small>{period.trips} viajes · {period.km.toLocaleString('es-NI')} km</small></div>
+            <div className="fin-period-vals"><span><small>Ingresos</small><b>{formatCs(period.incomeCs)}</b></span><span><small>Combustible</small><b>{formatCs(period.fuelCs)}</b></span><span><small>Manten.</small><b>{formatCs(period.maintenanceCs)}</b></span><span className="fin-margin"><small>Margen</small><b>{formatCs(period.marginCs)}</b></span></div>
+          </div>
+        ))}
+      </div>
+      <div className="finance-bottom">
+        <div className="finance-chart">
+          <div className="finance-chart-head"><strong>Ingresos vs combustible · últimos 14 días</strong><small>Ingresos completados × combustible estimado</small></div>
+          <div className="fin-bars">
+            {finance.daily.map((day) => (
+              <div className="fin-bar-col" key={day.label} title={`${day.label} · ingresos ${formatCs(day.incomeCs)} · combustible ${formatCs(day.fuelCs)}`}>
+                <div className="fin-bar-stack"><i className="fin-bar fuel" style={{ height: `${Math.min(100, (day.fuelCs / maxIncome) * 100)}%` }} /><i className="fin-bar income" style={{ height: `${Math.min(100, (day.incomeCs / maxIncome) * 100)}%` }} /></div>
+                <span>{day.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="fin-legend"><span><i className="fin-dot income" />Ingresos</span><span><i className="fin-dot fuel" />Combustible</span></div>
+        </div>
+        <div className="finance-topclients">
+          <div className="finance-chart-head"><strong>Top clientes por ingresos</strong><small>mejores cuentas del histórico</small></div>
+          {finance.topClients.map((client, index) => (
+            <button className="fin-client" key={client.name} onClick={() => onNavigate('clients')}>
+              <span className="fin-client-rank">{index + 1}</span>
+              <span className="fin-client-name"><strong>{client.name}</strong><small>{client.trips} viajes</small></span>
+              <span className="fin-client-money"><b>{formatCs(client.incomeCs)}</b><small>margen {formatCs(client.marginCs)}</small></span>
+            </button>
+          ))}
+          <div className="fleet-stats"><span><b>{finance.fleet.vehicles}</b> vehículos</span><span><b>{finance.fleet.drivers}</b> conductores</span><span><b>{finance.fleet.totalDistanceKm.toLocaleString('es-NI')}</b> km</span><span><b>{formatCs(finance.fleet.avgFuelPerKmCs)}</b> combustible/km</span></div>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function PanelHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
@@ -1075,8 +1141,10 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
   )
 }
 
-function TripsView({ trips, search, settings, onNavigate, onNotice, onChanged, onDeleted }: { trips: Trip[]; search: string; settings: AppSettings | null; onNavigate: (section: Section) => void; onNotice: (message: string) => void; onChanged: (trip: Trip) => void; onDeleted: (id: string) => void }) {
+function TripsView({ trips, clients, search, settings, finance, onNavigate, onNotice, onChanged, onDeleted }: { trips: Trip[]; clients: Client[]; search: string; settings: AppSettings | null; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onNotice: (message: string) => void; onChanged: (trip: Trip) => void; onDeleted: (id: string) => void }) {
   const [detailTrip, setDetailTrip] = useState<Trip | null>(null)
+  const [invoiceTrip, setInvoiceTrip] = useState<Trip | null>(null)
+  const [clientDetail, setClientDetail] = useState<string | null>(null)
   const [actingTrip, setActingTrip] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'Pendiente' | 'En curso' | 'Completado'>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | Trip['serviceType']>('all')
@@ -1107,29 +1175,24 @@ function TripsView({ trips, search, settings, onNavigate, onNotice, onChanged, o
       setActingTrip('')
     }
   }
-  async function removeTrip(trip: Trip) {
-    if (!window.confirm(`¿Eliminar el viaje ${trip.id} de ${trip.client}? El conductor asignado quedará libre.`)) return
+  async function anularTrip(trip: Trip) {
+    if (!window.confirm(`¿Anular el viaje ${trip.id} de ${trip.client}? No se elimina: queda registrado como anulado y no cuenta en ingresos ni en reportes. El conductor asignado quedará libre.`)) return
     setActingTrip(trip.id)
     try {
-      await deleteTrip(trip.id)
-      onDeleted(trip.id)
-      if (detailTrip?.id === trip.id) setDetailTrip(null)
-      onNotice(`Viaje ${trip.id} eliminado`)
+      const updated = await updateTripStatus(trip.id, 'Anulado')
+      onChanged(updated)
+      if (detailTrip?.id === trip.id) setDetailTrip(updated)
+      onNotice(`Viaje ${trip.id} anulado · queda en el historial sin valor económico`)
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
-      if (message.includes('no encontrado')) {
-        onDeleted(trip.id)
-        if (detailTrip?.id === trip.id) setDetailTrip(null)
-        onNotice(`Viaje ${trip.id} ya no existía en la API: se quitó de la lista`)
-      } else {
-        onNotice(`No se pudo eliminar ${trip.id}; reintenta en un momento`)
-      }
+      onNotice(message || `No se pudo anular ${trip.id}; reintenta en un momento`)
     } finally {
       setActingTrip('')
     }
   }
-  return <>
-    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{trips.length}</b></button><button className={`filter-chip ${statusFilter === 'Pendiente' ? 'active' : ''}`} onClick={() => { setStatusFilter('Pendiente'); setPage(1) }}>Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className={`filter-chip ${statusFilter === 'En curso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En curso'); setPage(1) }}>En curso <b>{inCourse}</b></button><button className={`filter-chip ${statusFilter === 'Completado' ? 'active' : ''}`} onClick={() => { setStatusFilter('Completado'); setPage(1) }}>Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><select className="mini-select type-filter" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as typeof typeFilter); setPage(1) }} title="Filtrar por tipo de servicio"><option value="all">Todos los servicios</option><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paquetes', 'Tarifa', 'Estado', 'Acciones']} rows={visible.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <strong key={`${trip.id}-client`}>{trip.client}</strong>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? <><b>{formatCs(trip.estimatedCostCs)}</b><small className="cell-sub">{trip.serviceType ?? 'Urbano'}</small></> : '—'}</span>, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ver en el mapa" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={14} /></button><button title="Eliminar viaje" disabled={actingTrip === trip.id} onClick={() => void removeTrip(trip)}><Icon name="trash" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} viajes · 👁 detalle · 🗑 elimina (libera al conductor)</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  const avgFuelPerKm = finance?.fleet.avgFuelPerKmCs ?? 0
+  const fuelOf = (trip: Trip) => (trip.distanceKm ?? 0) * avgFuelPerKm
+  return <>    <section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{trips.length}</b></button><button className={`filter-chip ${statusFilter === 'Pendiente' ? 'active' : ''}`} onClick={() => { setStatusFilter('Pendiente'); setPage(1) }}>Pendientes <b>{trips.filter((trip) => trip.status === 'Pendiente').length}</b></button><button className={`filter-chip ${statusFilter === 'En curso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En curso'); setPage(1) }}>En curso <b>{inCourse}</b></button><button className={`filter-chip ${statusFilter === 'Completado' ? 'active' : ''}`} onClick={() => { setStatusFilter('Completado'); setPage(1) }}>Completadas <b>{trips.filter((trip) => trip.status === 'Completado').length}</b></button></div><select className="mini-select type-filter" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value as typeof typeFilter); setPage(1) }} title="Filtrar por tipo de servicio"><option value="all">Todos los servicios</option><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></div><DataTable columns={['ID', 'Cliente', 'Conductor', 'Origen', 'Destino', 'Fecha', 'Paq.', 'Dist. (km)', 'Tarifa', 'Estado', 'Acciones']} rows={visible.map((trip) => [<strong className="linkish" key={`${trip.id}-id`}>{trip.id}</strong>, <button className="client-name-btn" key={`${trip.id}-client`} onClick={() => setClientDetail(trip.client)} title="Ver detalle del cliente: viajes y montos">{trip.client}</button>, <span className={trip.driver === 'Sin asignar' ? 'muted' : ''} key={`${trip.id}-driver`}>{trip.driver}</span>, trip.origin, trip.destination, trip.date, trip.packages, trip.distanceKm !== undefined ? trip.distanceKm.toFixed(1) : '—', <span key={`${trip.id}-fare`}>{trip.estimatedCostCs !== undefined ? <><b>{formatCs(trip.estimatedCostCs)}</b><small className="cell-sub">{trip.serviceType ?? 'Urbano'}</small></> : '—'}</span>, <StatusPill key={`${trip.id}-status`} status={trip.status} />, <div className="action-group" key={`${trip.id}-actions`}><button title="Ver detalle" onClick={() => setDetailTrip(trip)}><Icon name="eye" size={14} /></button><button title="Ver en el mapa" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={14} /></button><button title="Ver y descargar factura PDF" onClick={() => setInvoiceTrip(trip)}><Icon name="fileText" size={14} /></button><button title="Anular viaje (no se elimina; queda invalidado)" disabled={actingTrip === trip.id || trip.status == 'Anulado' || trip.status == 'Cancelado'} onClick={() => void anularTrip(trip)}><Icon name="close" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} viajes · clic en Cliente abre su resumen · factura PDF por viaje · anular invalida sin borrar</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {detailTrip && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTrip(null) }}>
         <div className="modal-card trip-detail-modal">
@@ -1157,23 +1220,154 @@ function TripsView({ trips, search, settings, onNavigate, onNotice, onChanged, o
               <span className="route-distance">{detailTrip.distanceKm?.toFixed(2) ?? '—'} km</span>
             </div>
           )}
+          <div className="trip-detail-grid compact margin-strip">
+            {detailTrip.estimatedCostCs !== undefined && <><div className="trip-detail-field"><span>Distancia</span><strong>{(detailTrip.distanceKm ?? 0).toFixed(1)} km</strong></div><div className="trip-detail-field"><span>Combustible est.</span><strong>{formatCs(fuelOf(detailTrip))}</strong></div><div className="trip-detail-field"><span>Margen est.</span><strong>{formatCs(detailTrip.estimatedCostCs - fuelOf(detailTrip))}</strong></div></>}
+            <div className="trip-detail-field"><span>Factura</span><button className="primary-mini invoice-trigger" onClick={() => setInvoiceTrip(detailTrip)}><Icon name="fileText" size={13} /> Ver factura PDF</button></div>
+          </div>
           <div className="modal-actions trip-actions">
             {detailTrip.status === 'Pendiente' && <button className="primary-button" onClick={() => { setDetailTrip(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar conductor</button>}
             {detailTrip.status === 'Asignado' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En camino')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en camino'}</button>}
             {detailTrip.status === 'En camino' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En entrega')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en entrega'}</button>}
             {detailTrip.status === 'En entrega' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Completado')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Confirmar entrega'}</button>}
-            {!['Completado', 'Cancelado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Cancelado')}>Cancelar viaje</button>}
+            {!['Completado', 'Cancelado', 'Anulado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'Cancelado')}>Cancelar viaje</button>}
+            {!['Cancelado', 'Anulado'].includes(detailTrip.status) && <button className="secondary-button danger" disabled={actingTrip === detailTrip.id} onClick={() => void anularTrip(detailTrip)}>Anular viaje</button>}
             <button className="secondary-button" onClick={() => { setDetailTrip(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button>
           </div>
         </div>
       </div>
     )}
+    {invoiceTrip && <InvoiceModal trip={invoiceTrip} client={clients.find((client) => client.name === invoiceTrip.client)} settings={settings} finance={finance} onClose={() => setInvoiceTrip(null)} />}
+    {clientDetail && <ClientDetailModal clientName={clientDetail} client={clients.find((client) => client.name === clientDetail)} trips={trips} onClose={() => setClientDetail(null)} onInvoice={(trip) => { setInvoiceTrip(trip); setClientDetail(null) }} />}
   </>
+}
+
+function InvoiceModal({ trip, client, settings, finance, onClose }: { trip: Trip; client: Client | undefined; settings: AppSettings | null; finance: FinanceSummary | null; onClose: () => void }) {
+  const invoiceNumber = `FAC-${trip.id.replace('#', '')}`
+  const fuelCost = (trip.distanceKm ?? 0) * (finance?.fleet.avgFuelPerKmCs ?? 0)
+  const totalCs = trip.estimatedCostCs ?? 0
+  const usd = (amount: number) => settings ? ` · US$ ${csToUsd(amount, settings.dollarRate).toFixed(2)}` : ''
+  const anulada = trip.status === 'Anulado' || trip.status === 'Cancelado'
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className="modal-card trip-detail-modal invoice-card">
+        <div className="invoice-paper">
+          <div className="invoice-brand"><strong>INCOEX</strong><span>Logistics · Managua</span></div>
+          {anulada && <span className="invoice-stamp">ANULADA</span>}
+          {trip.status === 'Completado' ? <span className="invoice-stamp paid">FACTURADO</span> : trip.status === 'En entrega' ? <span className="invoice-stamp soft">EN ENTREGA</span> : null}
+          <div className="invoice-head-row">
+            <div><span className="eyebrow">COMPROBANTE OPERATIVO</span><h2>Factura {invoiceNumber}</h2><p>Solicitud {trip.id} · {trip.date}</p></div>
+            <div className="invoice-amount"><small>Total estimado</small><b>{formatCs(totalCs)}</b>{settings && <span>US$ {csToUsd(totalCs, settings.dollarRate).toFixed(2)}</span>}</div>
+          </div>
+          <div className="invoice-client">
+            <span className="eyebrow">CLIENTE</span>
+            <h3>{trip.client}</h3>
+            {client && <p>{[client.phone, client.email, client.taxId ? `RUC ${client.taxId}` : '', client.address ? `Dirección: ${client.address}` : ''].filter(Boolean).join(' · ')}</p>}
+          </div>
+          <div className="invoice-items">
+            <div className="invoice-item head"><span>Concepto</span><span>Detalle</span><span>Valor</span></div>
+            <div className="invoice-item"><span>Servicio {trip.serviceType ?? 'Urbano'}</span><span>{trip.origin} → {trip.destination}</span><span>{formatCs(totalCs)} </span></div>
+            {trip.packages > 0 && <div className="invoice-item"><span>Paquetes</span><span>{trip.packages} bultos</span><span>—</span></div>}
+            {(trip.distanceKm ?? 0) > 0 && <div className="invoice-item"><span>Distancia</span><span>{(trip.distanceKm ?? 0).toFixed(2)} km</span><span>—</span></div>}
+            {trip.driver !== 'Sin asignar' && <div className="invoice-item"><span>Conductor</span><span>{trip.driver}</span><span>—</span></div>}
+            {trip.contactName && <div className="invoice-item"><span>Contacto</span><span>{trip.contactName}{trip.contactPhone ? ` · ${trip.contactPhone}` : ''}</span><span>—</span></div>}
+          </div>
+          <div className="invoice-totals">
+            <div><span>Subtotal</span><b>{formatCs(totalCs)}{usd(totalCs)}</b></div>
+            <div><span>Combustible estimado</span><b>{formatCs(fuelCost)}</b></div>
+            <div className="invoice-total"><span>Total a facturar</span><b>{formatCs(totalCs)}{usd(totalCs)}</b></div>
+          </div>
+          <p className="invoice-note-small">Documento interno INCOEX Logistics · generado el {new Date().toLocaleString('es-NI')} · {settings?.companyPhone ?? ''} · {settings?.companyEmail ?? ''}</p>
+        </div>
+        <div className="modal-actions trip-actions">
+          <button className="secondary-button" onClick={onClose}>Cerrar</button>
+          <button className="primary-button" onClick={() => openInvoicePrint(trip, client, settings, finance)}><Icon name="download" size={13} /> Descargar PDF</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ClientDetailModal({ clientName, client, trips, onClose, onInvoice }: { clientName: string; client: Client | undefined; trips: Trip[]; onClose: () => void; onInvoice: (trip: Trip) => void }) {
+  const clientTrips = trips.filter((trip) => trip.client === clientName).sort((a, b) => a.date < b.date ? 1 : -1)
+  const completed = clientTrips.filter((trip) => trip.status === 'Completado')
+  const incomeCs = completed.reduce((sum, trip) => sum + (trip.estimatedCostCs ?? 0), 0)
+  const km = clientTrips.reduce((sum, trip) => sum + (trip.distanceKm ?? 0), 0)
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className="modal-card trip-detail-modal">
+        <div className="modal-header"><div><span className="eyebrow">Resumen del cliente · {clientName}</span><h2>{clientName}</h2><p>{client ? [client.phone, client.email, client.taxId ? `RUC ${client.taxId}` : '', client.contact ? `Atención: ${client.contact}` : ''].filter(Boolean).join(' · ') : 'cliente sin ficha completa en la API'}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="client-summary-grid">
+          <div><span>Viajes con INCOEX</span><strong>{clientTrips.length}</strong></div>
+          <div><span>Completados</span><strong>{completed.length}</strong></div>
+          <div><span>Ingresos generados</span><strong>{formatCs(incomeCs)}</strong></div>
+          <div><span>Kilómetros recorridos</span><strong>{km.toFixed(1)} km</strong></div>
+        </div>
+        {clientTrips.length === 0 && <p className="trip-detail-note">Este cliente no tiene viajes registrados todavía.</p>}
+        {clientTrips.length > 0 && (
+          <div className="client-trip-list">
+            <div className="client-trip-list-head"><span>Viaje</span><span>Fecha</span><span>Ruta</span><span>Tarifa</span><span>Estado</span><span /></div>
+            {clientTrips.slice(0, 6).map((trip) => (
+              <div className="client-trip-row" key={trip.id}><strong>{trip.id}</strong><span>{trip.date}</span><span>{trip.origin} → {trip.destination}</span><span>{trip.estimatedCostCs !== undefined ? formatCs(trip.estimatedCostCs) : '—'}</span><StatusPill status={trip.status} /><button title="Ver factura" onClick={() => onInvoice(trip)}><Icon name="fileText" size={13} /></button></div>
+            ))}
+          </div>
+        )}
+        <div className="modal-actions trip-actions"><button className="secondary-button" onClick={onClose}>Cerrar</button></div>
+      </div>
+    </div>
+  )
+}
+
+function openInvoicePrint(trip: Trip, client: Client | undefined, settings: AppSettings | null, finance: FinanceSummary | null) {
+  const windowRef = window.open('', '_blank', 'width=880,height=760')
+  if (!windowRef) return
+  const invoiceNumber = `FAC-${trip.id.replace('#', '')}`
+  const fuelCost = (trip.distanceKm ?? 0) * (finance?.fleet.avgFuelPerKmCs ?? 0)
+  const totalCs = trip.estimatedCostCs ?? 0
+  const usd = settings ? ` (US$ ${csToUsd(totalCs, settings.dollarRate).toFixed(2)})` : ''
+  const anulada = trip.status === 'Anulado' || trip.status === 'Cancelado'
+  const clientLine = client ? [client.phone, client.email, client.taxId ? `RUC ${client.taxId}` : ''].filter(Boolean).join(' · ') : ''
+  windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Factura ${invoiceNumber}</title><style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #20304f; padding: 34px 38px; }
+    .brand { font-size: 26px; font-weight: 800; letter-spacing: .18em; color: #1d5cff; } .brand span { color: #7c899f; font-size: 12px; letter-spacing: .05em; display: block; margin-top: 2px; }
+    .stamp { position: absolute; left: 40%; top: 120px; transform: rotate(-14deg); border: 3px solid #dc3434; color: #dc3434; font-size: 26px; font-weight: 800; letter-spacing: .3em; padding: 8px 26px; border-radius: 6px; }
+    h1 { font-size: 21px; margin: 20px 0 2px; } .sub { color: #7e8ca3; margin: 0 0 18px; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0; }
+    .box { border: 1px solid #e3eaf6; border-radius: 8px; padding: 12px 14px; }
+    .box small { display: block; color: #93a1b8; text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+    .box b { font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 13px; }
+    th { text-align: left; background: #f2f5fa; border-bottom: 2px solid #dbe5f6; padding: 8px 10px; }
+    td { border-bottom: 1px solid #eef2f8; padding: 8px 10px; }
+    .totals { margin-left: auto; width: 280px; } .totals div { display: flex; justify-content: space-between; padding: 6px 10px; }
+    .totals .total { border-top: 2px solid #1d5cff; font-weight: 800; font-size: 15px; }
+    .foot { margin-top: 22px; color: #93a1b8; font-size: 11px; }
+  </style></head><body>
+    <div class="brand">INCOEX<span>Logistics · Managua</span></div>
+    ${anulada ? '<div class="stamp">ANULADA</div>' : ''}
+    <h1>Factura ${invoiceNumber}</h1>
+    <p class="sub">Solicitud ${trip.id} · ${trip.date} · ${trip.status}</p>
+    <div class="grid">
+      <div class="box"><small>Cliente</small><b>${trip.client}</b>${clientLine ? `<br/><em style="font-size:11px;color:#7e8ca3">${clientLine}</em>` : ''}</div>
+      <div class="box"><small>Servicio</small><b>${trip.serviceType ?? 'Urbano'} · ${trip.origin} → ${trip.destination}</b>${trip.packages > 0 ? `<br/><em style="font-size:11px;color:#7e8ca3">${trip.packages} paquetes · ${(trip.distanceKm ?? 0).toFixed(2)} km · ${trip.driver}</em>` : ''}</div>
+    </div>
+    <table><thead><tr><th>Concepto</th><th>Detalle</th><th>Valor</th></tr></thead><tbody>
+      <tr><td>Servicio de transporte</td><td>${trip.origin} → ${trip.destination}</td><td>${formatCs(totalCs)}${usd}</td></tr>
+      ${trip.contactName ? `<tr><td>Contacto</td><td>${trip.contactName}${trip.contactPhone ? ` · ${trip.contactPhone}` : ''}</td><td>—</td></tr>` : ''}
+    </tbody></table>
+    <div class="totals">
+      <div><span>Subtotal</span><b>${formatCs(totalCs)}${usd}</b></div>
+      <div><span>Combustible estimado</span><b>${formatCs(fuelCost)}</b></div>
+      <div class="total"><span>TOTAL</span><b>${formatCs(totalCs)}${usd}</b></div>
+    </div>
+    <p class="foot">INCOEX Logistics · ${settings?.companyPhone ?? ''} · ${settings?.companyEmail ?? ''} ${settings ? `· ${settings.companyAddress}` : ''}<br/>Documento interno generado el ${new Date().toLocaleString('es-NI')} · guarda como PDF desde el diálogo de impresión</p>
+    <script>window.onload = function () { window.print() }</script>
+  </body></html>`)
+  windowRef.document.close()
 }
 
 function RequestsView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (section: Section) => void }) {
   const pending = trips.filter((trip) => trip.status === 'Pendiente')
-  return <div className="request-grid">{pending.map((trip) => <article className="panel request-card" key={trip.id}><div className="request-head"><span className="status-pill pendiente">Pendiente</span><strong>Solicitud {trip.id}</strong></div><h2>{trip.client}</h2><div className="route-detail"><span><b>RECOGIDA</b>{trip.origin}</span><span><b>DESTINO</b>{trip.destination}</span></div><div className="request-meta">{trip.date} · {trip.packages} paquetes</div><button className="primary-button" onClick={() => onNavigate('assignment')}>Asignar conductor</button></article>)}</div>
+  return <div className="request-grid">{pending.map((trip) => <article className="panel request-card" key={trip.id}><div className="request-head"><span className="status-pill pendiente">Pendiente</span><strong>Solicitud {trip.id}</strong></div><h2>{trip.client}</h2><div className="route-detail"><span><b>RECOGIDA</b>{trip.origin}</span><span><b>DESTINO</b>{trip.destination}</span></div><div className="request-meta">{trip.date} · {trip.packages} paquetes · {trip.serviceType ?? 'Urbano'} · {trip.estimatedCostCs !== undefined ? `Tarifa ${formatCs(trip.estimatedCostCs)}` : 'sin tarifa'}</div><button className="primary-button" onClick={() => onNavigate('assignment')}>Asignar conductor</button></article>)}</div>
 }
 
 function AssignmentView({ trips, drivers, onAssigned, onNotice }: { trips: Trip[]; drivers: Driver[]; onAssigned: (trip: Trip) => void; onNotice: (message: string) => void }) {

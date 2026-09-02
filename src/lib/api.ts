@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
+import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -61,6 +61,7 @@ export function createIncident(body: { type: string; client: string; trip?: stri
 export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function getHistory() { return getJson<HistoryEvent[]>('/history') }
 export function getReportsSummary() { return getJson<ReportsSummary>('/reports/summary') }
+export function getFinanceSummary() { return getJson<FinanceSummary>('/finance/summary') }
 export function getTrackingOverview() { return getJson<TrackingOverview>('/tracking/overview') }
 export function getDeliverables() { return getJson<Deliverable[]>('/deliverables') }
 export function getDeliverablesSummary() { return getJson<DeliverableSummary>('/deliverables/summary') }
