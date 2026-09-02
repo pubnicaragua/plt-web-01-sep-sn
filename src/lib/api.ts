@@ -79,6 +79,8 @@ export function createTrip(body: Pick<Trip, 'client' | 'origin' | 'destination' 
   serviceType?: 'Urbano' | 'Express' | 'Programado'
   contactName?: string
   contactPhone?: string
+  originRefs?: string
+  destinationRefs?: string
 }) {
   return sendJson<Trip>('/trips', 'POST', body)
 }
@@ -89,6 +91,14 @@ export function assignTrip(tripId: string, driverId: string) {
 
 export function updateTripStatus(tripId: string, status: TripStatus) {
   return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/status`, 'PATCH', { status })
+}
+
+export function updateTripPayment(tripId: string, body: { method?: Trip['paymentMethod']; ref?: string; amount?: number; date?: string; dueDate?: string }) {
+  return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/payment`, 'PATCH', body)
+}
+
+export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number }) {
+  return sendJson<Client>(`/clients/${encodeURIComponent(id)}`, 'PATCH', body)
 }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }

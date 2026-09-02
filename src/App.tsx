@@ -36,6 +36,8 @@ import {
   updateIncidentStatus,
   updateSettings,
   updateTripStatus,
+  updateTripPayment,
+  updateClient,
   updateUser,
   updateVehicle,
   updateVehicleStatus,
@@ -344,7 +346,7 @@ function App() {
           {section === 'assignment' && <AssignmentView trips={trips} drivers={drivers} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
           {section === 'drivers' && <DriversView drivers={drivers} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
-          {section === 'clients' && <ClientsView clients={clients} search={search} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} onNotice={setNotice} />}
           {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
@@ -723,25 +725,29 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   )
 }
 
-function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (client: Client) => void; onError: (message: string) => void }) {
-  const [name, setName] = useState('')
-  const [type, setType] = useState('Corporativo')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [address, setAddress] = useState('')
-  const [contact, setContact] = useState('')
-  const [taxId, setTaxId] = useState('')
-  const [notes, setNotes] = useState('')
+function ClientFormDialog({ client, onClose, onCreated, onError }: { client?: Client | null; onClose: () => void; onCreated: (client: Client) => void; onError: (message: string) => void }) {
+  const [name, setName] = useState(client?.name ?? '')
+  const [type, setType] = useState(client?.type ?? 'Corporativo')
+  const [phone, setPhone] = useState(client?.phone ?? '')
+  const [email, setEmail] = useState(client?.email ?? '')
+  const [address, setAddress] = useState(client?.address ?? '')
+  const [contact, setContact] = useState(client?.contact ?? '')
+  const [taxId, setTaxId] = useState(client?.taxId ?? '')
+  const [notes, setNotes] = useState(client?.notes ?? '')
+  const [creditDays, setCreditDays] = useState(client?.creditDays ?? 0)
+  const [dueDay, setDueDay] = useState(client?.dueDay ?? 0)
   const [submitting, setSubmitting] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     try {
-      const client = await createClient({ name, type, phone, email, address, contact, taxId, notes })
-      onCreated(client)
-      if ((client as Client & { existed?: boolean }).existed) onError('Ese cliente ya existía: sus datos se actualizaron, no se duplicó')
+      const payload = { name, type, phone, email, address, contact, taxId, notes, creditDays, dueDay }
+      const saved = client ? await updateClient(client.id, payload) : await createClient(payload)
+      onCreated(saved)
+      if (client) onError('Cliente actualizado: crédito, contacto y datos guardados')
+      else if ((saved as Client & { existed?: boolean }).existed) onError('Ese cliente ya existía: sus datos se actualizaron, no se duplicó')
     } catch {
-      onError('No se pudo registrar el cliente; revisa el nombre o la conexión con la API')
+      onError('No se pudo guardar el cliente; revisa el nombre o la conexión con la API')
     } finally {
       setSubmitting(false)
     }
@@ -749,7 +755,7 @@ function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <form className="modal-card wide" onSubmit={submit}>
-        <div className="modal-header"><div><span className="eyebrow">Operaciones · Clientes</span><h2>Nuevo cliente</h2><p>Se registra Activo y queda disponible para solicitar viajes. Si el nombre o el correo ya existen, se actualizan sus datos (sin duplicar).</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Clientes</span><h2>{client ? 'Editar cliente' : 'Nuevo cliente'}</h2><p>{client ? 'Actualiza contactos y condiciones de cobro (crédito y día de facturación).' : 'Se registra Activo y queda disponible para solicitar viajes. Si el nombre o el correo ya existen, se actualizan sus datos (sin duplicar).'}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="form-grid">
           <label>Nombre o empresa<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre de la empresa o persona" /></label>
           <label>Tipo de cliente<select value={type} onChange={(event) => setType(event.target.value)}><option>Corporativo</option><option>Particular</option></select></label>
@@ -758,9 +764,12 @@ function ClientFormDialog({ onClose, onCreated, onError }: { onClose: () => void
           <label>Persona de contacto<input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Quién levanta las solicitudes" /></label>
           <label>NIT / RUC<input value={taxId} onChange={(event) => setTaxId(event.target.value)} placeholder="Ej: J0310000123456" /></label>
           <label className="full-field">Dirección<input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Dirección principal en Managua" /></label>
+          <label>Días de crédito<NumInput min={0} value={creditDays} onChange={setCreditDays} placeholder="0 = contado" /></label>
+          <label>Día de cobro (1-28)<select value={dueDay} onChange={(event) => setDueDay(Number(event.target.value))} title="Cada mes se factura este día"><option value={0}>— sin día fijo —</option>{Array.from({ length: 28 }, (_, index) => index + 1).map((day) => <option value={day} key={day}>{day} de cada mes</option>)}</select></label>
           <label className="full-field">Notas internas<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Horarios de entrega, puntos de referencia, condiciones…" /></label>
         </div>
-        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar cliente'}</button></div>
+        <p className="wizard-hint">Los viajes nuevos de este cliente heredarán la fecha de cobro: {dueDay > 0 ? `día ${dueDay} de cada mes` : creditDays > 0 ? `${creditDays} días después del viaje` : 'contado (sin crédito)'}.</p>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : client ? 'Guardar cambios' : 'Registrar cliente'}</button></div>
       </form>
     </div>
   )
@@ -773,6 +782,32 @@ function haversineKm(a: LatLng, b: LatLng) {
   const dLng = toRad(b.lng - a.lng)
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
   return 2 * radius * Math.asin(Math.sqrt(h))
+}
+
+function PlaceInput({ value, onChange, onPlace, placeholder, required }: { value: string; onChange: (next: string) => void; onPlace: (place: { label: string; lat: number; lng: number }) => void; placeholder: string; required?: boolean }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    let autocomplete: any
+    let mounted = true
+    loadGoogleMaps().then((maps) => {
+      if (!mounted || !inputRef.current || !maps?.places?.Autocomplete) return
+      autocomplete = new maps.places.Autocomplete(inputRef.current, {
+        componentRestrictions: { country: 'ni' },
+        fields: ['formatted_address', 'geometry', 'name'],
+      })
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace()
+        const label = place?.formatted_address || place?.name || ''
+        if (label) onChange(label)
+        const location = place?.geometry?.location
+        if (location && typeof location.lat === 'function') {
+          onPlace({ label, lat: location.lat(), lng: location.lng() })
+        }
+      })
+    })
+    return () => { mounted = false }
+  }, [])
+  return <input ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete="off" />
 }
 
 const TRIP_STEPS = ['Cliente y servicio', 'Ruta en el mapa', 'Destinatario y carga', 'Confirmar']
@@ -788,39 +823,21 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
   const [fragile, setFragile] = useState(false)
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
+  const [originRefs, setOriginRefs] = useState('')
+  const [destinationRefs, setDestinationRefs] = useState('')
   const [originPoint, setOriginPoint] = useState<LatLng | null>(null)
   const [destinationPoint, setDestinationPoint] = useState<LatLng | null>(null)
   const [recipientName, setRecipientName] = useState('')
   const [recipientPhone, setRecipientPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [searching, setSearching] = useState<'' | 'origin' | 'destination'>('')
-  const [searchError, setSearchError] = useState('')
 
-  async function searchOnMap(address: string, type: 'origin' | 'destination') {
-    const query = address.trim()
-    if (!query) return
-    setSearching(type)
-    setSearchError('')
-    try {
-      const maps = await loadGoogleMaps()
-      if (!maps?.Geocoder) throw new Error('geocoder-no-disponible')
-      const geocoder = new maps.Geocoder()
-      const results = await new Promise<any[]>((resolve, reject) => {
-        geocoder.geocode({ address: `${query}, Managua, Nicaragua` }, (response: any[], status: string) => {
-          if (status === 'OK' && response.length > 0) resolve(response)
-          else reject(new Error(status))
-        })
-      })
-      const location = results[0].geometry.location
-      const point = { lat: location.lat(), lng: location.lng() }
-      if (type === 'origin') setOriginPoint(point)
-      else setDestinationPoint(point)
-      if (type === 'origin' && (!origin || !origin.trim())) setOrigin(`${query} (punto localizado)`)
-      if (type === 'destination' && (!destination || !destination.trim())) setDestination(`${query} (punto localizado)`)
-    } catch {
-      setSearchError('No se pudo localizar la dirección en el mapa; haz clic directamente sobre el mapa para colocar el punto.')
-    } finally {
-      setSearching('')
+  function placeOnMap(place: { label: string; lat: number; lng: number }, type: 'origin' | 'destination') {
+    if (type === 'origin') {
+      setOrigin(place.label)
+      setOriginPoint({ lat: place.lat, lng: place.lng })
+    } else {
+      setDestination(place.label)
+      setDestinationPoint({ lat: place.lat, lng: place.lng })
     }
   }
 
@@ -854,6 +871,8 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
         distanceKm: Number(distanceKm.toFixed(2)),
         recipientName,
         recipientPhone,
+        originRefs,
+        destinationRefs,
       })
       onCreated(trip)
     } catch {
@@ -883,10 +902,12 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
           {step === 1 && (
             <div className="route-step">
               <div className="form-grid route-fields">
-                <label>Recogida<input required value={origin} onChange={(event) => setOrigin(event.target.value)} placeholder="Dirección o zona de recogida" /><button type="button" className="secondary-button geocode-button" disabled={searching !== ''} onClick={() => void searchOnMap(origin, 'origin')}><Icon name="map" size={12} /> {searching === 'origin' ? 'Localizando…' : 'Buscar en el mapa'}</button></label>
-                <label>Destino<input required value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="Dirección de entrega" /><button type="button" className="secondary-button geocode-button" disabled={searching !== ''} onClick={() => void searchOnMap(destination, 'destination')}><Icon name="map" size={12} /> {searching === 'destination' ? 'Localizando…' : 'Buscar en el mapa'}</button></label>
+                <label>Recogida<PlaceInput value={origin} onChange={setOrigin} onPlace={(place) => placeOnMap(place, 'origin')} placeholder="Busca una dirección o lugar (auto-sugerencias)" required /></label>
+                <label>Destino<PlaceInput value={destination} onChange={setDestination} onPlace={(place) => placeOnMap(place, 'destination')} placeholder="Busca una dirección o lugar (auto-sugerencias)" required /></label>
+                <label className="full-field">Referencia de la recogida<input value={originRefs} onChange={(event) => setOriginRefs(event.target.value)} placeholder="Ej: portón azul después del semáforo, frente a la estación" /></label>
+                <label className="full-field">Referencia de la entrega<input value={destinationRefs} onChange={(event) => setDestinationRefs(event.target.value)} placeholder="Ej: recepción del tercer nivel, costado del edificio" /></label>
               </div>
-              {searchError && <p className="wizard-hint error-hint">{searchError}</p>}
+              {originPoint === null && destinationPoint === null && <p className="wizard-hint">Escribe una dirección (aparecen las sugerencias al escribir) o haz clic directamente sobre el mapa.</p>}
               <MapErrorBoundary>
                 <RoutePickerMap origin={originPoint} destination={destinationPoint} onChange={(point, type) => {
                   if (type === 'origin') {
@@ -915,7 +936,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
           {step === 3 && (
             <div className="confirm-step">
               <div className="confirm-block"><span className="eyebrow">CLIENTE Y SERVICIO</span><h3>{client}</h3><p>{serviceType}{contactName ? ` · Contacto: ${contactName}` : ''}{contactPhone ? ` · ${contactPhone}` : ''} · {packages} paquete(s){fragile ? ' · Frágil' : ''}</p>{description && <p className="confirm-note">{description}</p>}</div>
-              <div className="confirm-block"><span className="eyebrow">RUTA EN EL MAPA</span><h3>{origin}</h3><p className="route-arrow">↓</p><h3>{destination}</h3><p>{distanceKm.toFixed(2)} km en línea recta sobre Managua</p></div>
+              <div className="confirm-block"><span className="eyebrow">RUTA EN EL MAPA</span><h3>{origin}</h3><p className="route-arrow">↓</p><h3>{destination}</h3><p>{distanceKm.toFixed(2)} km en línea recta sobre Managua{(originRefs || destinationRefs) ? ` · Ref. recogida: ${originRefs || '—'} · Ref. entrega: ${destinationRefs || '—'}` : ''}</p></div>
               <div className="confirm-block"><span className="eyebrow">DESTINATARIO</span><p>{recipientName || 'Sin destinatario registrado'}{recipientPhone ? ` · ${recipientPhone}` : ''}</p></div>
               <div className="fare-box"><span>Tarifa estimada</span><strong>{formatCs(estimatedCost)}</strong><small>≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''} · tarifa base {settings ? formatCs(settings.baseFeeCs) : ''} + {distanceKm.toFixed(2)} km × {settings?.farePerKmCs ?? 0}</small></div>
             </div>
@@ -1224,6 +1245,13 @@ function TripsView({ trips, clients, search, settings, finance, onNavigate, onNo
             {detailTrip.estimatedCostCs !== undefined && <><div className="trip-detail-field"><span>Distancia</span><strong>{(detailTrip.distanceKm ?? 0).toFixed(1)} km</strong></div><div className="trip-detail-field"><span>Combustible est.</span><strong>{formatCs(fuelOf(detailTrip))}</strong></div><div className="trip-detail-field"><span>Margen est.</span><strong>{formatCs(detailTrip.estimatedCostCs - fuelOf(detailTrip))}</strong></div></>}
             <div className="trip-detail-field"><span>Factura</span><button className="primary-mini invoice-trigger" onClick={() => setInvoiceTrip(detailTrip)}><Icon name="fileText" size={13} /> Ver factura PDF</button></div>
           </div>
+          {(detailTrip.originRefs || detailTrip.destinationRefs) && (
+            <div className="trip-detail-grid compact margin-strip">
+              {detailTrip.originRefs && <div className="trip-detail-field"><span>Referencia recogida</span><strong>{detailTrip.originRefs}</strong></div>}
+              {detailTrip.destinationRefs && <div className="trip-detail-field"><span>Referencia entrega</span><strong>{detailTrip.destinationRefs}</strong></div>}
+            </div>
+          )}
+          <PaymentBlock trip={detailTrip} acting={actingTrip === detailTrip.id} onSaved={onChanged} onNotice={onNotice} />
           <div className="modal-actions trip-actions">
             {detailTrip.status === 'Pendiente' && <button className="primary-button" onClick={() => { setDetailTrip(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar conductor</button>}
             {detailTrip.status === 'Asignado' && <button className="primary-button" disabled={actingTrip === detailTrip.id} onClick={() => void changeStatus(detailTrip, 'En camino')}>{actingTrip === detailTrip.id ? 'Actualizando…' : 'Marcar en camino'}</button>}
@@ -1312,6 +1340,59 @@ function ClientDetailModal({ clientName, client, trips, onClose, onInvoice }: { 
           </div>
         )}
         <div className="modal-actions trip-actions"><button className="secondary-button" onClick={onClose}>Cerrar</button></div>
+      </div>
+    </div>
+  )
+}
+
+function PaymentBlock({ trip, acting, onSaved, onNotice }: { trip: Trip; acting: boolean; onSaved: (trip: Trip) => void; onNotice: (message: string) => void }) {
+  const [method, setMethod] = useState<Trip['paymentMethod']>(trip.paymentMethod ?? '')
+  const [ref, setRef] = useState(trip.paymentRef ?? '')
+  const [amount, setAmount] = useState(trip.paymentAmount ?? 0)
+  const [date, setDate] = useState('')
+  const saved = trip.paymentStatus ?? 'Sin pagar'
+  const dueDate = trip.dueDate ?? ''
+  const isFinancing = (method || trip.paymentMethod) === 'Financiamiento'
+
+  async function savePayment() {
+    try {
+      const formattedDate = date ? new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'short' }).format(new Date(`${date}T12:00:00`)) : (trip.paymentDate ?? undefined)
+      const updated = await updateTripPayment(trip.id, {
+        method: method ?? undefined,
+        ref: ref.trim() || undefined,
+        amount,
+        date: formattedDate,
+      })
+      onSaved(updated)
+      onNotice(`${trip.id}: pago registrado como ${updated.paymentStatus}`)
+    } catch {
+      onNotice('No se pudo registrar el pago; revisa la conexión con la API')
+    }
+  }
+
+  return (
+    <div className="payment-strip">
+      <div className="payment-strip-head">
+        <span className="payment-title"><Icon name="wallet" size={13} /> Pago del viaje</span>
+        <span className={`payment-chip ${saved.toLowerCase()}`}>{saved === 'Sin pagar' ? 'Sin pago' : saved}</span>
+        {dueDate && <span className="payment-due"><Icon name="calendar" size={11} /> Cobro: {dueDate}</span>}
+      </div>
+      {saved === 'Pagado' && <p className="payment-detail">Pagado {trip.paymentMethod ? `por ${trip.paymentMethod}` : ''}{trip.paymentRef ? ` · ${trip.paymentRef}` : ''} {trip.paymentDate ? `el ${trip.paymentDate}` : ''} · {formatCs(trip.paymentAmount ?? 0)}</p>}
+      {saved === 'Parcial' && <p className="payment-detail">Pago parcial {trip.paymentMethod ? `por ${trip.paymentMethod}` : ''}{trip.paymentRef ? ` · ${trip.paymentRef}` : ''} {trip.paymentDate ? `el ${trip.paymentDate}` : ''} · {formatCs(trip.paymentAmount ?? 0)}</p>}
+      {isFinancing && saved === 'Sin pagar' && <p className="payment-detail">Financiamiento asignado: se cobrará en {dueDate || 'la fecha pactada'}, ya se registró su factura.</p>}
+      <div className="payment-form">
+        <select value={method} onChange={(event) => setMethod(event.target.value as Trip['paymentMethod'])} title="Método de pago">
+          <option value="">Método de pago…</option>
+          <option>Efectivo</option>
+          <option>Transferencia</option>
+          <option>Financiamiento</option>
+          <option>Contra entrega</option>
+        </select>
+        {method === 'Transferencia' && <input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="Cuenta o referencia de la transferencia" />}
+        {method !== 'Transferencia' && <input value={ref} onChange={(event) => setRef(event.target.value)} placeholder={method === 'Efectivo' ? 'Referencia o comprobante' : 'Detalle del acuerdo'} />}
+        <NumInput min={0} value={amount} onChange={setAmount} placeholder="Monto" />
+        <input type="date" value={date} onChange={(event) => setDate(event.target.value)} title="Fecha del pago" />
+        <button className="primary-mini" disabled={acting || (method ?? '') === ''} onClick={() => void savePayment()}>Registrar pago</button>
       </div>
     </div>
   )
@@ -1840,9 +1921,10 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
   </>
 }
 
-function ClientsView({ clients, search, onDeleted, onNotice }: { clients: Client[]; search: string; onDeleted: (id: string) => void; onNotice: (message: string) => void }) {
+function ClientsView({ clients, search, onDeleted, onUpdated, onNotice }: { clients: Client[]; search: string; onDeleted: (id: string) => void; onUpdated: (client: Client) => void; onNotice: (message: string) => void }) {
   const [page, setPage] = useState(1)
   const [busy, setBusy] = useState('')
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
   const pageSize = 8
   const filtered = useMemo(() => clients.filter((client) => `${client.name} ${client.email} ${client.phone} ${client.address ?? ''}`.toLowerCase().includes(search.toLowerCase())), [clients, search])
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -1860,7 +1942,10 @@ function ClientsView({ clients, search, onDeleted, onNotice }: { clients: Client
       setBusy('')
     }
   }
-  return <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> {clients.length} clientes cargados desde la API · usa «Nuevo cliente» arriba para registrar</div><span className="source-badge">registro disponible</span></div><DataTable columns={['Nombre / Empresa', 'Teléfono', 'Email', 'Dirección', 'Viajes', 'Solicitudes act.', 'Estado', 'Acciones']} rows={visible.map((client) => [<div className="client-cell" key={`${client.id}-cell`}><span className="client-avatar">{initials(client.name)}</span><div><strong>{client.name}</strong><small>{client.type}</small></div></div>, client.phone, client.email, client.address || '—', client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />, <div className="action-group" key={`${client.id}-actions`}><button title="Eliminar cliente" disabled={busy === client.id} onClick={() => void removeClient(client)}><Icon name="trash" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} clientes</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  const creditLabel = (client: Client) => (client.creditDays ?? 0) > 0 ? `Crédito ${client.creditDays} d${(client.dueDay ?? 0) > 0 ? ` · cobro día ${client.dueDay}` : ''}` : (client.dueDay ?? 0) > 0 ? `Cobro día ${client.dueDay}` : 'Contado'
+  return <><section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> {clients.length} clientes cargados desde la API · «Nuevo cliente» registra y «Editar» define crédito y fechas de cobro</div><span className="source-badge">registro y edición</span></div><DataTable className="clients-table" columns={['Nombre / Empresa', 'Teléfono', 'Email', 'Dirección', 'Crédito / cobro', 'Viajes', 'Solicitudes act.', 'Estado', 'Acciones']} rows={visible.map((client) => [<div className="client-cell" key={`${client.id}-cell`}><span className="client-avatar">{initials(client.name)}</span><div><strong>{client.name}</strong><small>{client.type}</small></div></div>, client.phone, client.email, client.address || '—', <span key={`${client.id}-credit`} className={((client.creditDays ?? 0) > 0 || (client.dueDay ?? 0) > 0) ? 'credit-tag' : 'muted'}>{creditLabel(client)}</span>, client.trips, client.activeRequests, <StatusPill key={`${client.id}-status`} status={client.status} />, <div className="action-group" key={`${client.id}-actions`}><button title="Editar datos y fechas de cobro" onClick={() => setEditingClient(client)}><Icon name="edit" size={14} /></button><button title="Eliminar cliente" disabled={busy === client.id} onClick={() => void removeClient(client)}><Icon name="trash" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} clientes · la fecha de cobro de los viajes se hereda del crédito del cliente</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+    {editingClient && <ClientFormDialog client={editingClient} onClose={() => setEditingClient(null)} onCreated={(updated) => { onUpdated(updated); setEditingClient(null); onNotice(`Cliente ${updated.name} actualizado`) }} onError={onNotice} />}
+  </>
 }
 
 function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incidents: Incident[]; onNotice: (message: string) => void; onChanged: (incident: Incident) => void; onCreated: (incident: Incident) => void }) {

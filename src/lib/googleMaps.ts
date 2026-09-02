@@ -22,7 +22,7 @@ export function loadGoogleMaps(): Promise<any | null> {
     }
     const script = document.createElement('script')
     script.id = 'google-maps-js'
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&v=weekly&loading=async`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&v=weekly&libraries=places&loading=async`
     script.async = true
     script.defer = true
     const timeout = window.setTimeout(() => {

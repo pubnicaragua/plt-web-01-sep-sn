@@ -91,6 +91,14 @@ export interface Trip {
   serviceType?: 'Urbano' | 'Express' | 'Programado'
   contactName?: string
   contactPhone?: string
+  originRefs?: string
+  destinationRefs?: string
+  paymentMethod?: 'Efectivo' | 'Transferencia' | 'Financiamiento' | 'Contra entrega' | ''
+  paymentRef?: string
+  paymentAmount?: number
+  paymentDate?: string
+  paymentStatus?: 'Sin pagar' | 'Parcial' | 'Pagado'
+  dueDate?: string
 }
 
 export interface Driver {
@@ -120,6 +128,8 @@ export interface Client {
   trips: number
   activeRequests: number
   status: 'Activo' | 'Suspendido'
+  creditDays?: number
+  dueDay?: number
 }
 
 export interface Incident {
