@@ -374,6 +374,7 @@ function App() {
           {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} />}
           {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
           {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
+    {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
                     {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
@@ -721,6 +722,10 @@ type LatLng = { lat: number; lng: number }
 function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (driver: Driver) => void; onError: (message: string) => void }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [licenseNo, setLicenseNo] = useState('')
+  const [licenseExp, setLicenseExp] = useState('')
+  const [docNo, setDocNo] = useState('')
+  const [driverNotes, setDriverNotes] = useState('')
   const [email, setEmail] = useState('')
   const [vehicle, setVehicle] = useState('')
   const [plate, setPlate] = useState('')
@@ -730,7 +735,7 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
     event.preventDefault()
     setSubmitting(true)
     try {
-      const driver = await createDriver({ name, phone, email, vehicle, plate, external })
+      const driver = await createDriver({ name, phone, email, vehicle, plate, external, licenseNo, licenseExp, docNo, notes: driverNotes })
       onCreated(driver)
       if ((driver as Driver & { existed?: boolean }).existed) onError('Ese conductor ya existía: sus datos se actualizaron, no se duplicó')
     } catch {
@@ -747,6 +752,10 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
           <label>Nombre completo<input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre y apellidos" /></label>
           <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
           <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="conductor@empresa.com.ni" /></label>
+          <label>No. Licencia (conducir)<input value={licenseNo} onChange={(event) => setLicenseNo(event.target.value)} placeholder="Ej: LN-0923-4567" /></label>
+          <label>Vence licencia<input type="date" value={licenseExp} onChange={(event) => setLicenseExp(event.target.value)} /></label>
+          <label>Cédula / RUC<input value={docNo} onChange={(event) => setDocNo(event.target.value)} placeholder="Ej: 001-010789-0012" /></label>
+          <label>Notas del conductor<input value={driverNotes} onChange={(event) => setDriverNotes(event.target.value)} placeholder="Disponibilidad, zonas, permisos…" /></label>
           <label>Placa<input value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
           <label className="full-field">Vehículo<input value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="Ej: Toyota Hilux 2024" /></label>
           <label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Proveedor tercerizado (vehículo y conductor de tercero, se marca con 3P)</label>
@@ -1705,7 +1714,11 @@ function DriversView({ drivers, vehicles, onNavigate, onNotice, onDeleted, onVeh
             <div className="trip-detail-field"><span>Estado</span><StatusPill status={profileDriver.status} /></div>
             <div className="trip-detail-field"><span>Vehículo</span><strong>{profileDriver.vehicle}</strong></div>
             <div className="trip-detail-field"><span>Placa</span><strong>{profileDriver.plate}</strong></div>
+            <div className="trip-detail-field"><span>No. licencia</span><strong>{profileDriver.licenseNo || '—'}</strong></div>
+            <div className="trip-detail-field"><span>Vence licencia</span><strong>{profileDriver.licenseExp || '—'}</strong></div>
+            <div className="trip-detail-field"><span>Cédula / RUC</span><strong>{profileDriver.docNo || '—'}</strong></div>
             <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
+            {profileDriver.notes && <div className="trip-detail-field full"><span>Notas</span><strong>{profileDriver.notes}</strong></div>}
             <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
             <div className="trip-detail-field"><span>Cobertura</span><strong>{profileDriver.external ? 'Proveedor tercerizado (3P)' : 'Flota propia'}</strong></div>
           </div>
@@ -1865,6 +1878,10 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   const [model, setModel] = useState('')
   const [type, setType] = useState('Panel')
   const [typeOther, setTypeOther] = useState('')
+  const [brand, setBrand] = useState('')
+  const [motorNo, setMotorNo] = useState('')
+  const [chassisNo, setChassisNo] = useState('')
+  const [color, setColor] = useState('')
   const [capacityKg, setCapacityKg] = useState(1000)
   const [year, setYear] = useState(2024)
   const [fuelType, setFuelType] = useState<FuelType>('Gasolina')
@@ -1940,7 +1957,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct }))
+      onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, fuelPriceCs, tankCapacityL, brand, motorNo, chassisNo, color }))
       setFormOpen(false)
       setPlate('')
       setModel('')
@@ -1957,6 +1974,10 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       setLeaseTermMonths(60)
       setLeaseMonthlyPaymentCs(0)
       setResidualValueCs(0)
+      setBrand('')
+      setMotorNo('')
+      setChassisNo('')
+      setColor('')
     } catch {
       onNotice('No se pudo registrar el vehículo; verifica la placa y los datos')
     } finally {
@@ -1987,7 +2008,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     if (!editVehicle) return
     setBusy(`edit-${editVehicle.id}`)
     try {
-      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct })
+      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, brand, motorNo, chassisNo, color })
       onChanged(updated)
       if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
       onNotice(`Datos económicos de ${updated.plate} actualizados`)
@@ -2024,6 +2045,10 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     setPriceCs(vehicle.priceCs)
     setFuelPriceCs(vehicle.fuelPriceCs ?? 0)
     setTankCapacityL(vehicle.tankCapacityL ?? 0)
+    setBrand(vehicle.brand ?? '')
+    setMotorNo(vehicle.motorNo ?? '')
+    setChassisNo(vehicle.chassisNo ?? '')
+    setColor(vehicle.color ?? '')
     setOdometerKm(vehicle.odometerKm)
     setExternal(vehicle.external ?? false)
     setVehicleFunction(vehicle.vehicleFunction)
@@ -2056,7 +2081,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
       <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Función', 'Consumo', 'Precio', 'Odómetro (km)', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
         <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
-        <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Financiado (leasing)">Leasing</span>}</span>,
+        <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong><small className="cell-sub" key={`${vehicle.id}-brand`}>{vehicle.brand} · {vehicle.color}</small>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Financiado (leasing)">Leasing</span>}</span>,
         vehicle.model,
         vehicle.type,
         <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b><small className="cell-sub">{vehicle.logistics || 'sin sistema logístico'}</small></span>,
@@ -2086,7 +2111,17 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
             <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
             <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
             <label>Tipo<select value={type} onChange={(event) => { setType(event.target.value); if (event.target.value !== 'Otro') setTypeOther('') }}><option>Moto</option><option>Panel</option><option>Van</option><option>Pickup</option><option>Camion</option><option>Sedan</option><option>SUV</option><option>Furgon</option><option>Microbus</option><option>Chasis camion</option><option>Otro</option></select>{type === 'Otro' && <input value={typeOther} onChange={(event) => setTypeOther(event.target.value)} placeholder="Escribe el tipo" />}</label>
+            <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Ej: Toyota" /></label>
+            <label>N° Motor<input value={motorNo} onChange={(event) => setMotorNo(event.target.value)} placeholder="Ej: TM-48392011" /></label>
+            <label>N° Chasis (VIN)<input value={chassisNo} onChange={(event) => setChassisNo(event.target.value)} placeholder="Ej: 9HV-2A-1122-89" /></label>
+            <label>Color<input value={color} onChange={(event) => setColor(event.target.value)} placeholder="Ej: Blanco" /></label>
+            
             <label>Capacidad (kg)<NumInput required min={100} max={20000} value={capacityKg} onChange={setCapacityKg} /></label>
+            <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Ej: Toyota" /></label>
+            <label>N° Motor<input value={motorNo} onChange={(event) => setMotorNo(event.target.value)} placeholder="Ej: TM-48392011" /></label>
+            <label>N° Chasis (VIN)<input value={chassisNo} onChange={(event) => setChassisNo(event.target.value)} placeholder="Ej: 9HV-2A-1122-89" /></label>
+            <label>Color<input value={color} onChange={(event) => setColor(event.target.value)} placeholder="Ej: Blanco" /></label>
+            
             <label>Año<NumInput required min={2000} max={2030} value={year} onChange={setYear} /></label>
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
@@ -2165,6 +2200,9 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
                 <div className="trip-detail-field"><span>Odómetro</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
                 <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}<small className="cell-sub">meta {detailVehicle.minTripsMonth || '—'} / mes</small></strong></div>
                 <div className="trip-detail-field"><span>Función</span><strong>{FUNCTION_LABELS[detailVehicle.vehicleFunction] ?? '—'}</strong></div>
+                <div className="trip-detail-field"><span>Marca / Color</span><strong>{detailVehicle.brand || '—'}{detailVehicle.color ? ' · ' + detailVehicle.color : ''}</strong></div>
+                <div className="trip-detail-field"><span>N° Motor</span><strong>{detailVehicle.motorNo || '—'}</strong></div>
+                <div className="trip-detail-field"><span>N° Chasis (VIN)</span><strong>{detailVehicle.chassisNo || '—'}</strong></div>
                 <div className="trip-detail-field full"><span>Sistema logístico</span><strong>{detailVehicle.logistics || 'Sin sistema asignado'}</strong></div>
                 <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
                 <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
@@ -2467,7 +2505,7 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
     exportPdf('Incidencias · INCOEX Logistics', 'Incidencias registradas en la operación de Managua', ['ID', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado'], incidents.map((incident) => [incident.id, incident.trip, incident.driver, incident.client, incident.type, incident.priority, incident.status]))
     onNotice('Reporte de incidencias preparado para guardar como PDF')
   }
-  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button title="Ver detalle" onClick={() => setDetailIncident(incident)}><Icon name="eye" size={14} /></button><button title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}><Icon name="activity" size={14} /></button><button title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}><Icon name="check" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button className="mini-btn" title="Ver detalle y notas" onClick={() => setDetailIncident(incident)}>Ver</button><button className="mini-btn" title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}>Proceso</button><button className="mini-btn primary-mini" title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}>Resuelta</button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {formOpen && <IncidentFormDialog onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
     {detailIncident && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailIncident(null) }}>
@@ -2709,6 +2747,11 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
 
 function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
   const [refreshing, setRefreshing] = useState(false)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 5000)
+    return () => window.clearInterval(timer)
+  }, [])
   useEffect(() => {
     const timer = window.setInterval(() => { setRefreshing(true); window.setTimeout(() => setRefreshing(false), 600) }, 20000)
     return () => window.clearInterval(timer)
@@ -2722,7 +2765,9 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
   const onlineCount = (tracking.live ?? []).filter((position) => position.online).length
   const realCount = (tracking.live ?? []).filter((position) => position.online && !position.demo).length
   const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">La app móvil del conductor reporta su GPS cada ~20 s (mientras está abierta). Los puntos “demo” son posiciones de referencia de la API y se apagan solos si no llega señal real.</p></div><div className="tracking-stats"><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span></div></div><div className="large-map"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div></section>
+  const demoCount = (tracking.live ?? []).filter((position) => position.demo).length
+  const liveList = (tracking.live ?? []).slice(0, 8)
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">La app móvil del conductor reporta su GPS cada ~20 s (mientras está abierta). Los puntos “demo” son posiciones de referencia de la API y se apagan solos si no llega señal real.</p></div><div className="tracking-stats"><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span><span className="live-chip on"><i className="pulse-dot" /> {onlineCount} en vivo</span>{demoCount > 0 && <span className="live-chip warn">demo {demoCount}</span>}</div></div><div className="large-map"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b>{position.demo ? <span className="badge-external">demo</span> : <span className="financed-badge cash">GPS real</span>}<small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {

@@ -117,6 +117,10 @@ export interface Driver {
   latitude: number
   longitude: number
   external?: boolean
+  licenseNo?: string
+  licenseExp?: string
+  docNo?: string
+  notes?: string
 }
 
 export interface Client {
@@ -343,6 +347,10 @@ export interface Vehicle {
   minTripsMonth: number
   fuelPriceCs?: number
   tankCapacityL?: number
+  brand?: string
+  motorNo?: string
+  chassisNo?: string
+  color?: string
   financing: {
     financed: boolean
     downPaymentCs: number
