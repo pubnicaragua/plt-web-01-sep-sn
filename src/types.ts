@@ -13,6 +13,7 @@ export type Section =
   | 'reports'
   | 'users'
   | 'deliverables'
+  | 'tarifas'
   | 'billing'
   | 'settings'
 
@@ -459,4 +460,48 @@ export interface DeliverableSummary {
   in_progress: number
   review: number
   done: number
+}
+
+export interface TariffSettings {
+  baseFareCs: number
+  includedKm: number
+  surchargePerKmCs: number
+  roadFactor: number
+  roundingCs: number
+  catalogUpdatedAt: string
+  districtsCount: number
+  requireCoords: boolean
+  includeStrategicPoints: boolean
+  duplicateDistanceM: number
+  minRecommendedStatus: string
+  cartographicSource: string
+  updatedAt: string
+}
+
+export interface TariffDistrict {
+  id: string
+  name: string
+  inCoverage: boolean
+  status: string
+}
+
+export interface TariffDestination {
+  id: string
+  name: string
+  district: string
+  category: string
+  latitude: number
+  longitude: number
+  inCoverage: boolean
+  status: string
+}
+
+export interface FareResult {
+  straightKm: number
+  roadKm: number
+  fareCs: number
+  status: string
+  method: string
+  coverage: { origin: boolean; destination: boolean }
+  params: { baseFareCs: number; includedKm: number; surchargePerKmCs: number; roadFactor: number; roundingCs: number }
 }

@@ -55,11 +55,21 @@ import {
   addFuelRecord,
   deleteFuelRecord,
   getClientProfile,
+  getTarifas,
+  updateTariffSettings,
+  updateTariffDistrict,
+  createTariffDestination,
+  updateTariffDestination,
+  deleteTariffDestination,
+  calculateFare,
+  uploadEvidenceFile,
+  updateIncidentEvidence,
   type FuelRecord,
   type FuelStatsRow,
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
+import { TarifasView } from './TarifasView'
 import { LiveMap } from './components/LiveMap'
 import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
@@ -187,6 +197,7 @@ const navItems: Array<{ id: Section; label: string; icon: IconName; group?: stri
   { id: 'history', label: 'Historial', icon: 'history', group: 'Operaciones' },
   { id: 'incidents', label: 'Incidencias', icon: 'incidents', group: 'Operaciones' },
   { id: 'reports', label: 'Reportes', icon: 'reports', group: 'Operaciones' },
+  { id: 'tarifas', label: 'Tarifas', icon: 'tag', group: 'Operaciones' },
   { id: 'users', label: 'Usuarios y roles', icon: 'users', group: 'Administración' },
   { id: 'deliverables', label: 'Entregables', icon: 'deliverables', group: 'Proyecto' },
   { id: 'billing', label: 'Facturas y pagos', icon: 'billing', group: 'Finanzas' },
@@ -379,6 +390,7 @@ function App() {
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'tarifas' && <TarifasView onNotice={setNotice} />}
           {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
           {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
           {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} onRefresh={refreshTracking} />}
@@ -434,6 +446,7 @@ function sectionDescription(section: Section) {
     tracking: 'Vista geográfica de operaciones activas y recorridos de entrega.',
     history: 'Bitácora en tiempo real de despachos, asignaciones e incidencias.',
     incidents: 'Seguimiento de contingencias metropolitanas reportadas por la flota.',
+    tarifas: 'Parametros del catalogo, distritos, destinos y calculadora de tarifas comerciales',
     reports: 'Analítica agregada del rendimiento de viajes y entregas, con exportación CSV.',
     users: 'Usuarios de la plataforma y matriz de los ocho roles contractuales con permisos.',
     deliverables: 'Alcance, avance tangible y próximos hitos del proyecto.',
@@ -2497,6 +2510,26 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
       setActing('')
     }
   }
+  const evidenceInputRef = useRef<HTMLInputElement>(null)
+  async function attachEvidence(incident: Incident, file: File) {
+    setActing(incident.id)
+    try {
+      const uploaded = await uploadEvidenceFile(file)
+      const updated = await updateIncidentEvidence(incident.id, uploaded.evidence)
+      onChanged(updated)
+      if (detailIncident?.id === incident.id) setDetailIncident(updated)
+      onNotice(`Evidencia adjuntada a ${incident.id}`)
+    } catch {
+      onNotice(`No se pudo adjuntar la evidencia a ${incident.id}`)
+    } finally {
+      setActing('')
+    }
+  }
+  function resolveEvidenceSrc(evidence: string | undefined) {
+    if (!evidence) return ''
+    if (evidence.startsWith('http') || evidence.startsWith('data:')) return evidence
+    return `${getApiBase()}/uploads/evidence/${evidence}`
+  }
   function exportExcelFile() {
     exportExcel(`incoex-incidencias-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Incidencias', incidents.map((incident) => ({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })))
     onNotice('Reporte de incidencias en Excel descargado')
@@ -2517,7 +2550,7 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
             <div className="trip-detail-field"><span>Prioridad</span><PriorityPill priority={detailIncident.priority} /></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailIncident.status} /></div>
             <div className="trip-detail-field"><span>Ubicación GPS</span><strong>{detailIncident.latitude !== undefined && detailIncident.longitude !== undefined ? `${detailIncident.latitude.toFixed(5)}, ${detailIncident.longitude.toFixed(5)}` : 'No reportada'}</strong></div>
-            <div className="trip-detail-field"><span>Evidencia</span><strong>{detailIncident.evidence ? <a href={detailIncident.evidence} target="_blank" rel="noreferrer" className="evidence-link">Ver fotografía</a> : 'Sin fotografía'}</strong></div>
+            <div className="trip-detail-field full"><span>Evidencia</span>{detailIncident.evidence ? <img src={resolveEvidenceSrc(detailIncident.evidence)} alt="Evidencia de la incidencia" className="evidence-image" title="Clic para ampliar" onClick={() => window.open(resolveEvidenceSrc(detailIncident.evidence), '_blank')} /> : <strong>Sin fotografía aún</strong>}<label className="attach-evidence-btn"><input ref={evidenceInputRef} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void attachEvidence(detailIncident, file); event.target.value = '' }} />Adjuntar fotografía</label></div>
           </div>
           {detailIncident.description && <div className="incident-description"><span>Descripción del problema</span><p>{detailIncident.description}</p></div>}
           <div className="modal-actions trip-actions">
@@ -2567,7 +2600,7 @@ function IncidentFormDialog({ onClose, onCreated, onError }: { onClose: () => vo
 }
 
 function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, settings, onNotice }: { reports: ReportsSummary | null; trips: Trip[]; drivers: Driver[]; clients: Client[]; incidents: Incident[]; vehicles: Vehicle[]; settings: AppSettings | null; onNotice: (message: string) => void }) {
-  const [tab, setTab] = useState<'resumen' | 'flota' | 'viajes' | 'conductores' | 'clientes' | 'incidencias' | 'paquetes'>('resumen')
+  const [tab, setTab] = useState<'flota' | 'viajes' | 'conductores' | 'clientes' | 'incidencias' | 'paquetes'>('flota')
   const [exporting, setExporting] = useState('')
   const dollarRate = settings?.dollarRate ?? 36.5
   const reportDate = new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date())
@@ -2593,7 +2626,6 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
   const totalIncome = fleetSummary('incomeMonthCs')
   const totalMargin = fleetSummary('marginCs')
   const reportTabs: Array<{ id: typeof tab; label: string }> = [
-    { id: 'resumen', label: 'Resumen ejecutivo' },
     { id: 'flota', label: 'Flota y financiamiento' },
     { id: 'viajes', label: 'Viajes' },
     { id: 'conductores', label: 'Conductores' },
@@ -2614,21 +2646,6 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
     <div className="report-tabs">
       {reportTabs.map((item) => <button key={item.id} className={`filter-chip ${tab === item.id ? 'active' : ''}`} onClick={() => setTab(item.id)}>{item.label}</button>)}
     </div>
-    {tab === 'resumen' && <>
-      <div className="metrics-grid report-metrics"><MetricCard label="Viajes registrados" value={reports.totalTrips} delta="en la base real" tone="blue" icon="trips" hint="Total de solicitudes registradas en la API." /><MetricCard label="Entregas completadas" value={reports.completedTrips} delta="periodo" tone="mint" icon="checkCircle" hint="Viajes con estado Completado." /><MetricCard label="Viajes cancelados" value={reports.cancelledTrips} delta="periodo" tone="red" icon="cancelCircle" hint="Viajes cancelados o anulados." /><MetricCard label="Ingresos estimados" value={reports.totalRevenueCs} delta="C$ · tarifas calculadas" tone="gold" icon="wallet" hint="Suma de la tarifa estimada de los viajes completados." /><MetricCard label="Ganancia total" value={reports.profitSummary?.totalProfitCs ?? 0} delta="C$ · tarifa menos costo" tone="mint" icon="trendingUp" hint={`${reports.profitSummary?.profitableTrips ?? 0} viajes con ganancia · ${reports.profitSummary?.lossTrips ?? 0} con pérdida`} /><MetricCard label="Kilómetros recorridos" value={reports.totalDistanceKm} delta="km en rutas registradas" tone="slate" icon="tracking" hint="Suma de la distancia en km de los viajes con ruta." /></div>
-      {(reports.topVehicles?.length ?? 0) > 0 && (
-        <div className="reports-grid">
-          <section className="panel leaderboard"><PanelHeader title="Top vehículos por viajes" action="kilometraje" /><ol>{reports.topVehicles!.map((vehicle, index) => <li key={vehicle.plate}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(vehicle.model)}</span><strong>{vehicle.plate} · {vehicle.model}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{vehicle.trips} viajes · {vehicle.km.toLocaleString('es-NI')} km</b></li>)}</ol><p className="chart-note">Viajes completados y kilómetros por vehículo, con su conductor asignado.</p></section>
-          <section className="panel leaderboard"><PanelHeader title="Conductores con su vehículo" action="quién viaja más" /><ol>{reports.driverVehicle!.map((driver, index) => <li key={driver.name}><span className="rank">{index + 1}</span><span className="mini-avatar">{initials(driver.name)}</span><strong>{driver.name}</strong><span className="bar"><i style={{ width: `${Math.max(20, 100 - index * 14)}%` }} /></span><b>{driver.trips} viajes · {formatCs(driver.incomeCs)}</b></li>)}</ol><p className="chart-note">Cada conductor vinculado al vehículo que usa: viajes completados e ingresos que genera.</p></section>
-        </div>
-      )}
-      <div className="reports-grid">
-        <ChartPanel title="Viajes por fecha" values={reports.weeklyTrips} labels={reports.weeklyLabels} note="Solicitudes registradas por fecha en la API." />
-        <ChartPanel title="Entregas por fecha" values={reports.dailyDeliveries} labels={reports.dailyLabels} compact note="Viajes completados por fecha." />
-        <Leaderboard title="Top conductores" entries={reports.topDrivers} note="Conductores por viajes registrados." />
-        <Leaderboard title="Top clientes" entries={reports.topClients} note="Clientes por viajes solicitados." />
-      </div>
-    </>}
     {tab === 'flota' && <>
       <section className="panel export-panel">
         <div className="export-panel-head"><div><span className="eyebrow">PROYECCIÓN MENSUAL DE LA FLOTA</span><h2>Flota y financiamiento</h2><p>Por cada vehículo: función, sistema logístico, meta mínima de viajes, leasing (cuota, deuda restante, meses), depreciación, ingreso del mes y margen proyectado. Los números en rojo indican que el vehículo no se cubre a sí mismo este mes.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('vehicles', 'Flota y financiamiento')} disabled={exporting !== ''}><Icon name="download" size={13} /> Flota Excel</button><button className="secondary-button" onClick={() => { exportPdf('Flota y financiamiento · INCOEX Logistics', 'Proyección mensual y leasing por vehículo', ['Placa', 'Modelo', 'Función', 'Financiado', 'Pago mensual', 'Deuda restante', 'Meses', 'Depreciación/mes', 'Costo fijo/mes', 'Viajes mes', 'Meta/mes', 'Ingreso mes', 'Margen'], fleetReport.map((row) => [row.plate, row.model, FUNCTION_LABELS[row.vehicleFunction] ?? '', row.financed ? 'Sí' : 'No', row.leaseMonthlyPaymentCs ? `C$ ${row.leaseMonthlyPaymentCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.remainingDebtCs ? `C$ ${row.remainingDebtCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.monthsRemaining || '—', `C$ ${row.monthlyDepreciationCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.monthlyCostCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, row.tripsMonth, row.minTripsMonth || '—', `C$ ${row.incomeMonthCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.marginCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`])); onNotice('Reporte de flota preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Flota PDF</button></div></div>
@@ -2748,6 +2765,7 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
 function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
   const [refreshing, setRefreshing] = useState(false)
   const [tick, setTick] = useState(0)
+  const [hideDemo, setHideDemo] = useState(false)
   useEffect(() => {
     const timer = window.setInterval(() => setTick((value) => value + 1), 5000)
     return () => window.clearInterval(timer)
@@ -2766,18 +2784,95 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
   const realCount = (tracking.live ?? []).filter((position) => position.online && !position.demo).length
   const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
   const demoCount = (tracking.live ?? []).filter((position) => position.demo).length
-  const liveList = (tracking.live ?? []).slice(0, 8)
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">La app móvil del conductor reporta su GPS cada ~20 s (mientras está abierta). Los puntos “demo” son posiciones de referencia de la API y se apagan solos si no llega señal real.</p></div><div className="tracking-stats"><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span><span className="live-chip on"><i className="pulse-dot" /> {onlineCount} en vivo</span>{demoCount > 0 && <span className="live-chip warn">demo {demoCount}</span>}</div></div><div className="large-map"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b>{position.demo ? <span className="badge-external">demo</span> : <span className="financed-badge cash">GPS real</span>}<small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
+  const liveList = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo).slice(0, 8)
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">La app móvil del conductor reporta su GPS cada ~20 s (mientras está abierta). Los puntos “demo” son posiciones de referencia de la API y se apagan solos si no llega señal real.</p></div><div className="tracking-stats"><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span><span className="live-chip on"><i className="pulse-dot" /> {onlineCount} en vivo</span>{demoCount > 0 && <span className="live-chip warn">demo {demoCount}</span>}{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? 'Mostrar demo' : 'Ocultar demo'}</button>}</div></div><div className="large-map"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b>{position.demo ? <span className="badge-external">demo</span> : <span className="financed-badge cash">GPS real</span>}<small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {
   const [typeFilter, setTypeFilter] = useState<'all' | HistoryEvent['type']>('all')
+  const [range, setRange] = useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [query, setQuery] = useState('')
   const types = Array.from(new Set(history.map((event) => event.type)))
-  const filtered = typeFilter === 'all' ? history : history.filter((event) => event.type === typeFilter)
+  const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  const today = new Date()
+  function parseDay(event: HistoryEvent) {
+    const parts = event.date.trim().split(' ')
+    const day = Number.parseInt(parts[0], 10)
+    const monthIndex = MONTHS.indexOf((parts[1] ?? '').toLowerCase())
+    if (!Number.isFinite(day)) return 999
+    let diff = today.getDate() - day
+    if (monthIndex !== -1 && monthIndex !== today.getMonth()) diff += 100
+    return diff
+  }
+  function dayLabel(event: HistoryEvent) {
+    const diff = parseDay(event)
+    if (diff === 0) return 'Hoy'
+    if (diff === 1) return 'Ayer'
+    if (diff < 7) return 'Esta semana'
+    return event.date
+  }
+  const filtered = history
+    .filter((event) => typeFilter === 'all' || event.type === typeFilter)
+    .filter((event) => {
+      const text = [event.type, event.title, event.detail, event.id].join(' ').toLowerCase()
+      return !query.trim() || text.includes(query.trim().toLowerCase())
+    })
+    .filter((event) => {
+      if (range === 'today') return parseDay(event) === 0
+      if (range === 'week') return parseDay(event) <= 7
+      if (range === 'month') return parseDay(event) <= 31
+      return true
+    })
+    .sort((a, b) => parseDay(a) - parseDay(b))
+  const groups = Array.from(new Set(filtered.map(dayLabel)))
+  const typeCounts = new Map(types.map((type) => [type, history.filter((event) => event.type === type).length]))
   function exportPdfFile() {
     exportPdf('Historial de operaciones · INCOEX Logistics', 'Bitácora de despachos, asignaciones e incidencias', ['Hora', 'Fecha', 'Tipo', 'Evento', 'Detalle'], filtered.map((event) => [event.time, event.date, event.type, event.title, event.detail]))
   }
-  return <><div className="table-toolbar history-toolbar"><div className="filter-row"><button className={`filter-chip ${typeFilter === 'all' ? 'active' : ''}`} onClick={() => setTypeFilter('all')}>Todo <b>{history.length}</b></button>{types.map((type) => <button key={type} className={`filter-chip ${typeFilter === type ? 'active' : ''}`} onClick={() => setTypeFilter(type)}>{type} <b>{history.filter((event) => event.type === type).length}</b></button>)}</div><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> Exportar PDF</button></div><section className="panel history-panel"><PanelHeader title="Historial de operaciones" action="API" /><div className="timeline">{filtered.map((event) => <div className="timeline-row" key={event.id}><span className="timeline-time">{event.time}<small>{event.date}</small></span><span className={`timeline-dot ${event.color}`} /><div className="timeline-event"><strong>{event.title}</strong><span>{event.detail}</span></div></div>)}</div>{filtered.length === 0 && <EmptyState title="Sin eventos de este tipo" detail="Cambia el filtro para ver más actividad." />}</section></>
+  return (
+    <>
+      <div className="table-toolbar history-toolbar">
+        <div className="filter-row">
+          <div className="search-box"><Icon name="search" size={13} /><input placeholder="Buscar evento, tipo o detalle…" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+          <button className={`filter-chip ${range === 'today' ? 'active' : ''}`} onClick={() => setRange('today')}>Hoy</button>
+          <button className={`filter-chip ${range === 'week' ? 'active' : ''}`} onClick={() => setRange('week')}>7 días</button>
+          <button className={`filter-chip ${range === 'month' ? 'active' : ''}`} onClick={() => setRange('month')}>30 días</button>
+          <button className={`filter-chip ${range === 'all' ? 'active' : ''}`} onClick={() => setRange('all')}>Todo</button>
+        </div>
+        <button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> Exportar PDF</button>
+      </div>
+      <div className="history-summary-row">
+        {types.map((type) => (
+          <button key={type} className={`filter-chip ${typeFilter === type ? 'active' : ''}`} onClick={() => setTypeFilter(typeFilter === type ? 'all' : type)}>
+            {type} <b>{typeCounts.get(type) ?? 0}</b>
+          </button>
+        ))}
+        <span className="history-total">{filtered.length} eventos mostrados</span>
+      </div>
+      <section className="panel history-panel">
+        <PanelHeader title="Historial de operaciones" action="API" />
+        {groups.map((group) => (
+          <div key={group} className="timeline-group">
+            <div className="timeline-group-head"><span>{group}</span><b>{filtered.filter((event) => dayLabel(event) === group).length} eventos</b></div>
+            <div className="timeline">
+              {filtered.filter((event) => dayLabel(event) === group).map((event) => (
+                <div className="timeline-row" key={event.id}>
+                  <span className="timeline-time">{event.time}<small>{event.date}</small></span>
+                  <span className={`timeline-dot ${event.color}`} />
+                  <div className="timeline-event">
+                    <strong>{event.title}</strong>
+                    <span className="timeline-type">{event.type}</span>
+                    <span>{event.detail}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <EmptyState title="Sin eventos con estos filtros" detail="Cambia el rango de fechas, el tipo o el texto de búsqueda para ver más actividad." />}
+      </section>
+    </>
+  )
 }
 
 function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: { deliverables: Deliverable[]; summary: DeliverableSummary; onStatusChange: (id: string, status: DeliverableStatus) => Promise<void>; onNotice: (message: string) => void }) {

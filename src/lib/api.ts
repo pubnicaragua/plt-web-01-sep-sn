@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
+import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, TariffDestination, TariffDistrict, TariffSettings, Trip, TripStatus, UserRole, Vehicle, VehicleStatus, FareResult } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -64,6 +64,21 @@ export function deleteClient(id: string) { return sendJson<{ deleted: string }>(
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
 export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
 export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
+export function updateIncidentEvidence(id: string, evidence: string) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/evidence`, 'PATCH', { evidence }) }
+export async function uploadEvidenceFile(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE}/uploads/evidence`, { method: 'POST', body: form })
+  if (!response.ok) throw await apiError(response)
+  return response.json() as Promise<{ evidence: string; url: string }>
+}
+export function getTarifas() { return getJson<{ settings: TariffSettings; districts: TariffDistrict[]; destinations: TariffDestination[] }>('/tarifas') }
+export function updateTariffSettings(body: Partial<TariffSettings>) { return sendJson<TariffSettings>('/tarifas/settings', 'PATCH', body) }
+export function updateTariffDistrict(id: string, body: { inCoverage?: boolean; status?: string }) { return sendJson<TariffDistrict>(`/tarifas/districts/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createTariffDestination(body: { name: string; district: string; category?: string; latitude: number; longitude: number; inCoverage?: boolean; status?: string }) { return sendJson<TariffDestination>('/tarifas/destinations', 'POST', body) }
+export function updateTariffDestination(id: string, body: Partial<TariffDestination>) { return sendJson<TariffDestination>(`/tarifas/destinations/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function deleteTariffDestination(id: string) { return sendJson<{ deleted: boolean }>(`/tarifas/destinations/${encodeURIComponent(id)}`, 'DELETE') }
+export function calculateFare(body: { originLat: number; originLng: number; destLat: number; destLng: number; originCoverage?: boolean; destCoverage?: boolean }) { return sendJson<FareResult>('/tarifas/calculator', 'POST', body) }
 export function getHistory() { return getJson<HistoryEvent[]>('/history') }
 export function getReportsSummary() { return getJson<ReportsSummary>('/reports/summary') }
 export function getFinanceSummary() { return getJson<FinanceSummary>('/finance/summary') }
