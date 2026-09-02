@@ -112,6 +112,7 @@ export interface Driver {
   route: string
   latitude: number
   longitude: number
+  external?: boolean
 }
 
 export interface Client {
@@ -165,6 +166,8 @@ export interface ReportsSummary {
   dailyLabels: string[]
   topDrivers: Array<{ name: string; trips: number }>
   topClients: Array<{ name: string; trips: number }>
+  topVehicles?: Array<{ plate: string; model: string; trips: number; km: number; incomeCs: number }>
+  driverVehicle?: Array<{ name: string; vehicle: string; trips: number; incomeCs: number }>
 }
 
 export interface TrackingOverview {
@@ -196,6 +199,7 @@ export interface Vehicle {
   fuelCostPerKmC$: number
   odometerKm: number
   imageUrl: string
+  external?: boolean
 }
 
 export interface VehicleRate {
@@ -256,6 +260,7 @@ export interface AppUser {
   roleName: string
   status: 'Activo' | 'Inactivo'
   lastLogin: string
+  sessionState?: 'Activa' | 'Cerrada'
 }
 
 export type DeliverableStatus = 'backlog' | 'in_progress' | 'review' | 'done'

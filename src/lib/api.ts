@@ -51,7 +51,8 @@ export function getDashboardSummary() {
 export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
-export function createDriver(body: { name: string; phone?: string; email?: string; vehicle?: string; plate?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function createDriver(body: { name: string; phone?: string; email?: string; vehicle?: string; plate?: string; external?: boolean }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
 export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string }) { return sendJson<Client>('/clients', 'POST', body) }
@@ -97,13 +98,17 @@ export function updateTripPayment(tripId: string, body: { method?: Trip['payment
   return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/payment`, 'PATCH', body)
 }
 
+export function updateTripFare(tripId: string, estimatedCostCs: number) {
+  return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/fare`, 'PATCH', { estimatedCostCs })
+}
+
 export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number }) {
   return sendJson<Client>(`/clients/${encodeURIComponent(id)}`, 'PATCH', body)
 }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
-export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
-export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function updateVehicle(id: string, body: { fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
 export async function uploadVehicleImage(id: string, file: File) {
   const formData = new FormData()
   formData.append('image', file)
@@ -131,6 +136,7 @@ export function getUsers() { return getJson<AppUser[]>('/admin/users') }
 export function getRoles() { return getJson<Role[]>('/admin/roles') }
 export function createUser(body: { name: string; email: string; phone?: string; role: UserRole; password?: string }) { return sendJson<AppUser>('/admin/users', 'POST', body) }
 export function updateUser(id: string, body: { role?: UserRole; status?: 'Activo' | 'Inactivo'; password?: string }) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function revokeUserSession(id: string) { return sendJson<AppUser>(`/admin/users/${encodeURIComponent(id)}/revoke-session`, 'PATCH', {}) }
 export function deleteUser(id: string) { return sendJson<{ deleted: string }>(`/admin/users/${encodeURIComponent(id)}`, 'DELETE') }
 
 export function getReportCsvUrl(collection: 'trips' | 'drivers' | 'clients' | 'incidents' | 'packages') {
