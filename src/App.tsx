@@ -41,10 +41,75 @@ import {
   updateVehicleStatus,
   uploadVehicleImage,
 } from './lib/api'
-import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint } from './lib/googleMaps'
+import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
+
+interface NumInputProps {
+  value: number
+  onChange: (next: number) => void
+  min?: number
+  max?: number
+  step?: number
+  className?: string
+  placeholder?: string
+  required?: boolean
+  title?: string
+}
+
+function NumInput({ value, onChange, min, max, step, className, placeholder, required, title }: NumInputProps) {
+  const [text, setText] = useState(String(value))
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setText(String(value))
+  }, [value, focused])
+
+  const sanitize = (raw: string) =>
+    raw
+      .replace(/[^\d.]/g, '')
+      .replace(/^0+(?=\d)/, '')
+      .replace(/(\.\d*)\./g, '$1')
+
+  const handleChange = (raw: string) => {
+    const next = sanitize(raw)
+    setText(next)
+    if (next === '' || next === '.') return
+    const n = Number(next)
+    if (Number.isFinite(n)) onChange(n)
+  }
+
+  const handleBlur = () => {
+    setFocused(false)
+    let next = sanitize(text)
+    if (next === '' || next === '.') {
+      if (required) return
+      setText(String(value))
+      return
+    }
+    const n = Number(next)
+    setText(String(n))
+    onChange(n)
+  }
+
+  return (
+    <input
+      type="number"
+      className={className}
+      value={text}
+      min={min}
+      max={max}
+      step={step}
+      placeholder={placeholder}
+      required={required}
+      title={title}
+      onFocus={(event) => { setFocused(true); event.target.select() }}
+      onChange={(event) => handleChange(event.target.value)}
+      onBlur={handleBlur}
+    />
+  )
+}
 
 const emptySummary: DashboardSummary = {
   tripsToday: 0,
@@ -471,7 +536,7 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(maps),
+            restriction: nicaraguaRestriction(),
           })
           setMapState('ready')
         } catch {
@@ -512,11 +577,11 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
       polylinesRef.current = trips
         .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLng))
         .map((trip) => new maps.Polyline({
-          path: [{ lat: trip.originLat, lng: trip.originLng }, { lat: trip.destinationLat, lng: trip.destinationLng }],
+          path: curvedPath(maps, { lat: trip.originLat as number, lng: trip.originLng as number }, { lat: trip.destinationLat as number, lng: trip.destinationLng as number }),
           map,
-          strokeColor: '#f1b84c',
-          strokeOpacity: 0.9,
-          strokeWeight: 2.5,
+          strokeColor: ROUTE_COLOR,
+          strokeOpacity: 0.85,
+          strokeWeight: 3,
         }))
     } catch {
       // el proveedor rechazó los marcadores; el mapa sigue visible
@@ -744,7 +809,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
               <label>Contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Quién solicita" /></label>
               <label>Teléfono de contacto<input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
               <label>Tipo de servicio<select value={serviceType} onChange={(event) => setServiceType(event.target.value as Trip['serviceType'])}><option>Urbano</option><option>Express</option><option>Programado</option></select></label>
-              <label>Paquetes<input required type="number" min="1" value={packages} onChange={(event) => setPackages(Math.max(1, Number(event.target.value)))} /></label>
+              <label>Paquetes<NumInput required min={1} value={packages} onChange={(next) => setPackages(Math.max(1, next))} /></label>
               <label className="full-field check-field"><input type="checkbox" checked={fragile} onChange={(event) => setFragile(event.target.checked)} /> Carga frágil (manejo cuidadoso)</label>
               <label className="full-field">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Características o instrucciones de la carga" rows={3} /></label>
             </div>
@@ -829,7 +894,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(maps),
+            restriction: nicaraguaRestriction(),
           })
           mapRef.current = map
           map.addListener('click', (event: any) => {
@@ -879,9 +944,9 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
       }
       if (origin && destination) {
         polylineRef.current = new maps.Polyline({
-          path: [origin, destination],
+          path: curvedPath(maps, origin, destination),
           map,
-          strokeColor: '#2562ec',
+          strokeColor: ROUTE_COLOR,
           strokeOpacity: 0.9,
           strokeWeight: 3,
         })
@@ -955,7 +1020,7 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(maps),
+            restriction: nicaraguaRestriction(),
           })
           mapRef.current = map
           const spanLat = Math.abs(origin0.lat - destination0.lat)
@@ -986,7 +1051,7 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             title: 'Destino',
             icon: incoexPin(maps, '#ef6262', 1.15),
           })
-          new maps.Polyline({ path: [origin0, destination0], map, strokeColor: '#1d5cff', strokeOpacity: 0.9, strokeWeight: 3 })
+          new maps.Polyline({ path: curvedPath(maps, origin0, destination0), map, strokeColor: ROUTE_COLOR, strokeOpacity: 0.9, strokeWeight: 3.5 })
           setMapState('ready')
         } catch {
           if (!cancelled) setMapState('error')
@@ -1353,12 +1418,12 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
             <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
             <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
             <label>Tipo<select value={type} onChange={(event) => setType(event.target.value)}><option>Panel</option><option>Van</option><option>Camión</option><option>Pickup</option></select></label>
-            <label>Capacidad (kg)<input required type="number" min="100" max="20000" value={capacityKg} onChange={(event) => setCapacityKg(Number(event.target.value))} /></label>
-            <label>Año<input required type="number" min="2000" max="2030" value={year} onChange={(event) => setYear(Number(event.target.value))} /></label>
+            <label>Capacidad (kg)<NumInput required min={100} max={20000} value={capacityKg} onChange={setCapacityKg} /></label>
+            <label>Año<NumInput required min={2000} max={2030} value={year} onChange={setYear} /></label>
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
-            <label>Consumo (L por km)<input required type="number" min="0" step="0.01" value={consumptionLPerKm} onChange={(event) => setConsumptionLPerKm(Number(event.target.value))} /></label>
-            <label>Precio de compra (C$)<input type="number" min="0" step="1000" value={priceCs} onChange={(event) => setPriceCs(Number(event.target.value))} placeholder="Ej: 1850000" /></label>
-            <label>Odómetro (km)<input type="number" min="0" step="100" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
+            <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
+            <label>Precio de compra (C$)<NumInput min={0} step={1000} value={priceCs} onChange={setPriceCs} placeholder="Ej: 1850000" /></label>
+            <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
         </form>
@@ -1370,9 +1435,9 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
           <div className="modal-header"><div><span className="eyebrow">Datos económicos · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$) y odómetro. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
-            <label>Consumo (L por km)<input required type="number" min="0" step="0.01" value={consumptionLPerKm} onChange={(event) => setConsumptionLPerKm(Number(event.target.value))} /></label>
-            <label>Precio de compra (C$)<input required type="number" min="0" step="1000" value={priceCs} onChange={(event) => setPriceCs(Number(event.target.value))} /></label>
-            <label>Odómetro (km)<input type="number" min="0" step="100" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
+            <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
+            <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
+            <label>Odómetro (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label>
             <div className="full-field conversion-note"><span>Equivalente en dólares:</span><strong>US$ {csToUsd(priceCs, dollarRate).toLocaleString('es-NI')} · tasa {dollarRate}</strong></div>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editVehicle.id}`}>{busy === `edit-${editVehicle.id}` ? 'Guardando…' : 'Guardar datos'}</button></div>
@@ -1383,7 +1448,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMaintenanceVehicle(null) }}>
         <form className="modal-card" onSubmit={submitMaintenance}>
           <div className="modal-header"><div><span className="eyebrow">Mantenimiento · {maintenanceVehicle.plate}</span><h2>{maintenanceVehicle.model}</h2><p>Al registrar el mantenimiento, el vehículo pasa a estado Mantenimiento.</p></div><button type="button" className="icon-button" onClick={() => setMaintenanceVehicle(null)} aria-label="Cerrar">×</button></div>
-          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label><label>Costo (C$)<input type="number" min="0" step="10" value={maintenanceCost} onChange={(event) => setMaintenanceCost(Number(event.target.value))} placeholder="Ej: 7420" /></label><span className="full-field conversion-note">Costo en córdobas: {formatCs(maintenanceCost)} · US$ {csToUsd(maintenanceCost, dollarRate).toFixed(2)}</span></div>
+          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label><label>Costo (C$)<NumInput min={0} value={maintenanceCost} onChange={setMaintenanceCost} placeholder="Ej: 7420" /></label><span className="full-field conversion-note">Costo en córdobas: {formatCs(maintenanceCost)} · US$ {csToUsd(maintenanceCost, dollarRate).toFixed(2)}</span></div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setMaintenanceVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `mt-${maintenanceVehicle.id}`}>{busy === `mt-${maintenanceVehicle.id}` ? 'Guardando…' : 'Registrar mantenimiento'}</button></div>
         </form>
       </div>
@@ -1635,7 +1700,7 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
     exportPdf('Incidencias · INCOEX Logistics', 'Incidencias registradas en la operación de Managua', ['ID', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado'], incidents.map((incident) => [incident.id, incident.trip, incident.driver, incident.client, incident.type, incident.priority, incident.status]))
     onNotice('Reporte de incidencias preparado para guardar como PDF')
   }
-  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button title="Ver detalle" onClick={() => setDetailIncident(incident)}><Icon name="eye" size={14} /></button><button title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}><Icon name="activity" size={14} /></button><button title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}><Icon name="check" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button title="Ver detalle" onClick={() => setDetailIncident(incident)}><Icon name="eye" size={14} /></button><button title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}><Icon name="activity" size={14} /></button><button title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}><Icon name="check" size={14} /></button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {formOpen && <IncidentFormDialog onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
     {detailIncident && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailIncident(null) }}>
@@ -1768,7 +1833,7 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
 function TrackingView({ tracking, onNavigate }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void }) {
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
   const withRoute = tracking.trips.filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat))
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">Posiciones de conductores y rutas de viajes con coordenadas reales registradas en la API.</p></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas · {withRoute.length} rutas dibujadas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} trips={withRoute} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend gold" />Ruta de viaje</span></div></div></section>
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · GOOGLE MAPS</span><h2>Mapa de flota · Managua</h2><p className="panel-sub">Posiciones de conductores y rutas de viajes con coordenadas reales registradas en la API.</p></div><div className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas · {withRoute.length} rutas dibujadas</div></div><div className="large-map"><GoogleMap drivers={tracking.drivers} trips={withRoute} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span></div></div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {
@@ -2108,16 +2173,16 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
       <div className="settings-card-head"><span className="setting-icon"><Icon name="wallet" size={19} /></span><div><h2>Moneda y tarifas</h2><p>Precios del sistema en córdobas (C$) con conversión automática al dólar para la flota y los viajes.</p></div></div>
       <form className="settings-form" onSubmit={save}>
         <div className="form-grid">
-          <label>Tasa de cambio · C$ por US$ 1<input required type="number" min="1" step="0.01" value={dollarRate} onChange={(event) => setDollarRate(Number(event.target.value))} /></label>
-          <label>Gasolina · C$ por litro<input required type="number" min="0" step="0.01" value={gasoline} onChange={(event) => setGasoline(Number(event.target.value))} /></label>
-          <label>Diésel · C$ por litro<input required type="number" min="0" step="0.01" value={diesel} onChange={(event) => setDiesel(Number(event.target.value))} /></label>
-          <label>Tarifa base por viaje · C$<input required type="number" min="0" step="0.01" value={baseFee} onChange={(event) => setBaseFee(Number(event.target.value))} /></label>
-          <label>Tarifa por kilómetro · C$<input required type="number" min="0" step="0.01" value={fareKm} onChange={(event) => setFareKm(Number(event.target.value))} /></label>
+          <label>Tasa de cambio · C$ por US$ 1<NumInput required min={1} step={0.01} value={dollarRate} onChange={setDollarRate} /></label>
+          <label>Gasolina · C$ por litro<NumInput required min={0} step={0.01} value={gasoline} onChange={setGasoline} /></label>
+          <label>Diésel · C$ por litro<NumInput required min={0} step={0.01} value={diesel} onChange={setDiesel} /></label>
+          <label>Tarifa base por viaje · C$<NumInput required min={0} step={0.01} value={baseFee} onChange={setBaseFee} /></label>
+          <label>Tarifa por kilómetro · C$<NumInput required min={0} step={0.01} value={fareKm} onChange={setFareKm} /></label>
         </div>
         <div className="vehicle-rates">
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon moto"><Icon name="moto" size={17} /></span><div><strong>Moto</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={motoBase} onChange={(event) => setMotoBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={motoKm} onChange={(event) => setMotoKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(motoBase, motoKm))}</em></div></div>
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon vehiculo"><Icon name="car" size={17} /></span><div><strong>Vehículo</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={vehiculoBase} onChange={(event) => setVehiculoBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={vehiculoKm} onChange={(event) => setVehiculoKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(vehiculoBase, vehiculoKm))}</em></div></div>
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camión</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={camionBase} onChange={(event) => setCamionBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={camionKm} onChange={(event) => setCamionKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon moto"><Icon name="moto" size={17} /></span><div><strong>Moto</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={motoBase} onChange={setMotoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={motoKm} onChange={setMotoKm} /><em>10 km ≈ {formatCs(rateExample(motoBase, motoKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon vehiculo"><Icon name="car" size={17} /></span><div><strong>Vehículo</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={vehiculoBase} onChange={setVehiculoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={vehiculoKm} onChange={setVehiculoKm} /><em>10 km ≈ {formatCs(rateExample(vehiculoBase, vehiculoKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camión</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={camionBase} onChange={setCamionBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={camionKm} onChange={setCamionKm} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
         </div>
         <div className="conversion-strip">
           <span><b>1 USD</b> = {formatCs(dollarRate)}</span>

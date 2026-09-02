@@ -62,41 +62,56 @@ export function googleStatusColor(status: string): string {
   }
 }
 
-const _f = (featureType: string, elementType: string | undefined, color: string) => ({
-  ...(featureType ? { featureType } : {}),
-  ...(elementType ? { elementType } : {}),
-  stylers: elementType === 'labels.text.stroke' ? [{ color }] : [{ color }],
-})
-
 export const INCOEX_MAP_STYLE: any[] = [
-  { elementType: 'geometry', stylers: [{ color: '#f7f9fd' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f7f9fd' }] },
-  _f('poi', 'geometry', '#e9eef7'),
+  { elementType: 'geometry', stylers: [{ color: '#3065cd' }] },
+  { elementType: 'geometry.stroke', stylers: [{ color: '#2b59c0' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#22469e' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#3968cf' }] },
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  _f('road', 'geometry', '#ffffff'),
-  _f('road', 'geometry.stroke', '#e3ebf7'),
-  _f('road.highway', 'geometry', '#bed2f4'),
-  _f('road.highway', 'geometry.stroke', '#f7f9fd'),
-  _f('road.highway', 'labels', '#41609c'),
-  _f('water', 'geometry', '#b7d6f3'),
+  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#86aaf0' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#dfecff' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#24529f' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#1e449e' }] },
   { featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  _f('administrative', 'geometry.stroke', '#d8e2f2'),
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#88a7ec' }] },
   { featureType: 'administrative', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ]
 
+export const ROUTE_COLOR = '#4ff0ff'
+
+export function curvedPath(maps: any, from: { lat: number; lng: number }, to: { lat: number; lng: number }, bend = 0.12) {
+  const dx = to.lng - from.lng
+  const dy = to.lat - from.lat
+  const dist = Math.hypot(dx, dy)
+  if (dist < 1e-6) return [new maps.LatLng(from.lat, from.lng)]
+  const nx = -dy / dist
+  const ny = dx / dist
+  const points: any[] = []
+  const steps = 28
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const arc = Math.sin(t * Math.PI) * bend * dist
+    points.push(new maps.LatLng(from.lat + dy * t + ny * arc, from.lng + dx * t + nx * arc))
+  }
+  return points
+}
+
 export const NICARAGUA_BOUNDS = { south: 10.6, west: -88.0, north: 15.5, east: -82.5 }
 
-export function nicaraguaRestriction(maps: any) {
+export function nicaraguaRestriction() {
   return {
-    bounds: new maps.LatLngBounds(
-      new maps.LatLng(NICARAGUA_BOUNDS.south, NICARAGUA_BOUNDS.west),
-      new maps.LatLng(NICARAGUA_BOUNDS.north, NICARAGUA_BOUNDS.east),
-    ),
-    strictBounds: false,
+    north: NICARAGUA_BOUNDS.north,
+    south: NICARAGUA_BOUNDS.south,
+    east: NICARAGUA_BOUNDS.east,
+    west: NICARAGUA_BOUNDS.west,
+    strictBounds: true,
   }
 }
 
