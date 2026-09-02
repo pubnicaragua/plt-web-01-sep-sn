@@ -1737,10 +1737,10 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
     { src: '/reference/figma-10.png', title: 'Historial de operaciones', detail: 'Web superadministrador · Trazabilidad' },
   ]
   const launchCommands = [
-    { id: 'api', step: '01', title: 'Levantar API + SQLite', detail: 'Terminal 1 · NestJS en el puerto 3000', command: 'cd .\\api-incoex\nnpm install\n$env:INCOEX_DB_PATH = "$PWD\\data\\incoex-local.sqlite"\nnpm run start:dev' },
-    { id: 'web', step: '02', title: 'Levantar panel web', detail: 'Terminal 2 · Vite en el puerto 5173', command: 'cd .\\web\nnpm install\n$env:VITE_API_URL = "http://localhost:3000/api"\nnpm run dev' },
-    { id: 'flutter', step: '03', title: 'Levantar app Flutter', detail: 'Terminal 3 · emulador Android', command: 'cd .\\apps\nflutter pub get\nflutter run --dart-define=INCOEX_API_URL=http://10.0.2.2:3000/api' },
-    { id: 'check', step: '04', title: 'Comprobar conexión', detail: 'Navegador · salud y Swagger', command: 'Invoke-RestMethod http://localhost:3000/api/health\nStart-Process http://localhost:3000/api/docs\nStart-Process http://localhost:5173' },
+    { id: 'api', step: '01', title: 'API desplegada (Render)', detail: 'Producción · https://plt-api-01-sep-sn.onrender.com', command: 'https://plt-api-01-sep-sn.onrender.com/api/health\n\n# La API duerme si no recibe tráfico:\n# la primera petición puede tardar ~40 s.' },
+    { id: 'web', step: '02', title: 'Panel web', detail: 'Vercel · conectado a la API de Render', command: 'https://plt-web-01-sep-sn.vercel.app' },
+    { id: 'local', step: '03', title: 'Desarrollo local', detail: 'API NestJS en el puerto 3000 (alternativa)', command: 'cd .\\api-incoex\nnpm install\n$env:INCOEX_DB_PATH = "$PWD\\data\\incoex-local.sqlite"\nnpm run start:dev\n\n# en la web (otra terminal):\ncd .\\web\n$env:VITE_API_URL = "http://localhost:3000/api"\nnpm run dev' },
+    { id: 'flutter', step: '04', title: 'App Flutter', detail: 'Emulador Android contra la API', command: 'cd .\\apps\nflutter pub get\nflutter run --dart-define=INCOEX_API_URL=https://plt-api-01-sep-sn.onrender.com/api' },
   ]
   async function copyCommand(command: string, title: string) {
     try {
@@ -1800,9 +1800,9 @@ function DeliverablesView({ deliverables, summary, onStatusChange, onNotice }: {
       <div className="reference-grid">{referenceScreens.map((screen, index) => <figure className="reference-card" key={screen.src}><a href={screen.src} target="_blank" rel="noreferrer"><img src={screen.src} alt={screen.title} loading="lazy" /></a><figcaption><span>0{index + 1}</span><div><strong>{screen.title}</strong><small>{screen.detail}</small></div><a className="reference-open" href={screen.src} target="_blank" rel="noreferrer" aria-label={`Abrir ${screen.title}`}>↗</a></figcaption></figure>)}</div>
     </section>
     <section className="launch-panel technical-launch">
-      <div className="launch-heading"><div><span className="eyebrow">GUÍA TÉCNICA · POWERSHELL</span><h2>Cómo levantar el proyecto local</h2><p>Abre tres terminales en la raíz de <code>INCOEX APPS</code>. Copia cada bloque con un clic y deja la API encendida antes de abrir la web o Flutter.</p></div><span className="launch-badge"><span className="pulse-dot" /> Entorno local</span></div>
+      <div className="launch-heading"><div><span className="eyebrow">GUÍA TÉCNICA · DESPLIEGUE</span><h2>Dónde está corriendo el proyecto</h2><p>La API vive en Render y el panel web consume ese servicio directamente; los bloques de desarrollo local quedan como alternativa para trabajar sin conexión al despliegue.</p></div><span className="launch-badge"><span className="pulse-dot" /> API en Render</span></div>
       <div className="command-grid">{launchCommands.map((item) => <article className="command-card" key={item.id}><div className="command-card-head"><span className="command-step">{item.step}</span><div><h3>{item.title}</h3><small>{item.detail}</small></div><button className="copy-button" onClick={() => void copyCommand(item.command, item.title)} aria-label={`Copiar ${item.title}`}>⧉ Copiar</button></div><pre><code>{item.command}</code></pre></article>)}</div>
-      <div className="launch-footnote"><strong>Web:</strong> <span>http://localhost:5173</span><b>·</b><strong>API:</strong> <span>http://localhost:3000/api</span><b>·</b><strong>Reporte:</strong> <span>menú Entregables</span></div>
+      <div className="launch-footnote"><strong>Web:</strong> <span>https://plt-web-01-sep-sn.vercel.app</span><b>·</b><strong>API:</strong> <span>https://plt-api-01-sep-sn.onrender.com/api</span><b>·</b><strong>Reporte:</strong> <span>menú Entregables</span></div>
     </section>
     <section className="kanban-shell">
       <div className="kanban-heading"><div><span className="eyebrow">VALIDACIÓN DEL ALCANCE</span><h2>Detalle de tareas y entregables</h2><p>El estado de cada tarjeta puede actualizarse durante la revisión del cliente.</p></div><span className="kanban-note">Cambios persistidos en SQLite local</span></div>

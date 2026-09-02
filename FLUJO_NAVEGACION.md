@@ -170,6 +170,18 @@ La API valida cada transición y rechaza saltos inválidos (`PATCH /api/trips/:i
 
 El frontend no usa arreglos de demostración como respaldo: si la API no está disponible, muestra el estado de conexión y una vista de error. Los datos de muestra viven únicamente en los stores del backend (`OperationsStore`, `VehiclesStore`, `UsersStore`, `SettingsStore`) para poder presentar el flujo mientras se conecta PostgreSQL. Todos los datos de demostración corresponden a Managua, Nicaragua, y los precios están en córdobas (C$) con la tasa de cambio definida en Configuración.
 
+## Despliegue actual
+
+| Componente | URL | Notas |
+|---|---|---|
+| API | https://plt-api-01-sep-sn.onrender.com/api | Render (plan gratuito: se duerme sin tráfico, la primera petición puede tardar ~40 s) |
+| Panel web | https://plt-web-01-sep-sn.vercel.app | Vercel · consume la API de Render (CORS habilitado) |
+| Salud de la API | https://plt-api-01-sep-sn.onrender.com/api/health | Verificación rápida del servicio |
+
+**Base de datos en Render**: la API usa SQLite dentro del contenedor. El disco de Render es efímero: cada deploy o reinicio borra la base y las fotos subidas, y los datos vuelven a sembrarse. Para mantener los datos entre deploys sin cambiar de motor: montar un *persistent disk* en Render y definir `INCOEX_DB_PATH=/var/data/incoex-local.sqlite` y `INCOEX_UPLOADS_PATH=/var/data/uploads/vehicles` (el código ya respeta ambas variables; ver `api-incoex/.env.example`). Para producción real se migrará a PostgreSQL.
+
+**Desarrollo local**: la web respeta `VITE_API_URL`; sin esa variable usa la API de Render. Para trabajar local: levantar la API (`npm run start:dev`) y `VITE_API_URL=http://localhost:3000/api` en la web.
+
 ## Pendiente para producción
 
 Antes de producción faltan autenticación JWT/RBAC real (el login del panel sigue siendo de demo), PostgreSQL, WebSockets para posiciones en vivo, ETA con rutas viales reales (hoy la distancia se calcula en línea recta), pagos de clientes, almacenamiento de evidencias (fotos de paquetes, firmas, comprobante PDF), notificaciones push y pruebas E2E automatizadas.
