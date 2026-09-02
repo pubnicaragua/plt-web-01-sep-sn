@@ -1,4 +1,4 @@
-﻿import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import {
   assignTrip,
@@ -45,11 +45,16 @@ import {
   updateVehicle,
   updateVehicleStatus,
   uploadVehicleImage,
+  getCortes,
+  generateCortes,
+  payCorte,
+  annulCorte,
+  markCorteSent,
 } from './lib/api'
 import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import { LiveMap } from './components/LiveMap'
-import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import type { AppSettings, AppUser, BillingPeriod, Client, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
 interface NumInputProps {
@@ -757,12 +762,18 @@ function ClientFormDialog({ client, onClose, onCreated, onError }: { client?: Cl
   const [notes, setNotes] = useState(client?.notes ?? '')
   const [creditDays, setCreditDays] = useState(client?.creditDays ?? 0)
   const [dueDay, setDueDay] = useState(client?.dueDay ?? 0)
+  const [billingPeriod, setBillingPeriod] = useState<Client['billingPeriod']>(client?.billingPeriod ?? 'semanal')
+  const [billingCustomDays, setBillingCustomDays] = useState(client?.billingCustomDays ?? 7)
+  const [billingCutDay, setBillingCutDay] = useState(client?.billingCutDay ?? 0)
+  const [billingCutTime, setBillingCutTime] = useState(client?.billingCutTime ?? '22:00')
+  const [billingActive, setBillingActive] = useState(client?.billingActive ?? false)
+  const [whatsapp, setWhatsapp] = useState(client?.whatsapp ?? '')
   const [submitting, setSubmitting] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     try {
-      const payload = { name, type, phone, email, address, contact, taxId, notes, creditDays, dueDay }
+      const payload = { name, type, phone, email, address, contact, taxId, notes, creditDays, dueDay, billingPeriod, billingCustomDays, billingCutDay, billingCutTime, billingActive, whatsapp }
       const saved = client ? await updateClient(client.id, payload) : await createClient(payload)
       onCreated(saved)
       if (client) onError('Cliente actualizado: crédito, contacto y datos guardados')
@@ -789,7 +800,19 @@ function ClientFormDialog({ client, onClose, onCreated, onError }: { client?: Cl
           <label>Día de cobro (1-28)<select value={dueDay} onChange={(event) => setDueDay(Number(event.target.value))} title="Cada mes se factura este día"><option value={0}>— sin día fijo —</option>{Array.from({ length: 28 }, (_, index) => index + 1).map((day) => <option value={day} key={day}>{day} de cada mes</option>)}</select></label>
           <label className="full-field">Notas internas<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Horarios de entrega, puntos de referencia, condiciones…" /></label>
         </div>
-        <p className="wizard-hint">Los viajes nuevos de este cliente heredarán la fecha de cobro: {dueDay > 0 ? `día ${dueDay} de cada mes` : creditDays > 0 ? `${creditDays} días después del viaje` : 'contado (sin crédito)'}.</p>
+        <div className="billing-cfg">
+          <div className="billing-cfg-head"><span className="eyebrow">CORTE DE PAGO AUTOMATICO</span><label className="check-inline"><input type="checkbox" checked={billingActive} onChange={(event) => setBillingActive(event.target.checked)} /><span>Activar corte automatico para este cliente (recibo de deuda acumulada)</span></label></div>
+          <div className="form-grid billing-cfg-grid">
+            <label>Periodo de corte<select value={billingPeriod} onChange={(event) => setBillingPeriod(event.target.value as Client['billingPeriod'])}><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option><option value="personalizado">Personalizado (dias)</option><option value="">Sin periodo fijo</option></select></label>
+            {billingPeriod === 'personalizado' && <label>Dias por periodo<NumInput min={1} max={90} value={billingCustomDays} onChange={setBillingCustomDays} /></label>}
+            {billingPeriod === 'mensual'
+              ? <label>Dia de corte del mes<select value={billingCutDay} onChange={(event) => setBillingCutDay(Number(event.target.value))}>{Array.from({ length: 28 }, (_, index) => index + 1).map((day) => <option value={day} key={day}>{day} de cada mes</option>)}</select></label>
+              : <label>Dia de corte (semana)<select value={billingCutDay} onChange={(event) => setBillingCutDay(Number(event.target.value))}><option value={0}>Domingo</option><option value={1}>Lunes</option><option value={2}>Martes</option><option value={3}>Miercoles</option><option value={4}>Jueves</option><option value={5}>Viernes</option><option value={6}>Sabado</option></select></label>}
+            <label>Hora del corte<input type="time" value={billingCutTime} onChange={(event) => setBillingCutTime(event.target.value)} /></label>
+            <label>WhatsApp para envio<input value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} placeholder="8XXX XXXX" title="Se usa para enviarle el recibo del corte por WhatsApp" /></label>
+          </div>
+          <p className="billing-cfg-hint">El corte acumula los viajes desde un corte hasta el siguiente (ej: dom 10:01 pm hasta dom 9:59 pm). Se genera automaticamente al vencer el periodo (o manual desde Facturacion), y queda listo para enviarse por WhatsApp o notificarse en la app del cliente.</p>
+        </div>
         <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : client ? 'Guardar cambios' : 'Registrar cliente'}</button></div>
       </form>
     </div>
@@ -1036,7 +1059,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
           map,
           draggable: true,
           title: 'Recogida',
-          icon: incoexPin(maps, '#1d5cff', 1.2),
+          icon: incoexPin(maps, '#32AAF0', 1.2),
         })
         originMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'origin'))
       }
@@ -1151,7 +1174,7 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             position: origin0,
             map,
             title: 'Recogida',
-            icon: incoexPin(maps, '#1d5cff', 1.15),
+            icon: incoexPin(maps, '#32AAF0', 1.15),
           })
           new maps.Marker({
             position: destination0,
@@ -1379,9 +1402,9 @@ async function openInvoicePrint(trip: Trip, client: Client | undefined, settings
   windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Factura ${invoiceNumber}</title><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; color: #20304f; padding: 30px 40px; background: #ffffff; }
-    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #1d5cff; padding-bottom: 14px; }
-    .brand { font-size: 24px; font-weight: 800; letter-spacing: .16em; color: #1d5cff; } .brand span { display: block; color: #7c899f; font-size: 11px; letter-spacing: .04em; }
-    .meta { text-align: right; } .meta h1 { font-size: 20px; color: #1d5cff; } .meta p { color: #7e8ca3; font-size: 12px; margin-top: 3px; }
+    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #32AAF0; padding-bottom: 14px; }
+    .brand { font-size: 24px; font-weight: 800; letter-spacing: .16em; color: #0d75b3; } .brand span { display: block; color: #6e6a78; font-size: 11px; letter-spacing: .04em; }
+    .meta { text-align: right; } .meta h1 { font-size: 20px; color: #0d75b3; } .meta p { color: #6e6a78; font-size: 12px; margin-top: 3px; }
     .stamp { position: absolute; right: 46px; top: 120px; transform: rotate(-11deg); border: 3px solid #dc3434; color: #dc3434; font-size: 26px; font-weight: 800; letter-spacing: .3em; padding: 8px 26px; border-radius: 6px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 20px 0 16px; }
     .box { border: 1px solid #e3eaf6; border-radius: 9px; padding: 13px 15px; background: #fafcff; }
@@ -1392,8 +1415,8 @@ async function openInvoicePrint(trip: Trip, client: Client | undefined, settings
     td { border-bottom: 1px solid #eef2f8; padding: 9px 11px; }
     .totals { margin-left: auto; width: 320px; margin-top: 4px; }
     .totals div { display: flex; justify-content: space-between; padding: 7px 11px; font-size: 13px; color: #5b6b84; }
-    .totals .total { border-top: 2px solid #1d5cff; font-weight: 800; font-size: 15px; color: #20304f; }
-    .totals .total b { color: #1d5cff; }
+    .totals .total { border-top: 2px solid #32AAF0; font-weight: 800; font-size: 15px; color: #262038; }
+    .totals .total b { color: #0d75b3; }
     .footer { margin-top: 26px; padding-top: 12px; border-top: 1px solid #e3eaf4; color: #93a1b8; font-size: 10.5px; text-align: center; }
     .footer strong { color: #5b6b84; }
   </style></head><body>
@@ -2636,7 +2659,7 @@ function BillingLock({ onUnlocked }: { onUnlocked: () => void }) {
 }
 
 function BillingContent({ trips, clients, drivers, vehicles, settings, onLock, onNotice }: { trips: Trip[]; clients: Client[]; drivers: Driver[]; vehicles: Vehicle[]; settings: AppSettings | null; onLock: () => void; onNotice: (message: string) => void }) {
-  const [tab, setTab] = useState<'proyecto' | 'clientes' | 'proveedores'>('proyecto')
+  const [tab, setTab] = useState<'proyecto' | 'clientes' | 'proveedores' | 'cortes'>('proyecto')
   const received = billingPayments.find((payment) => payment.status === 'paid')
   const upcoming = billingPayments.filter((payment) => payment.status !== 'paid')
 
@@ -2670,6 +2693,7 @@ function BillingContent({ trips, clients, drivers, vehicles, settings, onLock, o
       <button className={`filter-chip ${tab === 'proyecto' ? 'active' : ''}`} onClick={() => setTab('proyecto')}>Proyecto <b>pagos</b></button>
       <button className={`filter-chip ${tab === 'clientes' ? 'active' : ''}`} onClick={() => setTab('clientes')}>Facturas a clientes <b>{trips.filter((trip) => trip.status !== 'Cancelado' && trip.status !== 'Anulado').length}</b></button>
       <button className={`filter-chip ${tab === 'proveedores' ? 'active' : ''}`} onClick={() => setTab('proveedores')}>Proveedores · tercerizados <b>3P</b></button>
+      <button className={`filter-chip ${tab === 'cortes' ? 'active' : ''}`} onClick={() => setTab('cortes')}>Cortes de pago <b>recibos</b></button>
     </div>
 
     {tab === 'proyecto' && (<>
@@ -2725,9 +2749,233 @@ function BillingContent({ trips, clients, drivers, vehicles, settings, onLock, o
 
     {tab === 'clientes' && <OperationsInvoices kind="clients" trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={onNotice} />}
     {tab === 'proveedores' && <OperationsInvoices kind="suppliers" trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={onNotice} />}
+    {tab === 'cortes' && <CortesView clients={clients} onNotice={onNotice} />}
   </>
 }
 
+const CUT_DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+function periodLabelOf(client?: Client | null) {
+  if (client?.billingPeriod === 'quincenal') return 'Quincenal'
+  if (client?.billingPeriod === 'mensual') return 'Mensual'
+  if (client?.billingPeriod === 'personalizado') return 'Cada ' + (client.billingCustomDays ?? 7) + ' días'
+  if ((client?.billingPeriod ?? 'semanal') === 'semanal') return 'Semanal'
+  return 'Sin periodo'
+}
+function cutLabelOf(client?: Client | null) {
+  if (!client) return ''
+  if (client.billingPeriod === 'mensual') return (client.billingCutDay ?? 1) + ' de cada mes, ' + (client.billingCutTime ?? '22:00')
+  return (CUT_DAY_NAMES[client.billingCutDay ?? 0] ?? 'Domingo') + ', ' + (client.billingCutTime ?? '22:00')
+}
+function formatCorteDate(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('es-NI', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+function clientByName(clients: Client[], name: string) {
+  return clients.find((client) => client.name.trim().toLowerCase() === name.trim().toLowerCase())
+}
+function waLinkOf(corte: Corte, client?: Client) {
+  const raw = (client?.whatsapp || client?.phone || '').replace(/\D/g, '')
+  let wa = raw.replace(/^0+/, '')
+  if (!/^505/.test(wa)) wa = '505' + wa
+  const items = corte.items.slice(0, 30).map((item) => '  ' + item.id + '  ' + item.date + '  ' + item.origin + ' -> ' + item.destination + '  C$' + item.priceCs.toFixed(2)).join('\n')
+  const message = [
+    'CORTE DE PAGO - ' + (client?.name ?? corte.client).toUpperCase(),
+    'INCOEX Logistics',
+    '',
+    'Periodo: ' + formatCorteDate(corte.periodStart) + ' hasta ' + formatCorteDate(corte.periodEnd) + ' (' + (corte.periodLabel || periodLabelOf(client)) + ')',
+    '',
+    'Viajes del periodo: ' + corte.items.length,
+    'Total del periodo: C$' + corte.totalCs.toFixed(2) + ' cordobas',
+    corte.previousDebtCs > 0 ? 'Saldo anterior: C$' + corte.previousDebtCs.toFixed(2) + ' cordobas' : '',
+    'TOTAL A PAGAR: C$' + corte.grandTotalCs.toFixed(2) + ' cordobas',
+    '',
+    items,
+    '',
+    'Este es su recibo de deuda acumulada. Puede coordinar su pago respondiendo este mensaje.',
+  ].filter(Boolean).join('\n')
+  return 'https://wa.me/' + wa + '?text=' + encodeURIComponent(message)
+}
+function printCorteReceipt(corte: Corte, client?: Client) {
+  const rowHtml = corte.items.map((item) => '<tr><td>' + item.id + '</td><td>' + item.date + '</td><td>' + item.origin + ' &rarr; ' + item.destination + '</td><td style="text-align:right">C$ ' + item.priceCs.toFixed(2) + '</td></tr>').join('')
+  const doc = [
+    '<!doctype html><html><head><meta charset="utf-8"><title>Recibo de corte - ' + (client?.name ?? corte.client) + '</title>',
+    '<style>@page{margin:14mm} body{font:13px "Acumin Pro",Arial,sans-serif;color:#101230} .head{display:flex;justify-content:space-between;border-bottom:3px solid #32AAF0;padding-bottom:12px} .brand{font-size:23px;font-weight:800;letter-spacing:.16em;color:#0d75b3} .brand span{display:block;color:#6e6a78;font-size:11px;letter-spacing:.06em} h1{font-size:19px;margin:16px 0 2px} .meta{font-size:12px;color:#6e6a78} table{width:100%;border-collapse:collapse;margin-top:12px} th{padding:8px;border-top:1px solid #DED9E2;border-bottom:2px solid #DED9E2;color:#6e6a78;font-size:10px;letter-spacing:.08em;text-align:left} td{padding:7px 8px;border-bottom:1px solid #ECE8F0;font-size:12px} .totals{margin:14px 0 0 auto;width:300px} .totals div{display:flex;justify-content:space-between;padding:6px 4px;color:#504b59;font-size:12.5px} .totals .grand{border-top:2px solid #32AAF0;color:#101230;font-weight:800} .stamp{margin-top:8px;font-size:10px;color:#6e6a78}</style></head><body>',
+    '<div class="head"><div class="brand">INCOEX<span>LOGISTICS &middot; MANAGUA</span></div><div><h1>Recibo de corte</h1><div class="meta">Periodo ' + formatCorteDate(corte.periodStart) + ' al ' + formatCorteDate(corte.periodEnd) + ' &middot; ' + (corte.periodLabel || periodLabelOf(client)) + '</div></div></div>',
+    '<p><b>' + (client?.name ?? corte.client) + '</b> <span class="meta">(' + (client?.type ?? '') + ')</span><br><span class="meta">' + (client?.address ?? '') + '</span></p>',
+    '<table><thead><tr><th>Viaje</th><th>Fecha</th><th>Ruta</th><th>Monto</th></tr></thead><tbody>' + rowHtml + '</tbody></table>',
+    '<div class="totals"><div><span>Total del periodo</span><b>C$ ' + corte.totalCs.toFixed(2) + '</b></div>' + (corte.previousDebtCs > 0 ? '<div><span>Saldo anterior (deuda acumulada)</span><b>C$ ' + corte.previousDebtCs.toFixed(2) + '</b></div>' : '') + '<div class="grand"><span>TOTAL A PAGAR</span><span>C$ ' + corte.grandTotalCs.toFixed(2) + '</span></div></div>',
+    '<div class="stamp">' + (corte.status === 'pagado' ? 'Pagado el ' + formatCorteDate(corte.paidAt ?? corte.createdAt) + (corte.method ? ' &middot; ' + corte.method : '') : (corte.status === 'anulado' ? 'Anulado' : 'Por cobrar')) + (corte.notes ? ' &middot; ' + corte.notes : '') + '</div>',
+    '</body></html>',
+  ].join('')
+  const win = window.open('', '_blank', 'width=820,height=940')
+  if (win) { win.document.write(doc); win.document.close(); win.focus(); win.print() }
+}
+function CorteChip({ corte }: { corte: Corte }) {
+  const label = corte.status === 'pagado' ? 'Pagado' : corte.status === 'anulado' ? 'Anulado' : corte.sentWhatsapp ? 'Pendiente · WA enviado' : 'Pendiente · por enviar'
+  return <span className={'corte-chip ' + corte.status}>{label}</span>
+}
+function CortesView({ clients, onNotice }: { clients: Client[]; onNotice: (message: string) => void }) {
+  const [cortes, setCortes] = useState<Corte[]>([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<'all' | Corte['status']>('all')
+  const [acting, setActing] = useState('')
+  const [detail, setDetail] = useState<Corte | null>(null)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  async function refresh() {
+    try {
+      setCortes(await getCortes(statusFilter === 'all' ? {} : { status: statusFilter }))
+    } catch {
+      onNotice('No se pudieron cargar los cortes')
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { void refresh() }, [statusFilter])
+  const pending = cortes.filter((corte) => corte.status === 'pendiente')
+  const paid = cortes.filter((corte) => corte.status === 'pagado')
+  const pendingTotal = pending.reduce((sum, corte) => sum + corte.grandTotalCs, 0)
+  function openReceipt(corte: Corte) { setDetail(corte) }
+  return <>
+    <section className="panel export-panel">
+      <div className="export-panel-head">
+        <div>
+          <span className="eyebrow">RECIBO DE DEUDA ACUMULADA</span>
+          <h2>Cortes de pago por cliente</h2>
+          <p>Cada cliente con corte automático recibe su recibo al vencer su periodo (semanal, quincenal, mensual o el que definas). El recibo suma los viajes del periodo y el saldo anterior no pagado. Se genera <b>solo el día del corte a la hora configurada</b> (domingo 22:00 por defecto) o cuando lo dispares manualmente; luego se lo envías por WhatsApp desde aquí y el cliente lo ve también en su app.</p>
+        </div>
+        <div className="billing-summary-grid cortes-summary">
+          <div className="metric-card"><span className="metric-label">Cortes pendientes</span><strong className="metric-value" style={{ fontSize: 22 }}>{pending.length}</strong><small style={{ fontSize: 11 }}>por cobrar: <b>{formatCs(pendingTotal)}</b></small></div>
+          <div className="metric-card"><span className="metric-label">Pagados</span><strong className="metric-value" style={{ fontSize: 22 }}>{paid.length}</strong><small style={{ fontSize: 11 }}>{paid.reduce((sum, corte) => sum + (corte.paidAmountCs ?? 0), 0) > 0 ? formatCs(paid.reduce((sum, corte) => sum + (corte.paidAmountCs ?? 0), 0)) : 'sin registros'}</small></div>
+          <div className="metric-card"><span className="metric-label">Clientes con corte</span><strong className="metric-value" style={{ fontSize: 22 }}>{clients.filter((client) => client.billingActive).length}</strong><small style={{ fontSize: 11 }}>corte automático activado</small></div>
+        </div>
+        <div className="export-buttons" style={{ alignSelf: 'flex-end' }}>
+          <button className="secondary-button" onClick={() => setGenerateOpen(true)}><Icon name="activity" size={13} /> Generar corte ahora</button>
+        </div>
+      </div>
+    </section>
+    <section className="panel table-panel">
+      <div className="table-toolbar">
+        <div className="filter-row">
+          <button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => setStatusFilter('all')}>Todos <b>{cortes.length}</b></button>
+          <button className={`filter-chip ${statusFilter === 'pendiente' ? 'active' : ''}`} onClick={() => setStatusFilter('pendiente')}>Pendientes <b>{pending.length}</b></button>
+          <button className={`filter-chip ${statusFilter === 'pagado' ? 'active' : ''}`} onClick={() => setStatusFilter('pagado')}>Pagados <b>{paid.length}</b></button>
+        </div>
+        <span className="source-badge">{loading ? 'cargando…' : 'cortes reales de la operación'}</span>
+      </div>
+      <DataTable className="cortes-table" columns={['ID', 'Cliente', 'Periodo', 'Viajes', 'Total periodo', 'Saldo anterior', 'Total a pagar', 'Estado', 'Acciones']} rows={cortes.map((corte) => {
+        const client = clientByName(clients, corte.client)
+        return [
+          <strong className="linkish" key={corte.id} onClick={() => openReceipt(corte)}>{corte.id.split('-').slice(0, 2).join('-')}</strong>,
+          <span key={corte.id + '-c'}><b>{corte.client}</b><small className="cell-sub">{periodLabelOf(client)}{client ? ' · corte ' + cutLabelOf(client) : ''}</small></span>,
+          formatCorteDate(corte.periodStart) + ' → ' + formatCorteDate(corte.periodEnd),
+          corte.items.length,
+          <b key={corte.id + '-total'}>{formatCs(corte.totalCs)}</b>,
+          <span key={corte.id + '-prev'} className={corte.previousDebtCs > 0 ? 'text-danger' : 'muted'}>{corte.previousDebtCs > 0 ? formatCs(corte.previousDebtCs) : '—'}</span>,
+          <b key={corte.id + '-grand'} className={corte.previousDebtCs > 0 ? 'text-danger' : ''}>{formatCs(corte.grandTotalCs)}</b>,
+          <CorteChip key={corte.id + '-chip'} corte={corte} />,
+          <div className="action-group" key={corte.id + '-actions'}>
+            <button title="Ver recibo" onClick={() => openReceipt(corte)}><Icon name="eye" size={14} /></button>
+            {corte.status === 'pendiente' && <button title="Enviar por WhatsApp" onClick={() => { window.open(waLinkOf(corte, client), '_blank'); void markCorteSent(corte.id).then(() => { setActing(''); void refresh() }).catch(() => setActing('')); setActing(corte.id); onNotice('WhatsApp de ' + corte.client + ' abierto con su recibo') }}><Icon name="send" size={14} /></button>}
+            {corte.status === 'pendiente' && <button title="Imprimir recibo" onClick={() => printCorteReceipt(corte, client)}><Icon name="print" size={14} /></button>}
+          </div>,
+        ]
+      })} />
+      <div className="table-footer"><span>Mostrando {cortes.length} cortes · la generación automática corre cada minuto en la API y corta al vencer el periodo de cada cliente</span></div>
+    </section>
+    {detail && <CorteReceiptModal corte={detail} clients={clients} onClose={() => setDetail(null)} onChanged={(next) => { setDetail(next); void refresh() }} onNotice={onNotice} />}
+    {generateOpen && <GenerateCorteModal clients={clients} onClose={() => setGenerateOpen(false)} onDone={() => { setGenerateOpen(false); void refresh() }} onNotice={onNotice} />}
+  </>
+}
+function CorteReceiptModal({ corte, clients, onClose, onChanged, onNotice }: { corte: Corte; clients: Client[]; onClose: () => void; onChanged: (corte: Corte) => void; onNotice: (message: string) => void }) {
+  const client = clientByName(clients, corte.client)
+  const [paying, setPaying] = useState(false)
+  const [amountCs, setAmountCs] = useState(corte.grandTotalCs)
+  const [method, setMethod] = useState('Transferencia')
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function pay() {
+    setBusy(true)
+    try {
+      const next = await payCorte(corte.id, { amountCs, method, notes })
+      onChanged(next)
+      onNotice('Corte de ' + corte.client + ' marcado como pagado por ' + method + ' (C$ ' + (next.paidAmountCs ?? amountCs).toFixed(2) + ')')
+    } catch {
+      onNotice('No se pudo registrar el pago')
+    } finally {
+      setBusy(false)
+      setPaying(false)
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className="modal-card wide">
+        <div className="modal-header"><div><span className="eyebrow">Recibo de corte · {corte.periodLabel || periodLabelOf(client)}</span><h2>{corte.client}</h2><p>Periodo del {formatCorteDate(corte.periodStart)} al {formatCorteDate(corte.periodEnd)} · generado {formatCorteDate(corte.createdAt)}</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">✕</button></div>
+        <div className="corte-receipt">
+          <div className="corte-receipt-head"><span className="corte-receipt-brand">INCOEX<span>LOGISTICS · MANAGUA</span></span><CorteChip corte={corte} /></div>
+          <div className="corte-receipt-client"><b>{corte.client}</b><small>{client?.type ?? ''}{client?.address ? ' · ' + client.address : ''}</small></div>
+          <div className="invoice-items">
+            <div className="invoice-item head"><span>Viaje</span><span>Fecha</span><span>Detalle</span><span style={{ textAlign: 'right' }}>Monto</span><span></span></div>
+            {corte.items.length === 0 && <div className="invoice-item"><span>—</span><span>—</span><span>Sin viajes facturables en este periodo</span><span style={{ textAlign: 'right' }}>C$ 0.00</span><span></span></div>}
+            {corte.items.map((item) => <div className="invoice-item" key={item.id}><span><b className="linkish">{item.id}</b></span><span>{item.date}</span><span>{item.origin} → {item.destination}</span><span style={{ textAlign: 'right' }}>C$ {item.priceCs.toFixed(2)}</span><span></span></div>)}
+          </div>
+          <div className="invoice-totals">
+            <div><span>Total del periodo ({corte.items.length} viajes)</span><b>C$ {corte.totalCs.toFixed(2)}</b></div>
+            {corte.previousDebtCs > 0 && <div><span>Saldo anterior (deuda acumulada)</span><b className="text-danger">C$ {corte.previousDebtCs.toFixed(2)}</b></div>}
+            <div className="invoice-total"><span>TOTAL A PAGAR</span><b>C$ {corte.grandTotalCs.toFixed(2)}</b></div>
+            {corte.status === 'pagado' && <div><span>Pagado ({corte.paidAt ? formatCorteDate(corte.paidAt) : ''}{corte.method ? ' · ' + corte.method : ''})</span><b className="muted">C$ {(corte.paidAmountCs ?? 0).toFixed(2)}</b></div>}
+          </div>
+        </div>
+        {paying ? (
+          <div className="payment-strip" style={{ margin: '14px 0 0' }}>
+            <div className="payment-form">
+              <input type="number" min={0} value={amountCs} onChange={(event) => setAmountCs(Number(event.target.value))} placeholder="Monto C$" />
+              <select value={method} onChange={(event) => setMethod(event.target.value)}><option>Efectivo</option><option>Transferencia</option><option>Depósito</option><option>Tarjeta</option></select>
+              <input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Nota (opcional)" />
+              <button className="primary-mini" disabled={busy || amountCs <= 0} onClick={() => void pay()}>{busy ? 'Guardando…' : 'Confirmar pago'}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-actions trip-actions">
+            {corte.status === 'pendiente' && <button className="primary-button" onClick={() => setPaying(true)}><Icon name="checkCircle" size={13} /> Registrar pago</button>}
+            {corte.status === 'pendiente' && <button className="secondary-button" onClick={() => { window.open(waLinkOf(corte, client), '_blank'); void markCorteSent(corte.id).then(() => onNotice('Marcado como enviado por WhatsApp')).catch(() => undefined) }} disabled={busy}><Icon name="send" size={13} /> Enviar a WhatsApp</button>}
+            <button className="secondary-button" onClick={() => printCorteReceipt(corte, client)}><Icon name="print" size={13} /> Imprimir recibo</button>
+            {corte.status === 'pendiente' && <button className="secondary-button danger" onClick={() => { if (window.confirm('¿Anular este corte? El cliente quedará sin recibir este recibo.')) void annulCorte(corte.id).then((next) => { onChanged(next); onNotice('Corte anulado') }).catch(() => onNotice('No se pudo anular')) }} disabled={busy}><Icon name="trash" size={13} /> Anular</button>}
+            <button className="secondary-button" onClick={onClose}>Cerrar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+function GenerateCorteModal({ clients, onClose, onDone, onNotice }: { clients: Client[]; onClose: () => void; onDone: () => void; onNotice: (message: string) => void }) {
+  const active = clients.filter((client) => client.billingActive)
+  const [clientName, setClientName] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function run() {
+    setBusy(true)
+    try {
+      const result = await generateCortes(clientName || undefined)
+      onDone()
+      onNotice(clientName ? 'Corte de ' + clientName + ' generado' : result.count > 0 ? result.count + ' cortes generados según su periodo' : 'No hay cortes vencidos por generar (la ventana sigue abierta)')
+    } catch {
+      onNotice('No se pudo generar el corte')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className="modal-card">
+        <div className="modal-header"><div><span className="eyebrow">COBRO PERIÓDICO</span><h2>Generar corte</h2><p>Aplica el corte vencido de cada cliente con periodo activo, o elige uno específico para cerrar su ventana ahora mismo.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">✕</button></div>
+        <div className="form-grid">
+          <label className="full-field">Cliente<select value={clientName} onChange={(event) => setClientName(event.target.value)}><option value="">Todos los clientes con corte activo ({active.length})</option>{active.map((client) => <option value={client.name} key={client.id}>{client.name} · {periodLabelOf(client)}, corte {cutLabelOf(client)}</option>)}</select></label>
+        </div>
+        <p className="wizard-hint">El corte acumula los viajes desde las 10:01 pm del corte anterior hasta las 9:59 pm del corte actual y suma el saldo anterior no pagado.</p>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} onClick={() => void run()}>{busy ? 'Generando…' : 'Generar ahora'}</button></div>
+      </div>
+    </div>
+  )
+}
 function BillingMetric({ icon, label, value, detail, tone }: { icon: IconName; label: string; value: string; detail: string; tone: string }) {
   return <div className={`deliverable-metric billing-metric ${tone}`}><span className="metric-label"><Icon name={icon} size={13} /> {label}</span><strong>{value}</strong><small>{detail}</small></div>
 }

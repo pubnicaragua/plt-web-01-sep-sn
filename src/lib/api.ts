@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
+import type { AppSettings, AppUser, Client, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -47,6 +47,9 @@ async function sendJson<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bo
 export function getDashboardSummary() {
   return getJson<DashboardSummary>('/dashboard/summary')
 }
+export function getTrackingLive(id: string) {
+  return getJson<unknown>(`/tracking/${encodeURIComponent(id)}`)
+}
 
 export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
@@ -55,7 +58,7 @@ export function createDriver(body: { name: string; phone?: string; email?: strin
 export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
-export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string }) { return sendJson<Client>('/clients', 'POST', body) }
+export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string }) { return sendJson<Client>('/clients', 'POST', body) }
 export function deleteClient(id: string) { return sendJson<{ deleted: string }>(`/clients/${encodeURIComponent(id)}`, 'DELETE') }
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
 export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
@@ -102,9 +105,22 @@ export function updateTripFare(tripId: string, estimatedCostCs: number) {
   return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/fare`, 'PATCH', { estimatedCostCs })
 }
 
-export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number }) {
+export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string }) {
   return sendJson<Client>(`/clients/${encodeURIComponent(id)}`, 'PATCH', body)
 }
+
+export function getCortes(params: { client?: string; status?: string } = {}) {
+  const query = new URLSearchParams()
+  if (params.client) query.set('client', params.client)
+  if (params.status) query.set('status', params.status)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return getJson<Corte[]>(`/cortes${suffix}`)
+}
+export function getCorte(id: string) { return getJson<Corte>(`/cortes/${encodeURIComponent(id)}`) }
+export function generateCortes(client?: string) { return sendJson<{ created: string[]; count: number }>('/cortes/generate', 'POST', client ? { client } : {}) }
+export function payCorte(id: string, body: { method?: string; notes?: string; amountCs?: number }) { return sendJson<Corte>(`/cortes/${encodeURIComponent(id)}/pay`, 'POST', body) }
+export function annulCorte(id: string) { return sendJson<Corte>(`/cortes/${encodeURIComponent(id)}/annul`, 'POST') }
+export function markCorteSent(id: string) { return sendJson<Corte>(`/cortes/${encodeURIComponent(id)}/sent-whatsapp`, 'POST') }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
 export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
