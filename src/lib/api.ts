@@ -2,9 +2,21 @@ import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, Deliv
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
+async function apiError(response: Response): Promise<Error> {
+  let message = `API ${response.status}`
+  try {
+    const body = await response.json()
+    if (typeof body?.message === 'string') message = body.message
+    else if (Array.isArray(body?.message)) message = body.message.join(' · ')
+  } catch {
+    // respuesta sin cuerpo JSON
+  }
+  return new Error(message)
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`)
-  if (!response.ok) throw new Error(`API ${response.status}`)
+  if (!response.ok) throw await apiError(response)
   return response.json() as Promise<T>
 }
 
@@ -14,7 +26,7 @@ async function sendJson<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bo
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (!response.ok) throw new Error(`API ${response.status}`)
+  if (!response.ok) throw await apiError(response)
   const text = await response.text()
   return (text ? JSON.parse(text) : {}) as T
 }

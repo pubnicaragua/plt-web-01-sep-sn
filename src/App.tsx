@@ -41,7 +41,7 @@ import {
   updateVehicleStatus,
   uploadVehicleImage,
 } from './lib/api'
-import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin } from './lib/googleMaps'
+import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import type { AppSettings, AppUser, Client, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
@@ -471,6 +471,7 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
+            restriction: nicaraguaRestriction(maps),
           })
           setMapState('ready')
         } catch {
@@ -816,6 +817,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
+            restriction: nicaraguaRestriction(maps),
           })
           mapRef.current = map
           map.addListener('click', (event: any) => {
@@ -928,6 +930,8 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
       .then((maps) => {
         if (cancelled || !containerRef.current) return
         if (!maps) throw new Error('maps-unavailable')
+        const origin0 = rationalizePoint(origin)
+        const destination0 = rationalizePoint(destination)
         try {
           const map = new maps.Map(containerRef.current, {
             center: MANAGUA_CENTER,
@@ -939,27 +943,38 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
             mapTypeControl: false,
             gestureHandling: 'greedy',
             styles: INCOEX_MAP_STYLE,
+            restriction: nicaraguaRestriction(maps),
           })
           mapRef.current = map
-          try {
-            const bounds = new maps.LatLngBounds(origin, destination)
-            map.fitBounds(bounds, 60)
-          } catch {
-            map.setCenter({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 })
+          const spanLat = Math.abs(origin0.lat - destination0.lat)
+          const spanLng = Math.abs(origin0.lng - destination0.lng)
+          const coversWorld = spanLat > 1.2 || spanLng > 1.2
+          if (coversWorld) {
+            map.setCenter(MANAGUA_CENTER)
+            map.setZoom(11)
+          } else {
+            try {
+              const bounds = new maps.LatLngBounds(origin0, destination0)
+              map.fitBounds(bounds, 60)
+              map.setZoom(Math.min(map.getZoom() ?? 12, 13))
+            } catch {
+              map.setCenter({ lat: (origin0.lat + destination0.lat) / 2, lng: (origin0.lng + destination0.lng) / 2 })
+              map.setZoom(12)
+            }
           }
           new maps.Marker({
-            position: origin,
+            position: origin0,
             map,
             title: 'Recogida',
             icon: incoexPin(maps, '#1d5cff', 1.15),
           })
           new maps.Marker({
-            position: destination,
+            position: destination0,
             map,
             title: 'Destino',
             icon: incoexPin(maps, '#ef6262', 1.15),
           })
-          new maps.Polyline({ path: [origin, destination], map, strokeColor: '#1d5cff', strokeOpacity: 0.9, strokeWeight: 3 })
+          new maps.Polyline({ path: [origin0, destination0], map, strokeColor: '#1d5cff', strokeOpacity: 0.9, strokeWeight: 3 })
           setMapState('ready')
         } catch {
           if (!cancelled) setMapState('error')
@@ -1179,8 +1194,9 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       onChanged(updated)
       if (detailVehicle?.id === vehicle.id) setDetailVehicle(updated)
       onNotice(`${vehicle.plate} asignado a ${driver}`)
-    } catch {
-      onNotice(`No se pudo asignar el vehículo ${vehicle.plate}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      onNotice(message || `No se pudo asignar el vehículo ${vehicle.plate}`)
     } finally {
       setBusy('')
     }
@@ -1287,7 +1303,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     </div>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
-      <DataTable columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Consumo', 'Precio', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
+      <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Consumo', 'Precio', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
         <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
         <strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong>,
         vehicle.model,
@@ -1299,7 +1315,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
         <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />,
         <div className="action-group" key={`${vehicle.id}-actions`}>
           <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
-          <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => <option value={driver.name} key={driver.id}>{driver.name}</option>)}</select>
+          <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => <option value={driver.name} disabled={vehicles.some((other) => other.id !== vehicle.id && other.driver === driver.name)} key={driver.id}>{driver.name}{vehicles.some((other) => other.id !== vehicle.id && other.driver === driver.name) ? ' · en otro vehículo' : ''}</option>)}</select>
           <button title="Ver detalle" onClick={() => setDetailVehicle(vehicle)}><Icon name="eye" size={14} /></button>
           <button title="Datos económicos (consumo, precio C$, odómetro)" onClick={() => openEconomicEditor(vehicle)}><Icon name="fuel" size={14} /></button>
           <button title="Subir foto" disabled={busy === `photo-${vehicle.id}`} onClick={() => { setPhotoTargetId(vehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={14} /></button>
@@ -2011,7 +2027,7 @@ function SettingsView({ apiBase, connection, settings, onSaved, onNotice }: { ap
 }
 
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon"><Icon name="requests" size={24} /></div><h2>{title}</h2><p>{detail}</p></section> }
-function DataTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) { return <div className="table-scroll"><table><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
+function DataTable({ columns, rows, className = '' }: { columns: string[]; rows: ReactNode[][]; className?: string }) { return <div className="table-scroll"><table className={className}><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
 function TablePagination({ page, pageSize, total, onChange }: { page: number; pageSize: number; total: number; onChange: (page: number) => void }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   if (total <= pageSize) return <span className="pagination-note">Página 1 de 1</span>

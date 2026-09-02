@@ -69,20 +69,42 @@ const _f = (featureType: string, elementType: string | undefined, color: string)
 })
 
 export const INCOEX_MAP_STYLE: any[] = [
-  { elementType: 'geometry', stylers: [{ color: '#f6f9fe' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#6b7791' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f6f9fe' }] },
-  _f('administrative', 'geometry.stroke', '#d3def2'),
-  _f('poi', 'geometry', '#e9f0fb'),
+  { elementType: 'geometry', stylers: [{ color: '#f7f9fd' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f7f9fd' }] },
+  _f('poi', 'geometry', '#e9eef7'),
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  _f('road', 'geometry', '#c8d9f5'),
-  _f('road', 'geometry.stroke', '#f6f9fe'),
-  _f('road.highway', 'geometry', '#9fb9ec'),
-  _f('road.highway', 'geometry.stroke', '#f6f9fe'),
-  _f('road.highway', 'labels', '#3c4f7d'),
-  _f('transit', 'geometry', '#d9e8f7'),
-  _f('water', 'geometry', '#0a2c7d'),
+  { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  _f('road', 'geometry', '#ffffff'),
+  _f('road', 'geometry.stroke', '#e3ebf7'),
+  _f('road.highway', 'geometry', '#bed2f4'),
+  _f('road.highway', 'geometry.stroke', '#f7f9fd'),
+  _f('road.highway', 'labels', '#41609c'),
+  _f('water', 'geometry', '#b7d6f3'),
+  { featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  _f('administrative', 'geometry.stroke', '#d8e2f2'),
+  { featureType: 'administrative', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ]
+
+export const NICARAGUA_BOUNDS = { south: 10.6, west: -88.0, north: 15.5, east: -82.5 }
+
+export function nicaraguaRestriction(maps: any) {
+  return {
+    bounds: new maps.LatLngBounds(
+      new maps.LatLng(NICARAGUA_BOUNDS.south, NICARAGUA_BOUNDS.west),
+      new maps.LatLng(NICARAGUA_BOUNDS.north, NICARAGUA_BOUNDS.east),
+    ),
+    strictBounds: false,
+  }
+}
+
+export function rationalizePoint(point: { lat: number; lng: number }): { lat: number; lng: number } {
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return MANAGUA_CENTER
+  if (Math.abs(point.lat) < 0.1 && Math.abs(point.lng) < 0.1) return MANAGUA_CENTER
+  return point
+}
 
 export function incoexPin(maps: any, fill: string, scale = 1.15) {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path d="M12 1C5.9 1 1 5.9 1 12c0 8.2 11 23 11 23s11-14.8 11-23C23 5.9 18.1 1 12 1z" fill="' + fill + '" stroke="#ffffff" stroke-width="1.8"/><circle cx="12" cy="12" r="4.6" fill="#ffffff" opacity=".95"/><circle cx="12" cy="12" r="2.7" fill="#f1b84c"/></svg>'
