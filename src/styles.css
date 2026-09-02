@@ -577,10 +577,22 @@ body { min-width: 0; background: var(--paper); }
 .settings-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
 .settings-saved-hint { color: #8b98ad; font-size: 11.5px; }
 .settings-footnote { margin-top: 14px; padding: 10px 12px; border-radius: 8px; color: #7e8ca3; background: #f7faff; font-size: 12px; line-height: 1.55; }
+.vehicle-rates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+.vehicle-rate-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #e3e9f3; border-radius: 12px; background: #fafcff; }
+.vehicle-rate-card > div { flex: 1; }
+.vehicle-rate-card strong { display: block; color: #243554; font-size: 14px; }
+.vehicle-rate-card small { display: block; margin-top: 10px; color: #7e8ca3; font-size: 10.5px; }
+.vehicle-rate-card input { width: 100%; margin-top: 5px; padding: 7px 9px; border: 1px solid #dde4ef; border-radius: 7px; color: #243554; background: white; font-size: 12.5px; }
+.vehicle-rate-card em { display: block; margin-top: 8px; color: #2a64e7; font-size: 11px; font-style: normal; font-weight: 600; }
+.vehicle-rate-icon { width: 36px; height: 36px; display: grid; place-items: center; flex: none; border-radius: 10px; }
+.vehicle-rate-icon.moto { color: #0e7a5f; background: #e3f7f0; }
+.vehicle-rate-icon.vehiculo { color: #2a64e7; background: #eaf0ff; }
+.vehicle-rate-icon.camion { color: #b7791f; background: #fdf3e0; }
 
 @media (max-width: 900px) {
   .settings-form-grid { grid-template-columns: 1fr; }
   .currency-card { grid-column: auto; }
+  .vehicle-rates { grid-template-columns: 1fr; }
   .vehicle-detail-body { grid-template-columns: 1fr; }
   .wizard-steps { flex-wrap: wrap; }
 }

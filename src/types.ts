@@ -151,12 +151,22 @@ export interface Vehicle {
   imageUrl: string
 }
 
+export interface VehicleRate {
+  baseFeeCs: number
+  farePerKmCs: number
+}
+
 export interface AppSettings {
   dollarRate: number
   fuelPriceGasolineCs: number
   fuelPriceDieselCs: number
   baseFeeCs: number
   farePerKmCs: number
+  vehicleRates: {
+    Moto: VehicleRate
+    Vehículo: VehicleRate
+    Camión: VehicleRate
+  }
   companyName: string
   companyPhone: string
   companyEmail: string

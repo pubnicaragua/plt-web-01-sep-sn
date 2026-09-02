@@ -2044,6 +2044,12 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
   const [diesel, setDiesel] = useState(settings?.fuelPriceDieselCs ?? 54)
   const [baseFee, setBaseFee] = useState(settings?.baseFeeCs ?? 80)
   const [fareKm, setFareKm] = useState(settings?.farePerKmCs ?? 8.5)
+  const [motoBase, setMotoBase] = useState(settings?.vehicleRates?.Moto?.baseFeeCs ?? 60)
+  const [motoKm, setMotoKm] = useState(settings?.vehicleRates?.Moto?.farePerKmCs ?? 6.5)
+  const [vehiculoBase, setVehiculoBase] = useState(settings?.vehicleRates?.Vehículo?.baseFeeCs ?? 80)
+  const [vehiculoKm, setVehiculoKm] = useState(settings?.vehicleRates?.Vehículo?.farePerKmCs ?? 8.5)
+  const [camionBase, setCamionBase] = useState(settings?.vehicleRates?.Camión?.baseFeeCs ?? 130)
+  const [camionKm, setCamionKm] = useState(settings?.vehicleRates?.Camión?.farePerKmCs ?? 13.5)
   const [companyName, setCompanyName] = useState(settings?.companyName ?? 'INCOEX Logistics')
   const [companyPhone, setCompanyPhone] = useState(settings?.companyPhone ?? '')
   const [companyEmail, setCompanyEmail] = useState(settings?.companyEmail ?? '')
@@ -2051,6 +2057,7 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
   const [saving, setSaving] = useState(false)
 
   const exampleTrip = Number((baseFee + 10 * fareKm).toFixed(2))
+  const rateExample = (base: number, km: number) => Number((base + 10 * km).toFixed(2))
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2062,13 +2069,18 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
         fuelPriceDieselCs: Number(diesel),
         baseFeeCs: Number(baseFee),
         farePerKmCs: Number(fareKm),
+        vehicleRates: {
+          Moto: { baseFeeCs: Number(motoBase), farePerKmCs: Number(motoKm) },
+          'Vehículo': { baseFeeCs: Number(vehiculoBase), farePerKmCs: Number(vehiculoKm) },
+          'Camión': { baseFeeCs: Number(camionBase), farePerKmCs: Number(camionKm) },
+        },
         companyName,
         companyPhone,
         companyEmail,
         companyAddress,
       })
       onSaved(next)
-      onNotice('Configuración guardada: la tasa, las tarifas y los datos de la empresa quedaron actualizados')
+      onNotice('Configuración guardada: tasa, tarifas por vehículo y datos de la empresa actualizados')
     } catch {
       onNotice('No se pudo guardar la configuración; revisa la conexión con la API')
     } finally {
@@ -2102,6 +2114,11 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
           <label>Tarifa base por viaje · C$<input required type="number" min="0" step="0.01" value={baseFee} onChange={(event) => setBaseFee(Number(event.target.value))} /></label>
           <label>Tarifa por kilómetro · C$<input required type="number" min="0" step="0.01" value={fareKm} onChange={(event) => setFareKm(Number(event.target.value))} /></label>
         </div>
+        <div className="vehicle-rates">
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon moto"><Icon name="moto" size={17} /></span><div><strong>Moto</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={motoBase} onChange={(event) => setMotoBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={motoKm} onChange={(event) => setMotoKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(motoBase, motoKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon vehiculo"><Icon name="car" size={17} /></span><div><strong>Vehículo</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={vehiculoBase} onChange={(event) => setVehiculoBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={vehiculoKm} onChange={(event) => setVehiculoKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(vehiculoBase, vehiculoKm))}</em></div></div>
+          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camión</strong><small>Tarifa base · C$</small><input required type="number" min="0" step="0.01" value={camionBase} onChange={(event) => setCamionBase(Number(event.target.value))} /><small>Por kilómetro · C$</small><input required type="number" min="0" step="0.01" value={camionKm} onChange={(event) => setCamionKm(Number(event.target.value))} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
+        </div>
         <div className="conversion-strip">
           <span><b>1 USD</b> = {formatCs(dollarRate)}</span>
           <span>Viaje de 10 km ≈ <b>{formatCs(exampleTrip)}</b> <small>(US$ {csToUsd(exampleTrip, dollarRate).toFixed(2)})</small></span>
@@ -2109,7 +2126,7 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
         </div>
         <div className="settings-form-actions"><span className="settings-saved-hint">{settings ? `Última actualización: ${new Date(settings.updatedAt).toLocaleString('es-NI')}` : 'Cargando configuración…'}</span><button className="primary-button" disabled={saving || !settings}>{saving ? 'Guardando…' : 'Guardar tarifas'}</button></div>
       </form>
-      <p className="settings-footnote">El costo por km de cada vehículo se recalcula con el precio de combustible de esta pantalla, y la tarifa de cada viaje nuevo con la tarifa base y por kilómetro.</p>
+      <p className="settings-footnote">Cada vehículo tiene su propia tarifa: base + costo por kilómetro. La app del cliente muestra el precio en C$ en el momento en que escribe origen y destino, según el tipo de transporte elegido.</p>
     </section>
   </div>
 }
