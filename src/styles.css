@@ -943,3 +943,21 @@ select.param-input { height: 37px; }
 .mini-btn:disabled { opacity: .55; cursor: not-allowed; }
 .mini-btn:disabled:hover { border-color: #DED9E2; color: #504b59; background: #FBFAFD; }
 .mini-btn.resuelta-mini:disabled { border-color: #1FAE6C; color: #FFFFFF; background: #22C97E; }
+
+/* === Perfil conductor: select de vehiculo a ancho completo === */
+.trip-detail-field .mini-select { width: 100%; height: 34px; padding: 0 10px; font-size: 12px; font-family: 'Acumin Pro', 'Segoe UI', sans-serif; }
+.trip-detail-field.full select.mini-select { min-width: 0; }
+.action-group.toolbar-actions { display: flex; gap: 8px; }
+.action-group.toolbar-actions button { white-space: nowrap; }
+
+/* === Login: mostrar/ocultar contrasena === */
+.password-wrap { position: relative; display: block; }
+.password-wrap input { width: 100%; }
+.password-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: #6e6a78; cursor: pointer; padding: 6px; display: grid; place-items: center; }
+.password-toggle .eye-slash { opacity: .45; text-decoration: line-through; }
+/* === Editor de permisos por rol === */
+.perm-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; max-height: 46vh; overflow-y: auto; }
+.perm-check { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid #DED9E2; border-radius: 9px; background: #FBFAFD; color: #504b59; font-size: 12px; font-weight: 600; cursor: pointer; }
+.perm-check input { accent-color: #32AAF0; width: 15px; height: 15px; }
+.role-card .mini-btn { margin-top: 10px; }
+@media (max-width: 620px) { .perm-editor { grid-template-columns: 1fr; } }

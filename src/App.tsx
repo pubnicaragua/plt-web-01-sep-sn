@@ -64,6 +64,8 @@ import {
   calculateFare,
   uploadEvidenceFile,
   updateIncidentEvidence,
+  loginAdmin,
+  updateRolePermissions,
   type FuelRecord,
   type FuelStatsRow,
 } from './lib/api'
@@ -163,19 +165,44 @@ function exportExcel(filename: string, sheetName: string, rows: Array<Record<str
 }
 
 function exportPdf(title: string, subtitle: string, columns: string[], rows: ExportCell[][]) {
-  const windowRef = window.open('', '_blank', 'width=1000,height=700')
-  if (!windowRef) return
-  const header = columns.map((column) => `<th>${column}</th>`).join('')
-  const body = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')
-  windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #243554; padding: 28px; }
-    h1 { font-size: 20px; margin: 0 0 4px; } p { color: #7e8ca3; font-size: 13px; margin: 0 0 18px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; background: #f2f5fa; border-bottom: 2px solid #dbe5f6; padding: 8px 10px; }
-    td { border-bottom: 1px solid #eef2f8; padding: 7px 10px; }
-    .foot { margin-top: 18px; color: #93a1b8; font-size: 11px; }
-  </style></head><body><h1>${title}</h1><p>${subtitle}</p><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table><p class="foot">INCOEX Logistics · generado el ${new Date().toLocaleString('es-NI')} · guarda como PDF desde el diálogo de impresión</p><script>window.onload = function () { window.print() }</script></body></html>`)
-  windowRef.document.close()
+  void (async () => {
+    let logo = ''
+    try {
+      const response = await fetch('/brand/logo.png')
+      if (response.ok) {
+        const blob = await response.blob()
+        logo = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(blob) })
+      }
+    } catch { /* sin logo disponible */ }
+    const windowRef = window.open('', '_blank', 'width=1000,height=700')
+    if (!windowRef) return
+    const header = columns.map((column) => `<th>${column}</th>`).join('')
+    const body = rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')
+    const dateLine = new Date().toLocaleString('es-NI')
+    const brand = logo ? `<img src="${logo}" alt="INCOEX" style="height:54px;object-fit:contain" />` : '<div style="font-size:22px;font-weight:800;color:#0d75b3;letter-spacing:.5px">INCOEX</div>'
+    windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>
+      @page { margin: 16mm 13mm 20mm; }
+      * { box-sizing: border-box; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; color: #243554; padding: 0; margin: 0; }
+      .header { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 3px solid #32AAF0; padding-bottom: 12px; margin-bottom: 18px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand-text h1 { font-size: 19px; margin: 0; color: #101230; }
+      .brand-text p { color: #6e6a78; font-size: 11px; margin: 3px 0 0; }
+      .doc-title { text-align: right; }
+      .doc-title h2 { font-size: 16px; margin: 0; color: #1273b0; }
+      .doc-title p { color: #7e8ca3; font-size: 12px; margin: 4px 0 0; max-width: 420px; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th { text-align: left; background: #f2f5fa; border-bottom: 2px solid #dbe5f6; padding: 8px 10px; }
+      td { border-bottom: 1px solid #eef2f8; padding: 7px 10px; }
+      .foot { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #e6eaf2; padding: 9px 2px 0; margin-top: 22px; color: #93a1b8; font-size: 10.5px; }
+      .foot b { color: #1273b0; }
+    </style></head><body>
+      <div class="header"><div class="brand">${brand}<div class="brand-text"><h1>INCOEX Logistics</h1><p>Operaciones y despacho · Managua, Nicaragua</p></div></div><div class="doc-title"><h2>${title}</h2><p>${subtitle}</p></div></div>
+      <table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>
+      <div class="foot"><span><b>INCOEX Logistics</b> · Managua, Nicaragua</span><span>Generado el ${dateLine}</span><span>${title} · página 1 de 1</span></div>
+      <script>window.onload = function () { window.print() }</script></body></html>`)
+    windowRef.document.close()
+  })()
 }
 
 class MapErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -395,7 +422,7 @@ function App() {
           {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
           {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} onRefresh={refreshTracking} />}
           {section === 'history' && <HistoryView history={history} />}
-          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
+          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onRolesChanged={(updated) => setRoles((current) => current.map((item) => item.code === updated.code ? updated : item))} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
           {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
           {section === 'billing' && <BillingView trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
           {section === 'settings' && <SettingsView connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
@@ -575,14 +602,24 @@ function BrandMark() {
 function LoginView({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(false)
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (username.trim() === 'admin' && password === 'Admin@2026') {
+    setBusy(true)
+    setError('')
+    try {
+      await loginAdmin(username.trim(), password)
       onLogin()
-    } else {
-      setError(true)
-      setPassword('')
+    } catch {
+      if (username.trim() === 'admin' && password === 'Admin@2026') {
+        onLogin()
+        return
+      }
+      setError('Credenciales incorrectas. Revisa correo y contraseña.')
+    } finally {
+      setBusy(false)
     }
   }
   return (
@@ -593,10 +630,12 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
         </div>
         <h1>Iniciar sesión</h1>
         <p>Accede al panel de administración de operaciones.</p>
-        <label>Usuario<input autoFocus value={username} onChange={(event) => { setUsername(event.target.value); setError(false) }} placeholder="admin" /></label>
-        <label>Contraseña<input type="password" value={password} onChange={(event) => { setPassword(event.target.value); setError(false) }} placeholder="••••••••" /></label>
-        {error && <span className="login-error">Usuario o contraseña incorrectos</span>}
-        <button className="primary-button login-submit" type="submit">Entrar <Icon name="arrowRight" size={13} /></button>
+        <label>Correo o usuario<input autoFocus value={username} onChange={(event) => { setUsername(event.target.value); setError('') }} placeholder="mario.martinez@incoex.com.ni" /></label>
+        <label>Contraseña
+          <span className="password-wrap"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => { setPassword(event.target.value); setError('') }} placeholder="••••••••" /><button type="button" className="password-toggle" onClick={() => setShowPassword((visible) => !visible)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <Icon name="eye" size={15} /> : <span className="eye-slash"><Icon name="eye" size={15} /></span>}</button></span>
+        </label>
+        {error && <span className="login-error">{error}</span>}
+        <button className="primary-button login-submit" type="submit" disabled={busy}>{busy ? 'Verificando…' : 'Entrar'} {!busy && <Icon name="arrowRight" size={13} />}</button>
         <span className="login-hint">Demo · admin / Admin@2026</span>
       </form>
     </div>
@@ -2286,7 +2325,7 @@ const PERMISSION_LABELS: Record<string, string> = {
 }
 function permissionLabel(permission: string) { return PERMISSION_LABELS[permission] ?? permission }
 
-function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void; onDeleted: (id: string) => void }) {
+function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted, onRolesChanged }: { users: AppUser[]; roles: Role[]; onNotice: (message: string) => void; onChanged: (user: AppUser) => void; onCreated: (user: AppUser) => void; onDeleted: (id: string) => void; onRolesChanged?: (role: Role) => void }) {
   const [formOpen, setFormOpen] = useState(false)
   const [busy, setBusy] = useState('')
   const [name, setName] = useState('')
@@ -2299,13 +2338,19 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
   const [editUser, setEditUser] = useState<AppUser | null>(null)
   const [editName, setEditName] = useState('')
   const [editPhone, setEditPhone] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editRole, setEditRole] = useState<UserRole>('operations')
+  const [editStatus, setEditStatus] = useState<'Activo' | 'Inactivo'>('Activo')
+  const [editPassword, setEditPassword] = useState('')
+  const [roleEditor, setRoleEditor] = useState<Role | null>(null)
+  const [rolePerms, setRolePerms] = useState<string[]>([])
 
   async function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!editUser) return
     setBusy(`edit-${editUser.id}`)
     try {
-      onChanged(await updateUser(editUser.id, { name: editName.trim() || undefined, phone: editPhone.trim() || undefined }))
+      onChanged(await updateUser(editUser.id, { name: editName.trim() || undefined, phone: editPhone.trim() || undefined, email: editEmail.trim() || undefined, role: editRole, status: editStatus, password: editPassword.trim() || undefined }))
       setEditUser(null)
       onNotice(`Información de ${editName.trim() || editUser.name} actualizada`)
     } catch {
@@ -2412,11 +2457,11 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
     </div>
     <section className="panel role-matrix-panel">
       <div className="panel-header"><div><span className="eyebrow">MATRIZ DE ROLES · CONTRATO</span><h2>Los ocho roles y sus permisos</h2><p className="panel-sub">Los roles son fijos del contrato: no se eliminan; se asignan a cada usuario desde la tabla.</p></div><span className="source-badge">{roles.length} roles contractuales</span></div>
-      <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}</div></article>)}</div>
+      <div className="role-matrix-grid">{roles.map((item) => <article className="role-card" key={item.code}><div className="role-card-head"><span className="role-code">{item.code.slice(0, 4)}</span><strong>{item.name}</strong></div><p>{item.description}</p><div className="role-permissions">{item.permissions.slice(0, 5).map((permission) => <span key={permission}>{permissionLabel(permission)}</span>)}</div><button className="mini-btn" style={{ marginTop: 10 }} onClick={() => { setRoleEditor(item); setRolePerms([...item.permissions]) }}>Configurar permisos</button></article>)}</div>
     </section>
     <section className="panel table-panel">
       <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Los cambios de rol y estado se persisten en la API</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Crear usuario</button></div>
-      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title="Editar nombre y teléfono" onClick={() => { setEditUser(user); setEditName(user.name); setEditPhone(user.phone ?? '') }}><Icon name="edit" size={14} /></button><button title="Cambiar contraseña" onClick={() => { setPasswordUser(user); setNewPassword('') }}><Icon name="lock" size={14} /></button><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Cerrar sesión activa (robo o sesión compartida)" disabled={(user.sessionState ?? 'Activa') === 'Cerrada' || busy === user.id} onClick={() => void revokeUserRow(user)}><Icon name='logout' size={14} /></button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
+      <DataTable columns={['Usuario', 'Contacto', 'Rol', 'Último acceso', 'Estado', 'Acciones']} rows={users.map((user) => [<div className="client-cell" key={`${user.id}-cell`}><span className="client-avatar">{initials(user.name)}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div>, user.phone || '—', <select className="mini-select role-select" value={user.role} disabled={busy === user.id} onChange={(event) => void changeRole(user, event.target.value as UserRole)} title="Cambiar rol">{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select>, user.lastLogin, <StatusPill key={`${user.id}-status`} status={user.status} />, <div className="action-group" key={`${user.id}-actions`}><button title="Editar nombre y teléfono" onClick={() => { setEditUser(user); setEditName(user.name); setEditPhone(user.phone ?? ''); setEditEmail(user.email); setEditRole(user.role); setEditStatus(user.status); setEditPassword('') }}><Icon name="edit" size={14} /></button><button title="Cambiar contraseña" onClick={() => { setPasswordUser(user); setNewPassword('') }}><Icon name="lock" size={14} /></button><button title={user.status === 'Activo' ? 'Desactivar' : 'Activar'} disabled={busy === user.id} onClick={() => void toggleUser(user)}>{user.status === 'Activo' ? <Icon name="close" size={14} /> : <Icon name="check" size={14} />}</button><button title="Cerrar sesión activa (robo o sesión compartida)" disabled={(user.sessionState ?? 'Activa') === 'Cerrada' || busy === user.id} onClick={() => void revokeUserRow(user)}><Icon name='logout' size={14} /></button><button title="Eliminar usuario" disabled={busy === user.id || user.id === 'usr-001'} onClick={() => void removeUser(user)}><Icon name="trash" size={14} /></button></div>])} />
       <div className="table-footer"><span>El administrador general puede gestionar todos los usuarios y sus permisos</span></div>
     </section>
     {formOpen && (
@@ -2448,13 +2493,33 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted }: 
     {editUser && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditUser(null) }}>
         <form className="modal-card" onSubmit={saveEdit}>
-          <div className="modal-header"><div><span className="eyebrow">Administración · Usuarios</span><h2>Editar {editUser.name}</h2><p>Cambia nombre, teléfono o correo; el rol y el estado se ajustan desde la tabla.</p></div><button type="button" className="icon-button" onClick={() => setEditUser(null)} aria-label="Cerrar">×</button></div>
+          <div className="modal-header"><div><span className="eyebrow">Administración · Usuarios</span><h2>Editar {editUser.name}</h2><p>Todos los datos del usuario: contacto, rol, estado y contraseña.</p></div><button type="button" className="icon-button" onClick={() => setEditUser(null)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Nombre<input required value={editName} onChange={(event) => setEditName(event.target.value)} /></label>
+            <label>Correo<input type="email" required value={editEmail} onChange={(event) => setEditEmail(event.target.value)} /></label>
             <label>Teléfono<input value={editPhone} onChange={(event) => setEditPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+            <label>Rol<select value={editRole} onChange={(event) => setEditRole(event.target.value as UserRole)}>{roles.map((item) => <option value={item.code} key={item.code}>{item.name.replace(/^Rol \d{2} · /, '')}</option>)}</select></label>
+            <label>Estado<select value={editStatus} onChange={(event) => setEditStatus(event.target.value as 'Activo' | 'Inactivo')}><option>Activo</option><option>Inactivo</option></select></label>
+            <label>Nueva contraseña<input type="password" value={editPassword} onChange={(event) => setEditPassword(event.target.value)} placeholder="Mínimo 8 caracteres (dejar vacío para no cambiar)" /></label>
           </div>
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditUser(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editUser.id}`}>{busy === `edit-${editUser.id}` ? 'Guardando…' : 'Guardar cambios'}</button></div>
         </form>
+      </div>
+    )}
+    {roleEditor && (
+      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRoleEditor(null) }}>
+        <div className="modal-card">
+          <div className="modal-header"><div><span className="eyebrow">ROLES CONFIGURABLES</span><h2>{roleEditor.name}</h2><p>{roleEditor.description}</p></div><button type="button" className="icon-button" onClick={() => setRoleEditor(null)} aria-label="Cerrar">✕</button></div>
+          <div className="perm-editor">
+            {roleEditor.permissions.map((permission) => (
+              <label key={permission} className="perm-check"><input type="checkbox" checked={rolePerms.includes(permission)} onChange={(event) => setRolePerms((current) => event.target.checked ? [...current, permission] : current.filter((item) => item !== permission))} /> {permissionLabel(permission)}</label>
+            ))}
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="secondary-button" onClick={() => setRoleEditor(null)}>Cancelar</button>
+            <button className="primary-button" onClick={async () => { try { const updated = await updateRolePermissions(roleEditor.code, rolePerms); onRolesChanged?.(updated); setRoleEditor(null); onNotice(`Permisos de ${roleEditor.name} actualizados`) } catch { onNotice('No se pudieron guardar los permisos') } }}>Guardar permisos</button>
+          </div>
+        </div>
       </div>
     )}
   </>

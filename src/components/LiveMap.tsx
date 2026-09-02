@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef } from 'react'
+import { getApiBase } from '../lib/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Section, TrackingOverview } from '../types'
@@ -56,8 +57,9 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       const marker = L.marker(latLng, { icon: position.online ? DRIVER_ICON : OFFLINE_ICON })
       const onlineLabel = position.online ? (position.demo ? 'en línea (demo)' : 'en línea') : `desconectado · ${position.ageSeconds >= 300 ? 'sin señal' : `hace ${position.ageSeconds} s`}`
       marker.bindPopup(`<div class="live-popup"><span class="live-popup-driver">${position.driver}</span><span class="live-popup-plate">${position.plate || position.vehicle}</span><span class="live-popup-row"><i style="background:${color}"></i>${position.status} · ${onlineLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h${position.demo ? ' · posición de referencia' : ''}</span><button class="live-popup-action" data-go="drivers">Ver conductores</button></div>`, { className: 'live-popup-wrap' })
-      marker.on('popupopen', () => {
-        marker.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('drivers'))
+      marker.on('popupopen', (event) => {
+        const popupElement = (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()
+        popupElement?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('drivers'))
       })
       marker.addTo(layers.drivers)
     }
@@ -71,7 +73,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       L.polyline([origin, destination], { color: '#17d3e0', weight: 3, opacity: 0.85, dashArray: dashed ? '6 6' : undefined }).addTo(layers.routes)
       L.marker(origin, { icon: ORIGIN_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Recogida · ${trip.id}</span><span>${trip.origin}</span><span class="live-popup-row">${trip.client}</span></div>`).addTo(layers.routes)
       L.marker(destination, { icon: DEST_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Entrega · ${trip.id}</span><span>${trip.destination}</span><span class="live-popup-row">${trip.client} · ${trip.driver} · ${trip.status}</span><button class="live-popup-action" data-go="trips">Ver viajes</button></div>`, { className: 'live-popup-wrap' }).on('popupopen', (event) => {
-        event.target.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('trips'))
+        (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('trips'))
       }).addTo(layers.routes)
     }
 
@@ -79,9 +81,10 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       if (!Number.isFinite(incident.latitude) || !Number.isFinite(incident.longitude)) continue
       const position: [number, number] = [incident.latitude as number, incident.longitude as number]
       bounds.push(L.latLng(position))
-      const evidence = incident.evidence ? `<img class="live-popup-evidence" src="${incident.evidence}" alt="evidencia" loading="lazy" />` : ''
+      const evidenceSrc = incident.evidence ? (incident.evidence.startsWith('http') || incident.evidence.startsWith('data:') ? incident.evidence : `${getApiBase()}/uploads/evidence/${incident.evidence}`) : ''
+      const evidence = evidenceSrc ? `<img class="live-popup-evidence" src="${evidenceSrc}" alt="evidencia" loading="lazy" />` : ''
       L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority} · ${incident.id}</span><span>${incident.type}</span><span class="live-popup-row"><i style="background:#d64545"></i>${incident.driver} · ${incident.status}</span>${incident.description ? `<span class="live-popup-desc">${incident.description}</span>` : ''}${evidence}<button class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`, { className: 'live-popup-wrap' }).on('popupopen', (event) => {
-        event.target.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('incidents'))
+        (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('incidents'))
       }).addTo(layers.incidents)
     }
 

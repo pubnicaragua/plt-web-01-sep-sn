@@ -65,6 +65,8 @@ export function getIncidents() { return getJson<Incident[]>('/incidents') }
 export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
 export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function updateIncidentEvidence(id: string, evidence: string) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/evidence`, 'PATCH', { evidence }) }
+export function loginAdmin(email: string, password: string) { return sendJson<{ accessToken: string; user: { id: string; displayName: string; role: string } }>('/auth/login', 'POST', { email, password, role: 'admin' }) }
+export function updateRolePermissions(code: string, permissions: string[]) { return sendJson<Role>(`/admin/roles/${encodeURIComponent(code)}`, 'PATCH', { permissions }) }
 export async function uploadEvidenceFile(file: File) {
   const form = new FormData()
   form.append('file', file)
