@@ -2514,13 +2514,28 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
   async function attachEvidence(incident: Incident, file: File) {
     setActing(incident.id)
     try {
-      const uploaded = await uploadEvidenceFile(file)
-      const updated = await updateIncidentEvidence(incident.id, uploaded.evidence)
-      onChanged(updated)
-      if (detailIncident?.id === incident.id) setDetailIncident(updated)
-      onNotice(`Evidencia adjuntada a ${incident.id}`)
+      try {
+        const uploaded = await uploadEvidenceFile(file)
+        const updated = await updateIncidentEvidence(incident.id, uploaded.evidence)
+        onChanged(updated)
+        if (detailIncident?.id === incident.id) setDetailIncident(updated)
+        onNotice(`Evidencia adjuntada a ${incident.id}`)
+        return
+      } catch {
+        const reader = new FileReader()
+        const dataUri = await new Promise<string>((resolveRead, rejectRead) => {
+          reader.onload = () => resolveRead(String(reader.result))
+          reader.onerror = () => rejectRead(new Error('Lectura fallida'))
+          reader.readAsDataURL(file)
+        })
+        if (dataUri.length > 900000) throw new Error('Imagen muy pesada')
+        const updated = await updateIncidentEvidence(incident.id, dataUri)
+        onChanged(updated)
+        if (detailIncident?.id === incident.id) setDetailIncident(updated)
+        onNotice(`Evidencia embebida adjuntada a ${incident.id}`)
+      }
     } catch {
-      onNotice(`No se pudo adjuntar la evidencia a ${incident.id}`)
+      onNotice(`No se pudo adjuntar la evidencia a ${incident.id}. Intenta una foto más liviana.`)
     } finally {
       setActing('')
     }
@@ -2538,7 +2553,7 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
     exportPdf('Incidencias · INCOEX Logistics', 'Incidencias registradas en la operación de Managua', ['ID', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado'], incidents.map((incident) => [incident.id, incident.trip, incident.driver, incident.client, incident.type, incident.priority, incident.status]))
     onNotice('Reporte de incidencias preparado para guardar como PDF')
   }
-  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button className="mini-btn" title="Ver detalle y notas" onClick={() => setDetailIncident(incident)}>Ver</button><button className="mini-btn" title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}>Proceso</button><button className="mini-btn primary-mini" title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}>Resuelta</button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
+  return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button className="mini-btn" title="Ver detalle y notas" onClick={() => setDetailIncident(incident)}>Ver</button><button className="mini-btn proceso-mini" title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}>{acting === incident.id ? '…' : 'Proceso'}</button><button className="mini-btn resuelta-mini" title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}>{acting === incident.id ? '…' : 'Resuelta'}</button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
     {formOpen && <IncidentFormDialog onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
     {detailIncident && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailIncident(null) }}>
@@ -2800,9 +2815,11 @@ function HistoryView({ history }: { history: HistoryEvent[] }) {
     const day = Number.parseInt(parts[0], 10)
     const monthIndex = MONTHS.indexOf((parts[1] ?? '').toLowerCase())
     if (!Number.isFinite(day)) return 999
-    let diff = today.getDate() - day
-    if (monthIndex !== -1 && monthIndex !== today.getMonth()) diff += 100
-    return diff
+    if (monthIndex === -1) return 999
+    if (monthIndex === today.getMonth()) return today.getDate() - day
+    if (monthIndex > today.getMonth()) return 999 + day
+    const daysInPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0).getDate()
+    return today.getDate() + daysInPrevMonth - day
   }
   function dayLabel(event: HistoryEvent) {
     const diff = parseDay(event)

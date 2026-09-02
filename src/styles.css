@@ -929,3 +929,17 @@ select.param-input { height: 37px; }
 .timeline-group-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; margin-bottom: 8px; border-radius: 9px; background: #F2EFF4; color: #504b59; font-size: 11.5px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; }
 .timeline-group-head b { color: #1273b0; font-size: 10.5px; }
 .timeline-type { display: inline-block; margin: 2px 0; padding: 2px 8px; border-radius: 6px; background: #EEF2FB; color: #3c6eb4; font-size: 10px; font-weight: 700; }
+
+/* === Fix layout: acciones y toolbars === */
+.table-toolbar > * { flex-shrink: 0; }
+.table-toolbar .export-buttons { flex-shrink: 0; flex-wrap: wrap; row-gap: 8px; }
+.action-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; vertical-align: middle; }
+.action-group .mini-btn { flex: 0 0 auto; border-radius: 7px !important; }
+.action-group .filter-chip, .action-group .primary-button, .action-group .secondary-button { flex: 0 0 auto; white-space: nowrap; }
+.mini-btn.proceso-mini { color: #7A5B00; border-color: #E3C65C; background: #FBF6DC; }
+.mini-btn.proceso-mini:hover { background: #F7EFC4; border-color: #CFAF3A; }
+.mini-btn.resuelta-mini { color: #FFFFFF; border-color: #1FAE6C; background: #22C97E; }
+.mini-btn.resuelta-mini:hover { background: #1BAD69; }
+.mini-btn:disabled { opacity: .55; cursor: not-allowed; }
+.mini-btn:disabled:hover { border-color: #DED9E2; color: #504b59; background: #FBFAFD; }
+.mini-btn.resuelta-mini:disabled { border-color: #1FAE6C; color: #FFFFFF; background: #22C97E; }

@@ -50,11 +50,9 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
   const [destId, setDestId] = useState('')
   const [result, setResult] = useState<FareResult | null>(null)
   const [search, setSearch] = useState('')
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingDest, setEditingDest] = useState<TariffDestination | null>(null)
-  const [destForm, setDestForm] = useState<{ name: string; district: string; category: string; latitude: string; longitude: string; inCoverage: boolean; status: string }>({ name: '', district: 'I', category: 'Barrio / sector', latitude: '', longitude: '', inCoverage: true, status: 'Por verificar' })
-
-  useEffect(() => {
+  const [loadError, setLoadError] = useState(false)
+  const load = () => {
+    setLoadError(false)
     getTarifas()
       .then((loaded) => {
         setData(loaded)
@@ -62,8 +60,14 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
         setOriginId(loaded.destinations[0]?.id ?? '')
         setDestId(loaded.destinations[1]?.id ?? '')
       })
-      .catch(() => onNotice('No se pudo cargar el módulo de tarifas'))
-  }, [])
+      .catch(() => { setLoadError(true); setData(null); setDraft(null) })
+  }
+  useEffect(() => { load() }, [])
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingDest, setEditingDest] = useState<TariffDestination | null>(null)
+  const [destForm, setDestForm] = useState<{ name: string; district: string; category: string; latitude: string; longitude: string; inCoverage: boolean; status: string }>({ name: '', district: 'I', category: 'Barrio / sector', latitude: '', longitude: '', inCoverage: true, status: 'Por verificar' })
+
+
 
   async function saveParams() {
     if (!draft) return
@@ -183,6 +187,16 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
   }
 
   if (!data || !draft) {
+    if (loadError) {
+      return (
+        <section className="panel empty-panel">
+          <span className="empty-icon"><Icon name="refresh" size={20} /></span>
+          <h3>No se pudo cargar el módulo de tarifas</h3>
+          <p>La API no respondió. Puede ser un reinicio del servidor. Si el problema persiste, verifica que el backend esté en la última versión.</p>
+          <button className="primary-button" onClick={load} style={{ marginTop: '14px' }}><Icon name="refresh" size={14} /> Reintentar</button>
+        </section>
+      )
+    }
     return <EmptyState title="Cargando módulo de tarifas" detail="Consultando parámetros, distritos y catálogo…" />
   }
 
