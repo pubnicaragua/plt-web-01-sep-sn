@@ -1472,7 +1472,7 @@ function ClientDetailModal({ clientName, client, trips, onClose, onInvoice, onWh
   const tripsToShow = profile?.trips ?? clientTrips.slice(0, 20)
 
   const sendWhatsApp = (message: string) => {
-    if (onWhatsApp) onWhatsApp(profile?.whatsapp || client?.phone || client?.whatsapp, message)
+    if (onWhatsApp) onWhatsApp(profile?.client?.whatsapp || client?.phone || client?.whatsapp, message)
   }
 
   return (
@@ -1511,7 +1511,7 @@ function ClientDetailModal({ clientName, client, trips, onClose, onInvoice, onWh
               <div className="client-trip-list">
                 <div className="client-trip-list-head"><span>Viaje</span><span>Fecha</span><span>Ruta</span><span>Servicio</span><span>Tarifa</span><span>Pago</span><span>Estado</span><span /></div>
                 {tripsToShow.map((trip) => (
-                  <div className="client-trip-row" key={trip.id}><strong>{trip.id}</strong><span>{trip.date}</span><span>{trip.origin} → {trip.destination}</span><span>{trip.serviceType || 'Urbano'}</span><span>{trip.costCs !== undefined ? formatCs(trip.costCs) : '—'}</span><span className={trip.paymentStatus === 'Pagado' ? 'text-success' : 'text-warn'}>{trip.paymentStatus || 'Sin pagar'}</span><StatusPill status={trip.status as TripStatus} /><button title="Ver factura" onClick={() => onInvoice({ ...trip, estimatedCostCs: trip.costCs } as Trip)}><Icon name="fileText" size={13} /></button></div>
+                  <div className="client-trip-row" key={trip.id}><strong>{trip.id}</strong><span>{trip.date}</span><span>{trip.origin} → {trip.destination}</span><span>{trip.serviceType || 'Urbano'}</span><span>{trip.estimatedCostCs !== undefined ? formatCs(trip.estimatedCostCs) : '—'}</span><span className={trip.paymentStatus === 'Pagado' ? 'text-success' : 'text-warn'}>{trip.paymentStatus || 'Sin pagar'}</span><StatusPill status={trip.status as TripStatus} /><button title="Ver factura" onClick={() => onInvoice(trip as Trip)}><Icon name="fileText" size={13} /></button></div>
                 ))}
               </div>
             )

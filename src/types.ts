@@ -146,20 +146,12 @@ export interface Client {
 export type BillingPeriod = '' | 'semanal' | 'quincenal' | 'mensual' | 'personalizado'
 
 export interface ClientProfile {
-  id: string
-  name: string
-  type: string
-  phone: string
-  email: string
-  address: string
-  contact: string
-  taxId: string
-  notes: string
-  creditDays?: number
-  dueDay?: number
-  billingPeriod?: BillingPeriod
-  whatsapp?: string
-  status: string
+  client: Client
+  tripsCount: number
+  completedCount: number
+  totalCs: number
+  pendingCs: number
+  cortes: Array<{ id: string; periodStart: string; periodEnd: string; periodLabel: string; totalCs: number; previousDebtCs: number; grandTotalCs: number; status: string; paidAt?: string; method?: string }>
   stats: {
     totalTrips: number
     activeTrips: number
@@ -183,7 +175,8 @@ export interface ClientProfile {
     }>
   }
   services: Array<{ type: string; count: number; total: number }>
-  trips: Array<{
+  trips: Trip[]
+  tripsSummary: Array<{
     id: string
     date: string
     origin: string
