@@ -56,7 +56,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
     getTarifas()
       .then((loaded) => {
         setData(loaded)
-        setDraft(loaded.settings)
+        setDraft({ ...loaded.settings, cartographicSource: loaded.settings.cartographicSource === 'OpenStreetMap' ? 'Google Maps' : loaded.settings.cartographicSource })
         setOriginId(loaded.destinations[0]?.id ?? '')
         setDestId(loaded.destinations[1]?.id ?? '')
       })
@@ -289,9 +289,9 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
                 <small>Estado sugerido antes de usar un destino en producción.</small>
               </div>
               <div className="param-cell">
-                <span>Fuente cartográfica principal</span>
-                <input className="param-input" value={draft.cartographicSource} onChange={(e) => setParam('cartographicSource', e.target.value)} />
-                <small>Debe complementarse con validación municipal y operativa.</small>
+                 <span>Fuente cartográfica principal</span>
+                 <select className="param-input" value={draft.cartographicSource} onChange={(e) => setParam('cartographicSource', e.target.value)}><option>Google Maps</option><option>OpenStreetMap</option></select>
+                 <small>Google Maps es la fuente principal de visualización y cálculo vial de INCOEX.</small>
               </div>
             </div>
           </section>

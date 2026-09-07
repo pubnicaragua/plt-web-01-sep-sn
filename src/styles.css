@@ -7,7 +7,7 @@
 
 :root { font-family: 'Acumin Pro', sans-serif; color: #101230; background: #EDE9F0; font-synthesis: none; text-rendering: optimizeLegibility; --navy: #101230; --navy-2: #232a52; --blue: #32AAF0; --cyan: #32AAF0; --mint: #BDBF09; --gold: #BDBF09; --red: #ef6262; --ink: #101230; --muted: #6e6a78; --border: #DED9E2; --surface: #fff; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1160px; background: #EDE9F0; }
+body { margin: 0; min-width: 0; overflow-x: hidden; background: #EDE9F0; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 .app-shell { min-height: 100vh; display: flex; }
@@ -439,7 +439,7 @@ body { min-width: 0; background: var(--paper); }
 /* Marca: logo en sidebar y login */
 .brand-logo-img { display: block; height: 34px; width: auto; }
 .brand-lockup { padding: 4px 8px 30px; }
-.brand-lockup .brand-logo-img { height: 38px; }
+.brand-lockup .brand-logo-img { height: 38px; max-width: 100%; object-fit: contain; object-position: left center; }
 
 /* Módulos Vehículos, Usuarios y Dashboard enriquecido */
 .metric-info { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 5px; border-radius: 50%; color: #9a95a4; background: #eef2f7; vertical-align: middle; }
@@ -978,3 +978,66 @@ select.param-input { height: 37px; }
 .perm-check input { accent-color: #32AAF0; width: 15px; height: 15px; }
 .role-card .mini-btn { margin-top: 10px; }
 @media (max-width: 620px) { .perm-editor { grid-template-columns: 1fr; } }
+
+/* === Ajustes visuales rápidos: móvil, tablas y datos operativos === */
+.table-scroll { position: relative; width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.table-scroll-tools { display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #edf1f6; color: #7d8ba1; background: #fbfdff; font-size: 11px; }
+.table-scroll-tools div { display: inline-flex; gap: 5px; }
+.table-scroll-tools button { width: 28px; height: 26px; border: 1px solid #d8e2ef; border-radius: 7px; color: #37618d; background: white; font-weight: 800; }
+.action-group { flex-wrap: nowrap; white-space: nowrap; }
+.trips-table td:last-child { min-width: 128px; }
+.finance-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.finance-source-note { display: inline-flex; align-items: center; gap: 8px; margin-top: 9px; color: #7d8ba1; font-size: 11px; }
+.finance-source-note .pulse-dot { width: 6px; height: 6px; flex-basis: 6px; }
+.timeline-clickable { width: 100%; border: 0; background: transparent; color: inherit; text-align: inherit; cursor: pointer; }
+.timeline-clickable:hover { border-radius: 10px; background: #f7fbff; }
+.history-detail-modal { width: min(560px, 100%); }
+.history-detail-body { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0; padding: 16px; border: 1px solid #e4ebf3; border-radius: 12px; color: #53647e; background: #f8fbff; line-height: 1.55; }
+.history-detail-body .timeline-dot { flex: 0 0 11px; }
+.optional-label { color: #8e9aad; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+.field-help { display: block; margin-top: 5px; color: #8e9aad; font-size: 10.5px; line-height: 1.35; font-weight: 400; }
+.app-shell.sidebar-collapsed .brand-lockup { overflow: hidden; }
+.app-shell.sidebar-collapsed .brand-lockup .brand-logo-img { width: 34px; max-width: none; height: 34px; object-fit: cover; object-position: left center; }
+
+@media (max-width: 900px) {
+  .table-scroll-tools { display: flex; }
+  .trips-table .action-group { min-width: 120px; }
+  .tracking-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .tracking-stats { width: 100%; justify-content: flex-start; }
+  .finance-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .finance-actions { justify-content: flex-start; }
+  .content { width: 100%; min-width: 0; }
+}
+
+@media (max-width: 600px) {
+  .topbar { height: 68px; padding: 0 12px; gap: 8px; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .search-box, .topbar-actions .live-pill, .profile-menu > span:not(.chevron) { display: none; }
+  .profile-menu { padding-left: 0; }
+  .content { padding: 22px 12px 36px; }
+  .page-heading { align-items: flex-start; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+  .heading-actions, .heading-actions .primary-button, .heading-actions .secondary-button { width: 100%; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-card { min-height: 105px; padding: 13px 12px 11px; }
+  .metric-label { font-size: 11px; line-height: 1.2; }
+  .metric-value { font-size: 23px; }
+  .metric-delta { font-size: 10px; }
+  .attention-grid, .drivers-grid, .role-matrix-grid, .dashboard-grid, .reports-grid { grid-template-columns: 1fr; }
+  .finance-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .finance-card { padding: 11px; }
+  .finance-card strong { font-size: 18px; }
+  .finance-period-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .fin-period-vals { width: 100%; grid-template-columns: repeat(2, 1fr); }
+  .tracking-stats { gap: 6px; }
+  .tracking-stat, .live-chip { font-size: 10px; padding: 6px 8px; }
+  .large-map { height: 470px; }
+  .tracking-card { width: 160px; padding: 10px; font-size: 10px; }
+  .table-toolbar { padding: 12px; }
+  .filter-row { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .table-footer { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px; }
+  .modal-backdrop { padding: 10px; }
+  .modal-card, .modal-card.wide { width: 100%; padding: 17px; border-radius: 13px; }
+  .trip-detail-grid, .driver-profile-modal .trip-detail-grid { grid-template-columns: 1fr; }
+  .trip-actions { display: grid; grid-template-columns: 1fr; }
+  .trip-actions button { width: 100%; }
+}

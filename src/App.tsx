@@ -391,6 +391,30 @@ function App() {
     }
   }
 
+  async function refreshDashboardData() {
+    try {
+      const [nextSummary, nextTrips, nextDrivers, nextHistory, nextFinance, nextTracking] = await Promise.all([
+        getDashboardSummary(),
+        getTrips(),
+        getDrivers(),
+        getHistory(),
+        getFinanceSummary(),
+        getTrackingOverview(),
+      ])
+      setSummary(nextSummary)
+      setTrips(nextTrips)
+      setDrivers(nextDrivers)
+      setHistory(nextHistory)
+      setFinance(nextFinance)
+      setTracking(nextTracking)
+      setConnection('connected')
+      setNotice('Dashboard actualizado con datos de la API')
+    } catch {
+      setConnection('error')
+      setNotice('No se pudo actualizar el dashboard')
+    }
+  }
+
   function logout() {
     sessionStorage.removeItem('incoex-auth')
     sessionStorage.removeItem('incoex-user')
@@ -471,7 +495,7 @@ function App() {
 
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
-          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} />}
+          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} onRefresh={() => void refreshDashboardData()} />}
           {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
           {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
     {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
@@ -545,7 +569,7 @@ function sectionDescription(section: Section) {
   return descriptions[section]
 }
 
-function Dashboard({ summary, trips, drivers, history, finance, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void }) {
+function Dashboard({ summary, trips, drivers, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
   return <>
     <div className="metrics-grid">
       <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." onClick={() => onNavigate('trips')} />
@@ -559,7 +583,7 @@ function Dashboard({ summary, trips, drivers, history, finance, onNavigate }: { 
       <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta." onClick={() => onNavigate('incidents')} />
       <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." onClick={() => onNavigate('incidents')} />
     </div>
-    {finance && <FinancePanel finance={finance} onNavigate={onNavigate} />}
+    {finance && <FinancePanel finance={finance} onNavigate={onNavigate} onRefresh={onRefresh} />}
     <section className="panel attention-panel">
       <PanelHeader title="Requiere atención" action="Ver incidencias" onAction={() => onNavigate('incidents')} />
       <div className="attention-grid">
@@ -596,7 +620,7 @@ function MetricCard({ label, value, delta, tone, icon, hint, onClick }: { label:
   return <button className={`metric-card tone-${tone} clickable`} title={hint} onClick={onClick} type="button"><div className="metric-top"><span className="metric-label">{label}{hint && <span className="metric-info"><Icon name="info" size={11} /></span>}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><div className="metric-value">{value.toLocaleString('es-NI')}</div><div className="metric-delta"><span>{delta}</span></div></button>
 }
 
-function FinancePanel({ finance, onNavigate }: { finance: FinanceSummary; onNavigate: (section: Section) => void }) {
+function FinancePanel({ finance, onNavigate, onRefresh }: { finance: FinanceSummary; onNavigate: (section: Section) => void; onRefresh: () => void }) {
   const today = finance.periods.today
   const marginPct = today.incomeCs > 0 ? Math.max(0, Math.round((today.marginCs / today.incomeCs) * 100)) : 0
   const fuelPct = today.incomeCs > 0 ? Math.round((today.fuelCs / today.incomeCs) * 100) : 0
@@ -604,8 +628,8 @@ function FinancePanel({ finance, onNavigate }: { finance: FinanceSummary; onNavi
   return (
     <section className="panel finance-panel">
       <div className="finance-head">
-        <div><span className="eyebrow">Rentabilidad · C$</span><h2>Dinero en limpio</h2><p>Ingresos ejecutados (viajes Completado) contra combustible y mantenimiento · {finance.invoicingTrips} viajes en facturación por {formatCs(finance.invoicingCs)}</p></div>
-        <button className="secondary-button" onClick={() => onNavigate('trips')}><Icon name="trips" size={13} /> Ver viajes</button>
+        <div><span className="eyebrow">Rentabilidad operativa · C$</span><h2>Ingresos vs. costos reales</h2><p>Datos calculados desde viajes completados, recargas y mantenimientos registrados en la API · {finance.invoicingTrips} viajes en facturación por {formatCs(finance.invoicingCs)}</p><small className="finance-source-note"><span className="pulse-dot" /> Actualizable desde la operación</small></div>
+        <div className="finance-actions"><button className="secondary-button" onClick={onRefresh}><Icon name="refresh" size={13} /> Actualizar</button><button className="secondary-button" onClick={() => onNavigate('trips')}><Icon name="trips" size={13} /> Ver viajes</button></div>
       </div>
       <div className="finance-grid">
         <div className="finance-card income"><span className="finance-card-label">Ingresos hoy</span><strong>{formatCs(today.incomeCs)}</strong><small>{today.trips} viajes completados · {formatCs(today.avgPerKmCs)}/km</small></div>
@@ -2044,8 +2068,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
   const [odometerKm, setOdometerKm] = useState(0)
   const [external, setExternal] = useState(false)
   const [vehicleFunction, setVehicleFunction] = useState<Vehicle['vehicleFunction']>('privado')
-  const [logistics, setLogistics] = useState('')
-  const [minTripsMonth, setMinTripsMonth] = useState(100)
+  const [minTripsMonth, setMinTripsMonth] = useState(0)
   const [financed, setFinanced] = useState(false)
   const [acquisitionMode, setAcquisitionMode] = useState<Vehicle['acquisitionMode']>('cash')
   const [downPaymentCs, setDownPaymentCs] = useState(0)
@@ -2112,7 +2135,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     event.preventDefault()
     setBusy('create')
     try {
-      onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, fuelPriceCs, tankCapacityL, brand, motorNo, chassisNo, color }))
+       onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, fuelPriceCs, tankCapacityL, brand, motorNo, chassisNo, color }))
       setFormOpen(false)
       setPlate('')
       setModel('')
@@ -2121,8 +2144,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       setConsumptionLPerKm(0.1)
       setPriceCs(0)
       setOdometerKm(0)
-      setLogistics('')
-      setMinTripsMonth(100)
+       setMinTripsMonth(0)
       setFinanced(false)
       setAcquisitionMode('cash')
       setDownPaymentCs(0)
@@ -2166,7 +2188,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     if (!editVehicle) return
     setBusy(`edit-${editVehicle.id}`)
     try {
-      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, logistics, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, brand, motorNo, chassisNo, color })
+       const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, brand, motorNo, chassisNo, color })
       onChanged(updated)
       if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
       onNotice(`Datos económicos de ${updated.plate} actualizados`)
@@ -2210,7 +2232,6 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     setOdometerKm(vehicle.odometerKm)
     setExternal(vehicle.external ?? false)
     setVehicleFunction(vehicle.vehicleFunction)
-    setLogistics(vehicle.logistics)
     setMinTripsMonth(vehicle.minTripsMonth)
     setFinanced(vehicle.financing.financed)
     setAcquisitionMode(vehicle.acquisitionMode ?? (vehicle.financing.financed ? 'financed' : 'cash'))
@@ -2243,7 +2264,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
         <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong><small className="cell-sub" key={`${vehicle.id}-brand`}>{vehicle.brand} · {vehicle.color}</small>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Compromiso financiero">{vehicle.acquisitionMode === 'leasing' ? 'Leasing' : 'Financiado'}</span>}</span>,
         vehicle.model,
         vehicle.type,
-        <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b><small className="cell-sub">{vehicle.logistics || 'sin sistema logístico'}</small></span>,
+        <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b></span>,
         <span key={`${vehicle.id}-cons`}><b>{vehicle.fuelType}</b><small className="cell-sub">{vehicle.consumptionLPerKm} L/km</small></span>,
         <span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>,<span key={`${vehicle.id}-odo`}>{vehicle.odometerKm.toLocaleString('es-NI')}</span>,
         <span key={`${vehicle.id}-costkm`}><b>{formatCs(vehicle.fuelCostPerKmC$)}</b><small className="cell-sub">solo combustible</small></span>,
@@ -2282,10 +2303,9 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
             <label>Precio de compra (C$)<NumInput min={0} step={1000} value={priceCs} onChange={setPriceCs} placeholder="Ej: 1850000" /></label>
             <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
-            <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-            <label>Sistema logístico<select value={logistics} onChange={(event) => setLogistics(event.target.value)}><option value="">Sin sistema asignado</option><option>Entregas urbanas</option><option>Reparto a tiendas</option><option>Recolección y reparto</option><option>Distribución programada</option><option>Servicio ejecutivo a empresas</option><option>Paquetería exprés</option></select></label>
-            <label>Mínimo de viajes / mes (meta)<NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
-            <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado</option><option value="financed">Financiado</option><option value="leasing">Leasing</option></select></label>
+             <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+             <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+             <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
             {acquisitionMode !== 'cash' && <>
               <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
               <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
@@ -2302,7 +2322,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     {editVehicle && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
         <form className="modal-card wide vehicle-form-modal" onSubmit={submitEconomicData}>
-          <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), odómetro, función, sistema logístico, meta de viajes y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
+           <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), kilometraje inicial, función, meta opcional y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
           <div className="form-grid">
             <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
             <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
@@ -2310,10 +2330,9 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
             <label>Precio combustible propio (C$/L)<NumInput min={0} step={0.5} value={fuelPriceCs} onChange={setFuelPriceCs} /></label>
             <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
             <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
-            <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-            <label>Sistema logístico<select value={logistics} onChange={(event) => setLogistics(event.target.value)}><option value="">Sin sistema asignado</option><option>Entregas urbanas</option><option>Reparto a tiendas</option><option>Recolección y reparto</option><option>Distribución programada</option><option>Servicio ejecutivo a empresas</option><option>Paquetería exprés</option></select></label>
-            <label>Mínimo de viajes / mes (meta)<NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
-            <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado</option><option value="financed">Financiado</option><option value="leasing">Leasing</option></select></label>
+             <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+             <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+             <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
             {acquisitionMode !== 'cash' && <>
               <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
               <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
@@ -2358,7 +2377,6 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
                 <div className="trip-detail-field"><span>Marca / Color</span><strong>{detailVehicle.brand || '—'}{detailVehicle.color ? ' · ' + detailVehicle.color : ''}</strong></div>
                 <div className="trip-detail-field"><span>N° Motor</span><strong>{detailVehicle.motorNo || '—'}</strong></div>
                 <div className="trip-detail-field"><span>N° Chasis (VIN)</span><strong>{detailVehicle.chassisNo || '—'}</strong></div>
-                <div className="trip-detail-field full"><span>Sistema logístico</span><strong>{detailVehicle.logistics || 'Sin sistema asignado'}</strong></div>
                 <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
                 <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
               </div>
@@ -2815,7 +2833,7 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
     if (collection === 'clients') for (const client of clients) rows.push({ 'ID': client.id, 'Nombre': client.name, 'Tipo': client.type, 'Teléfono': client.phone, 'Email': client.email, 'Dirección': client.address ?? '', 'Viajes': client.trips, 'Solicitudes activas': client.activeRequests, 'Estado': client.status })
     if (collection === 'incidents') for (const incident of incidents) rows.push({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })
     if (collection === 'packages') for (const trip of trips) for (let index = 1; index <= Math.max(0, Math.floor(trip.packages)); index += 1) { const weightKg = trip.weight ?? (1 + ((trip.packages + index) % 24)); rows.push({ 'Guía': `PKG-${trip.id.replace('#', '')}-${index}`, 'Viaje': trip.id, 'Cliente': trip.client, 'Peso': trip.weightUnit === 'lb' ? `${(weightKg * 2.20462).toFixed(1)} lb` : `${weightKg.toFixed(1)} kg`, 'Dimensiones': `${30 + index * 5}×${20 + index * 4}×${15 + index * 3} cm`, 'Estado': trip.status }) }
-    if (collection === 'vehicles') for (const vehicle of vehicles) rows.push({ 'Placa': vehicle.plate, 'Modelo': vehicle.model, 'Tipo': vehicle.type, 'Función': FUNCTION_LABELS[vehicle.vehicleFunction] ?? '', 'Sistema logístico': vehicle.logistics, 'Estado': vehicle.status, 'Conductor': vehicle.driver, 'Combustible': vehicle.fuelType, 'Precio C$': vehicle.priceCs, 'Odómetro km': vehicle.odometerKm, 'Financiado': vehicle.financing.financed ? 'Sí' : 'No', 'Pago mensual C$': vehicle.financing.leaseMonthlyPaymentCs, 'Meses restantes': vehicle.financing.monthsRemaining, 'Deuda restante C$': vehicle.financing.remainingDebtCs, 'Depreciación/mes C$': vehicle.financing.monthlyDepreciationCs, 'Costo mensual C$': vehicle.financing.monthlyCostCs, 'Meta viajes/mes': vehicle.minTripsMonth })
+    if (collection === 'vehicles') for (const vehicle of vehicles) rows.push({ 'Placa': vehicle.plate, 'Modelo': vehicle.model, 'Tipo': vehicle.type, 'Función': FUNCTION_LABELS[vehicle.vehicleFunction] ?? '', 'Estado': vehicle.status, 'Conductor': vehicle.driver, 'Combustible': vehicle.fuelType, 'Precio C$': vehicle.priceCs, 'Kilometraje inicial km': vehicle.odometerKm, 'Financiamiento': vehicle.acquisitionMode === 'leasing' ? 'Leasing' : vehicle.acquisitionMode === 'financed' ? 'Crédito financiado' : 'Contado', 'Pago mensual C$': vehicle.financing.leaseMonthlyPaymentCs, 'Meses restantes': vehicle.financing.monthsRemaining, 'Deuda restante C$': vehicle.financing.remainingDebtCs, 'Depreciación/mes C$': vehicle.financing.monthlyDepreciationCs, 'Costo mensual C$': vehicle.financing.monthlyCostCs, 'Meta viajes/mes': vehicle.minTripsMonth || '—' })
     exportExcel(`incoex-${collection}-${new Date().toISOString().slice(0, 10)}.xlsx`, label, rows)
     onNotice(`Reporte ${label} en Excel descargado`)
     window.setTimeout(() => setExporting(''), 600)
@@ -2849,14 +2867,14 @@ function ReportsView({ reports, trips, drivers, clients, incidents, vehicles, se
     </div>
     {tab === 'flota' && <>
       <section className="panel export-panel">
-        <div className="export-panel-head"><div><span className="eyebrow">PROYECCIÓN MENSUAL DE LA FLOTA</span><h2>Flota y financiamiento</h2><p>Por cada vehículo: función, sistema logístico, meta mínima de viajes, leasing (cuota, deuda restante, meses), depreciación, ingreso del mes y margen proyectado. Los números en rojo indican que el vehículo no se cubre a sí mismo este mes.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('vehicles', 'Flota y financiamiento')} disabled={exporting !== ''}><Icon name="download" size={13} /> Flota Excel</button><button className="secondary-button" onClick={() => { exportPdf('Flota y financiamiento · INCOEX Logistics', 'Proyección mensual y leasing por vehículo', ['Placa', 'Modelo', 'Función', 'Financiado', 'Pago mensual', 'Deuda restante', 'Meses', 'Depreciación/mes', 'Costo fijo/mes', 'Viajes mes', 'Meta/mes', 'Ingreso mes', 'Margen'], fleetReport.map((row) => [row.plate, row.model, FUNCTION_LABELS[row.vehicleFunction] ?? '', row.financed ? 'Sí' : 'No', row.leaseMonthlyPaymentCs ? `C$ ${row.leaseMonthlyPaymentCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.remainingDebtCs ? `C$ ${row.remainingDebtCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.monthsRemaining || '—', `C$ ${row.monthlyDepreciationCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.monthlyCostCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, row.tripsMonth, row.minTripsMonth || '—', `C$ ${row.incomeMonthCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.marginCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`])); onNotice('Reporte de flota preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Flota PDF</button></div></div>
+        <div className="export-panel-head"><div><span className="eyebrow">PROYECCIÓN MENSUAL DE LA FLOTA</span><h2>Flota y financiamiento</h2><p>Por cada vehículo: función, meta opcional de viajes, modalidad de adquisición, cuotas, depreciación, ingreso del mes y margen proyectado. Los números en rojo indican que el vehículo no se cubre a sí mismo este mes.</p></div><div className="export-buttons"><button className="secondary-button" onClick={() => exportExcelFile('vehicles', 'Flota y financiamiento')} disabled={exporting !== ''}><Icon name="download" size={13} /> Flota Excel</button><button className="secondary-button" onClick={() => { exportPdf('Flota y financiamiento · INCOEX Logistics', 'Proyección mensual y adquisición por vehículo', ['Placa', 'Modelo', 'Función', 'Adquisición', 'Pago mensual', 'Deuda restante', 'Meses', 'Depreciación/mes', 'Costo fijo/mes', 'Viajes mes', 'Meta/mes', 'Ingreso mes', 'Margen'], fleetReport.map((row) => [row.plate, row.model, FUNCTION_LABELS[row.vehicleFunction] ?? '', row.financed ? 'Crédito financiado' : 'Contado', row.leaseMonthlyPaymentCs ? `C$ ${row.leaseMonthlyPaymentCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.remainingDebtCs ? `C$ ${row.remainingDebtCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}` : '—', row.monthsRemaining || '—', `C$ ${row.monthlyDepreciationCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.monthlyCostCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, row.tripsMonth, row.minTripsMonth || '—', `C$ ${row.incomeMonthCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`, `C$ ${row.marginCs.toLocaleString('es-NI', { maximumFractionDigits: 0 })}`])); onNotice('Reporte de flota preparado para guardar') }} disabled={exporting !== ''}><Icon name="fileText" size={13} /> Flota PDF</button></div></div>
         <div className="fleet-totals"><span>Costo fijo mensual de la flota: <b>{formatCs(totalMonthlyCost)}</b></span><span>Ingresos del mes: <b>{formatCs(totalIncome)}</b></span><span>Margen proyectado: <b className={totalMargin < 0 ? 'text-danger' : ''}>{formatCs(totalMargin)}</b></span><span className={fleetSummary('tripsMonth') >= fleetSummary('minTripsMonth') ? '' : 'text-danger'}>Viajes del mes: <b>{fleetSummary('tripsMonth')}</b> · meta <b>{fleetSummary('minTripsMonth')}</b></span></div>
       </section>
       <section className="panel table-panel">
         <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Leasing, depreciación y rentabilidad por vehículo (US$ {dollarRate})</div></div>
-        <DataTable className="fleet-report-table" columns={['Vehículo', 'Función / logística', 'Financiamiento', 'Deuda restante', 'Costo fijo / mes', 'Meta viajes', 'Viajes del mes', 'Ingreso mes', 'Margen proyectado']} rows={fleetReport.map((row) => [
+        <DataTable className="fleet-report-table" columns={['Vehículo', 'Función', 'Adquisición', 'Deuda restante', 'Costo fijo / mes', 'Meta viajes', 'Viajes del mes', 'Ingreso mes', 'Margen proyectado']} rows={fleetReport.map((row) => [
           <span key={`${row.plate}-fleet`}><b className="linkish">{row.plate}</b><small className="cell-sub">{row.model}</small></span>,
-          <span key={`${row.plate}-fn`}><b className="function-label">{FUNCTION_LABELS[row.vehicleFunction] ?? '—'}</b><small className="cell-sub">{row.logistics || '—'}</small></span>,
+          <span key={`${row.plate}-fn`}><b className="function-label">{FUNCTION_LABELS[row.vehicleFunction] ?? '—'}</b></span>,
           <span key={`${row.plate}-fin`}>{row.financed ? <span className="financed-badge">Leasing</span> : <span className="financed-badge cash">Contado</span>}<small className="cell-sub">{row.financed ? `cuota ${formatCs(row.leaseMonthlyPaymentCs)} · ${row.monthsRemaining} meses` : 'sin cuota'}</small></span>,
           <span key={`${row.plate}-debt`}><b className={row.remainingDebtCs > 0 ? 'text-danger' : ''}>{row.financed ? formatCs(row.remainingDebtCs) : '—'}</b><small className="cell-sub">{row.financed ? 'capital + residual' : 'pagado'}</small></span>,
           <span key={`${row.plate}-cost`}><b>{formatCs(row.monthlyCostCs)}</b><small className="cell-sub">depre. {formatCs(row.monthlyDepreciationCs)}</small></span>,
@@ -2961,7 +2979,7 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
             <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailPkg.status} /></div>
           </div>
           <p className="trip-detail-note">El paquete sigue la ruta y el estado del viaje {detailPkg.trip}. Cuando la validación física de la tienda esté conectada, aquí se mostrarán fotos, peso real y la persona que recibió.</p>
-          <div className="modal-actions"><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('trips') }}><Icon name="trips" size={13} /> Ver viaje {detailPkg.trip}</button><button className="secondary-button" onClick={() => setDetailPkg(null)}>Cerrar</button></div>
+           <div className="modal-actions"><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('trips') }}><Icon name="trips" size={13} /> Ver viaje {detailPkg.trip}</button><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button><button className="secondary-button" onClick={() => setDetailPkg(null)}>Cerrar</button></div>
         </div>
       </div>
     )}
@@ -2970,20 +2988,15 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
 
 function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingOverview | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
   const [refreshing, setRefreshing] = useState(false)
-  const [tick, setTick] = useState(0)
-  const [hideDemo, setHideDemo] = useState(false)
+  const [hideDemo, setHideDemo] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const mapShellRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const timer = window.setInterval(() => setTick((value) => value + 1), 5000)
+    const timer = window.setInterval(() => { setRefreshing(true); window.setTimeout(() => setRefreshing(false), 600) }, 8000)
     return () => window.clearInterval(timer)
   }, [])
   useEffect(() => {
-    const timer = window.setInterval(() => { setRefreshing(true); window.setTimeout(() => setRefreshing(false), 600) }, 20000)
-    return () => window.clearInterval(timer)
-  }, [])
-  useEffect(() => {
-    const timer = window.setInterval(onRefresh, 20000)
+    const timer = window.setInterval(onRefresh, 8000)
     return () => window.clearInterval(timer)
   }, [onRefresh])
   useEffect(() => {
@@ -2996,19 +3009,20 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
     else await mapShellRef.current?.requestFullscreen()
   }
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
-  const withRoute = tracking.trips.filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat))
-  const onlineCount = (tracking.live ?? []).filter((position) => position.online).length
-  const realCount = (tracking.live ?? []).filter((position) => position.online && !position.demo).length
-  const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
+  const withRoute = tracking.trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status) && Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat)).slice(0, 6)
   const demoCount = (tracking.live ?? []).filter((position) => position.demo).length
+  const visibleLive = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo)
+  const realCount = visibleLive.filter((position) => position.online && !position.demo).length
+  const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
   const liveList = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo).slice(0, 8)
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES EN TIEMPO REAL</span><h2>Seguimiento en vivo</h2><p className="panel-sub">Ubicación, rutas y estado de los conductores en una vista para monitoreo operativo.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {onlineCount} conductores en línea{realCount > 0 ? ` (${realCount} con GPS real)` : ''}</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas dibujadas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span><span className="live-chip on"><i className="pulse-dot" /> {onlineCount} en vivo</span>{demoCount > 0 && <span className="live-chip warn">demo {demoCount}</span>}{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? 'Mostrar demo' : 'Ocultar demo'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{tracking.trips[0]?.id ?? 'Sin viaje activo'}</strong><span>{tracking.trips[0]?.driver ?? 'Sin asignar'} · {tracking.trips[0]?.status ?? 'Pendiente'}</span><span>{tracking.trips[0]?.origin ?? '—'} → {tracking.trips[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{tracking.trips[1]?.id ?? 'Sin segundo viaje'}</strong><span>{tracking.trips[1]?.driver ?? 'Sin asignar'} · {tracking.trips[1]?.status ?? 'Pendiente'}</span><span>{tracking.trips[1]?.origin ?? '—'} → {tracking.trips[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta de viaje</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b>{position.demo ? <span className="badge-external">demo</span> : <span className="financed-badge cash">GPS real</span>}<small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES RECIBIDAS</span><h2>Seguimiento operativo</h2><p className="panel-sub">Se muestran únicamente posiciones GPS reales por defecto; las referencias de demostración quedan ocultas.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {realCount} conductores con GPS real</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas activas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span>{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? `Mostrar referencias (${demoCount})` : 'Ocultar referencias'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} showDemo={!hideDemo} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{withRoute[0]?.id ?? 'Sin viaje activo'}</strong><span>{withRoute[0]?.driver ?? 'Sin asignar'} · {withRoute[0]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[0]?.origin ?? '—'} → {withRoute[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{withRoute[1]?.id ?? 'Sin segundo viaje'}</strong><span>{withRoute[1]?.driver ?? 'Sin asignar'} · {withRoute[1]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[1]?.origin ?? '—'} → {withRoute[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta activa</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.length === 0 && <div className="empty-column">No hay posiciones GPS reales recibidas todavía.</div>}{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b><span className="financed-badge cash">GPS real</span><small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {
   const [typeFilter, setTypeFilter] = useState<'all' | HistoryEvent['type']>('all')
   const [range, setRange] = useState<'all' | 'today' | 'week' | 'month'>('all')
   const [query, setQuery] = useState('')
+  const [selectedEvent, setSelectedEvent] = useState<HistoryEvent | null>(null)
   const types = Array.from(new Set(history.map((event) => event.type)))
   const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
   const today = new Date()
@@ -3075,7 +3089,7 @@ function HistoryView({ history }: { history: HistoryEvent[] }) {
             <div className="timeline-group-head"><span>{group}</span><b>{filtered.filter((event) => dayLabel(event) === group).length} eventos</b></div>
             <div className="timeline">
               {filtered.filter((event) => dayLabel(event) === group).map((event) => (
-                <div className="timeline-row" key={event.id}>
+                <button className="timeline-row timeline-clickable" key={event.id} type="button" onClick={() => setSelectedEvent(event)}>
                   <span className="timeline-time">{event.time}<small>{event.date}</small></span>
                   <span className={`timeline-dot ${event.color}`} />
                   <div className="timeline-event">
@@ -3083,13 +3097,14 @@ function HistoryView({ history }: { history: HistoryEvent[] }) {
                     <span className="timeline-type">{event.type}</span>
                     <span>{event.detail}</span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
         ))}
         {filtered.length === 0 && <EmptyState title="Sin eventos con estos filtros" detail="Cambia el rango de fechas, el tipo o el texto de búsqueda para ver más actividad." />}
       </section>
+      {selectedEvent && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedEvent(null) }}><div className="modal-card history-detail-modal"><div className="modal-header"><div><span className="eyebrow">Detalle del historial · {selectedEvent.type}</span><h2>{selectedEvent.title}</h2><p>{selectedEvent.date} · {selectedEvent.time}</p></div><button type="button" className="icon-button" onClick={() => setSelectedEvent(null)} aria-label="Cerrar">×</button></div><div className="history-detail-body"><span className={`timeline-dot ${selectedEvent.color}`} /><p>{selectedEvent.detail}</p></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setSelectedEvent(null)}>Cerrar</button></div></div></div>}
     </>
   )
 }
@@ -3738,7 +3753,14 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
 }
 
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <section className="panel state-card"><div className="placeholder-icon"><Icon name="requests" size={24} /></div><h2>{title}</h2><p>{detail}</p></section> }
-function DataTable({ columns, rows, className = '', rowClassName }: { columns: string[]; rows: ReactNode[][]; className?: string; rowClassName?: (row: ReactNode[], index: number) => string }) { return <div className="table-scroll"><table className={className}><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className={rowClassName ? rowClassName(row, index) : ''}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div> }
+function DataTable({ columns, rows, className = '', rowClassName }: { columns: string[]; rows: ReactNode[][]; className?: string; rowClassName?: (row: ReactNode[], index: number) => string }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollBy = (amount: number) => scrollRef.current?.scrollBy({ left: amount, behavior: 'smooth' })
+  return <>
+    <div className="table-scroll-tools"><span>Desliza horizontalmente para ver todas las columnas</span><div><button type="button" aria-label="Desplazar tabla a la izquierda" onClick={() => scrollBy(-280)}>←</button><button type="button" aria-label="Desplazar tabla a la derecha" onClick={() => scrollBy(280)}>→</button></div></div>
+    <div className="table-scroll" ref={scrollRef}><table className={className}><thead><tr>{columns.map((column, index) => <th key={`${column}-${index}`}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className={rowClassName ? rowClassName(row, index) : ''}>{row.map((cell, cellIndex) => <td key={`${index}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div>
+  </>
+}
 function TablePagination({ page, pageSize, total, onChange }: { page: number; pageSize: number; total: number; onChange: (page: number) => void }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   if (total <= pageSize) return <span className="pagination-note">Página 1 de 1</span>

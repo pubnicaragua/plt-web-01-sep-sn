@@ -14,7 +14,7 @@ const ORIGIN_ICON = buildIcon('origin', '<div class="dot-peg">A</div>')
 const DEST_ICON = buildIcon('dest', '<div class="dot-peg">B</div>')
 const INCIDENT_ICON = buildIcon('incident', '<div class="dot-peg">!</div>')
 
-export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; onNavigate: (section: Section) => void }) {
+export function LiveMap({ tracking, onNavigate, showDemo = false }: { tracking: TrackingOverview; onNavigate: (section: Section) => void; showDemo?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<{ drivers: L.LayerGroup; routes: L.LayerGroup; incidents: L.LayerGroup } | null>(null)
@@ -66,7 +66,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
     const bounds: L.LatLng[] = []
     const statusColor: Record<string, string> = { Disponible: '#22c97e', 'En viaje': '#3e8bff', 'En entrega': '#8a6be8', 'Fuera de servicio': '#9aa4b5' }
 
-    for (const position of tracking.live ?? []) {
+    for (const position of (tracking.live ?? []).filter((item) => showDemo || !item.demo)) {
       const latLng: [number, number] = [position.latitude, position.longitude]
       bounds.push(L.latLng(latLng))
       const color = statusColor[position.status] ?? '#22c97e'
@@ -76,7 +76,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       marker.addTo(layers.drivers)
     }
 
-    const withRoute = tracking.trips.filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat))
+    const withRoute = tracking.trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status) && Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat)).slice(0, 6)
     for (const trip of withRoute) {
       const origin: [number, number] = [trip.originLat as number, trip.originLng as number]
       const destination: [number, number] = [trip.destinationLat as number, trip.destinationLng as number]
@@ -99,7 +99,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
     if (bounds.length > 0) {
       map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 14 })
     }
-  }, [tracking])
+  }, [tracking, showDemo])
 
   return <div className="live-map-container" ref={containerRef} />
 }
