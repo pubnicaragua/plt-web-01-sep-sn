@@ -104,6 +104,7 @@ export interface Trip {
   dueDate?: string
   weight?: number
   weightUnit?: 'kg' | 'lb'
+  cancelReason?: string
 }
 
 export interface Driver {
@@ -122,6 +123,8 @@ export interface Driver {
   licenseExp?: string
   docNo?: string
   notes?: string
+  licenseCategories?: string
+  bloodType?: string
 }
 
 export interface Client {
@@ -137,7 +140,7 @@ export interface Client {
   existed?: boolean
   trips: number
   activeRequests: number
-  status: 'Activo' | 'Suspendido'
+  status: 'Activo' | 'Suspendido' | 'Inactivo'
   creditDays?: number
   dueDay?: number
   billingPeriod?: BillingPeriod
@@ -294,6 +297,7 @@ export interface ReportsSummary {
     profitableTrips: number
     lossTrips: number
   }
+  packageVolumeByClient?: Array<{ client: string; packages: number; trips: number; weightKg: number }>
 }
 
 export interface LiveDriverPosition {
@@ -369,6 +373,7 @@ export interface Vehicle {
     monthlyCostCs: number
     financingLabel: string
   }
+  acquisitionMode: 'cash' | 'financed' | 'leasing'
 }
 
 export interface VehicleRate {
@@ -411,6 +416,8 @@ export interface MaintenanceRecord {
   date: string
   description: string
   cost: number
+  provider: string
+  durationDays: number
 }
 
 export type UserRole = 'admin' | 'management' | 'operations' | 'finance' | 'support' | 'driver' | 'corporate' | 'store'

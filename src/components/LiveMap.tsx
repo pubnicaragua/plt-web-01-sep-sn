@@ -18,10 +18,16 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<{ drivers: L.LayerGroup; routes: L.LayerGroup; incidents: L.LayerGroup } | null>(null)
+  const navigateRef = useRef(onNavigate)
+
+  useEffect(() => {
+    navigateRef.current = onNavigate
+  }, [onNavigate])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
-    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true })
+    const container = containerRef.current
+    const map = L.map(container, { zoomControl: true, attributionControl: true })
     mapRef.current = map
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap &copy; CARTO',
@@ -33,7 +39,17 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       routes: L.layerGroup().addTo(map),
       incidents: L.layerGroup().addTo(map),
     }
+    const handlePopupAction = (event: MouseEvent) => {
+      const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-go]')
+      const section = target?.dataset.go
+      if (!target || (section !== 'drivers' && section !== 'trips' && section !== 'incidents')) return
+      event.preventDefault()
+      navigateRef.current(section)
+      map.closePopup()
+    }
+    container.addEventListener('click', handlePopupAction)
     return () => {
+      container.removeEventListener('click', handlePopupAction)
       map.remove()
       mapRef.current = null
     }
@@ -56,11 +72,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       const color = statusColor[position.status] ?? '#22c97e'
       const marker = L.marker(latLng, { icon: position.online ? DRIVER_ICON : OFFLINE_ICON })
       const onlineLabel = position.online ? (position.demo ? 'en línea (demo)' : 'en línea') : `desconectado · ${position.ageSeconds >= 300 ? 'sin señal' : `hace ${position.ageSeconds} s`}`
-      marker.bindPopup(`<div class="live-popup"><span class="live-popup-driver">${position.driver}</span><span class="live-popup-plate">${position.plate || position.vehicle}</span><span class="live-popup-row"><i style="background:${color}"></i>${position.status} · ${onlineLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h${position.demo ? ' · posición de referencia' : ''}</span><button class="live-popup-action" data-go="drivers">Ver conductores</button></div>`, { className: 'live-popup-wrap' })
-      marker.on('popupopen', (event) => {
-        const popupElement = (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()
-        popupElement?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('drivers'))
-      })
+      marker.bindPopup(`<div class="live-popup"><span class="live-popup-driver">${position.driver}</span><span class="live-popup-plate">${position.plate || position.vehicle}</span><span class="live-popup-row"><i style="background:${color}"></i>${position.status} · ${onlineLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h${position.demo ? ' · posición de referencia' : ''}</span><button type="button" class="live-popup-action" data-go="drivers">Ver conductores</button></div>`, { className: 'live-popup-wrap' })
       marker.addTo(layers.drivers)
     }
 
@@ -72,9 +84,7 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       const dashed = trip.status === 'Pendiente' || trip.status === 'Asignado'
       L.polyline([origin, destination], { color: '#17d3e0', weight: 3, opacity: 0.85, dashArray: dashed ? '6 6' : undefined }).addTo(layers.routes)
       L.marker(origin, { icon: ORIGIN_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Recogida · ${trip.id}</span><span>${trip.origin}</span><span class="live-popup-row">${trip.client}</span></div>`).addTo(layers.routes)
-      L.marker(destination, { icon: DEST_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Entrega · ${trip.id}</span><span>${trip.destination}</span><span class="live-popup-row">${trip.client} · ${trip.driver} · ${trip.status}</span><button class="live-popup-action" data-go="trips">Ver viajes</button></div>`, { className: 'live-popup-wrap' }).on('popupopen', (event) => {
-        (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('trips'))
-      }).addTo(layers.routes)
+      L.marker(destination, { icon: DEST_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Entrega · ${trip.id}</span><span>${trip.destination}</span><span class="live-popup-row">${trip.client} · ${trip.driver} · ${trip.status}</span><button type="button" class="live-popup-action" data-go="trips">Ver viajes</button></div>`, { className: 'live-popup-wrap' }).addTo(layers.routes)
     }
 
     for (const incident of tracking.incidents) {
@@ -83,15 +93,13 @@ export function LiveMap({ tracking, onNavigate }: { tracking: TrackingOverview; 
       bounds.push(L.latLng(position))
       const evidenceSrc = incident.evidence ? (incident.evidence.startsWith('http') || incident.evidence.startsWith('data:') ? incident.evidence : `${getApiBase()}/uploads/evidence/${incident.evidence}`) : ''
       const evidence = evidenceSrc ? `<img class="live-popup-evidence" src="${evidenceSrc}" alt="evidencia" loading="lazy" />` : ''
-      L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority} · ${incident.id}</span><span>${incident.type}</span><span class="live-popup-row"><i style="background:#d64545"></i>${incident.driver} · ${incident.status}</span>${incident.description ? `<span class="live-popup-desc">${incident.description}</span>` : ''}${evidence}<button class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`, { className: 'live-popup-wrap' }).on('popupopen', (event) => {
-        (event as unknown as { popup: { getElement: () => HTMLElement | null } }).popup.getElement()?.querySelector('.live-popup-action')?.addEventListener('click', () => onNavigate('incidents'))
-      }).addTo(layers.incidents)
+      L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority} · ${incident.id}</span><span>${incident.type}</span><span class="live-popup-row"><i style="background:#d64545"></i>${incident.driver} · ${incident.status}</span>${incident.description ? `<span class="live-popup-desc">${incident.description}</span>` : ''}${evidence}<button type="button" class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`, { className: 'live-popup-wrap' }).addTo(layers.incidents)
     }
 
     if (bounds.length > 0) {
       map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 14 })
     }
-  }, [tracking, onNavigate])
+  }, [tracking])
 
   return <div className="live-map-container" ref={containerRef} />
 }

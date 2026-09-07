@@ -474,7 +474,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
                     <td>{destination.inCoverage ? <span className="financed-badge cash">Sí</span> : <span className="badge-external">No</span>}</td>
                     <td><span className="param-value">{destination.status}</span></td>
                     <td>
-                      <div className="action-group">
+                      <div className="action-group catalog-actions">
                         <button className="mini-btn" onClick={() => openForm(destination)}>Editar</button>
                         <button className="mini-btn danger-mini" onClick={() => void removeDestination(destination.id)}>Eliminar</button>
                       </div>

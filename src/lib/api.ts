@@ -54,8 +54,8 @@ export function getTrackingLive(id: string) {
 export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
-export function createDriver(body: { name: string; phone?: string; email?: string; vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
-export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createDriver(body: { name: string; phone?: string; email?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
 export function getClientProfile(id: string) { return getJson<ClientProfile>(`/clients/${encodeURIComponent(id)}`) }
@@ -65,7 +65,9 @@ export function getIncidents() { return getJson<Incident[]>('/incidents') }
 export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
 export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function updateIncidentEvidence(id: string, evidence: string) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/evidence`, 'PATCH', { evidence }) }
-export function loginAdmin(email: string, password: string) { return sendJson<{ accessToken: string; user: { id: string; displayName: string; role: string } }>('/auth/login', 'POST', { email, password, role: 'admin' }) }
+export type AuthUser = { id: string; email: string; displayName: string; role: string; roleName?: string; phone?: string; vehicle?: string; plate?: string; permissions?: string[] }
+export type LoginResponse = { accessToken: string; user: AuthUser }
+export function loginAdmin(email: string, password: string) { return sendJson<LoginResponse>('/auth/login', 'POST', { email, password, role: 'admin' }) }
 export function updateRolePermissions(code: string, permissions: string[]) { return sendJson<Role>(`/admin/roles/${encodeURIComponent(code)}`, 'PATCH', { permissions }) }
 export async function uploadEvidenceFile(file: File) {
   const form = new FormData()
@@ -111,8 +113,8 @@ export function assignTrip(tripId: string, driverId: string) {
   return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/assign`, 'PATCH', { driverId })
 }
 
-export function updateTripStatus(tripId: string, status: TripStatus) {
-  return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/status`, 'PATCH', { status })
+export function updateTripStatus(tripId: string, status: TripStatus, reason?: string) {
+  return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/status`, 'PATCH', { status, ...(reason ? { reason } : {}) })
 }
 
 export function updateTripPayment(tripId: string, body: { method?: Trip['paymentMethod']; ref?: string; amount?: number; date?: string; dueDate?: string }) {
@@ -123,7 +125,7 @@ export function updateTripFare(tripId: string, estimatedCostCs: number) {
   return sendJson<Trip>(`/trips/${encodeURIComponent(tripId)}/fare`, 'PATCH', { estimatedCostCs })
 }
 
-export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string }) {
+export function updateClient(id: string, body: { phone?: string; email?: string; address?: string; contact?: string; taxId?: string; notes?: string; creditDays?: number; dueDay?: number; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string; status?: Client['status'] }) {
   return sendJson<Client>(`/clients/${encodeURIComponent(id)}`, 'PATCH', body)
 }
 
@@ -149,6 +151,9 @@ export interface FuelRecord {
   odometerKm: number
   date: string
   note: string
+  evidence: string
+  driver?: string
+  source: string
   createdAt: number
 }
 
@@ -166,12 +171,12 @@ export interface FuelStatsRow {
 
 export function getFuelRecords(plate?: string) { return getJson<FuelRecord[]>(`/fuel${plate ? `?plate=${encodeURIComponent(plate)}` : ''}`) }
 export function getFuelStats(plate?: string) { return getJson<FuelStatsRow[]>(`/fuel/stats${plate ? `?plate=${encodeURIComponent(plate)}` : ''}`) }
-export function addFuelRecord(body: { plate: string; liters: number; pricePerLiterCs?: number; odometerKm?: number; note?: string }) { return sendJson<FuelRecord>('/fuel', 'POST', body) }
+export function addFuelRecord(body: { plate: string; liters: number; pricePerLiterCs?: number; odometerKm?: number; note?: string; evidence: string; driver?: string; source?: string }) { return sendJson<FuelRecord>('/fuel', 'POST', body) }
 export function deleteFuelRecord(id: string) { return sendJson<{ deleted: string }>(`/fuel/${encodeURIComponent(id)}`, 'DELETE') }
 
 export function getVehicles() { return getJson<Vehicle[]>('/vehicles') }
-export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number; brand?: string; motorNo?: string; chassisNo?: string; color?: string }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
-export function updateVehicle(id: string, body: { type?: string; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number; brand?: string; motorNo?: string; chassisNo?: string; color?: string }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createVehicle(body: { plate: string; model: string; type: string; capacityKg: number; year: number; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; acquisitionMode?: Vehicle['acquisitionMode']; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number; brand?: string; motorNo?: string; chassisNo?: string; color?: string }) { return sendJson<Vehicle>('/vehicles', 'POST', body) }
+export function updateVehicle(id: string, body: { type?: string; fuelType?: FuelType; consumptionLPerKm?: number; priceCs?: number; odometerKm?: number; external?: boolean; vehicleFunction?: Vehicle['vehicleFunction']; logistics?: string; minTripsMonth?: number; financed?: boolean; acquisitionMode?: Vehicle['acquisitionMode']; downPaymentCs?: number; leaseStart?: string; leaseTermMonths?: number; leaseMonthlyPaymentCs?: number; residualValueCs?: number; depreciationPct?: number; fuelPriceCs?: number; tankCapacityL?: number; brand?: string; motorNo?: string; chassisNo?: string; color?: string }) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}`, 'PATCH', body) }
 export async function uploadVehicleImage(id: string, file: File) {
   const formData = new FormData()
   formData.append('image', file)
@@ -185,7 +190,7 @@ export async function uploadVehicleImage(id: string, file: File) {
 export function updateVehicleStatus(id: string, status: VehicleStatus) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function deleteVehicle(id: string) { return sendJson<{ deleted: string }>(`/vehicles/${encodeURIComponent(id)}`, 'DELETE') }
 export function assignVehicleDriver(id: string, driver: string) { return sendJson<Vehicle>(`/vehicles/${encodeURIComponent(id)}/driver`, 'PATCH', { driver }) }
-export function registerVehicleMaintenance(id: string, description: string, cost?: number) { return sendJson<MaintenanceRecord[]>(`/vehicles/${encodeURIComponent(id)}/maintenance`, 'POST', { description, cost }) }
+export function registerVehicleMaintenance(id: string, description: string, cost?: number, provider?: string, durationDays?: number) { return sendJson<MaintenanceRecord[]>(`/vehicles/${encodeURIComponent(id)}/maintenance`, 'POST', { description, cost, provider, durationDays }) }
 export function getMaintenance() { return getJson<MaintenanceRecord[]>('/vehicles/maintenance') }
 
 export function getSettings() { return getJson<AppSettings>('/settings') }

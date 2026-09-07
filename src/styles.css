@@ -460,11 +460,11 @@ body { min-width: 0; background: var(--paper); }
 .mini-select:disabled { color: #aab4c3; background: #F2EFF4; cursor: not-allowed; }
 .role-select { max-width: 175px; }
 .secondary-button.danger { color: #d25c64; border-color: #f2c9cc; }
-.trip-detail-modal { width: min(560px, 100%); }
+.trip-detail-modal { width: min(640px, 100%); }
 .trip-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
-.trip-detail-field { padding: 13px 14px; border: 1px solid #E0DBE4; border-radius: 10px; background: #FBFAFD; }
+.trip-detail-field { min-width: 0; padding: 13px 14px; border: 1px solid #E0DBE4; border-radius: 10px; background: #FBFAFD; }
 .trip-detail-field span { display: block; color: #9a95a4; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.trip-detail-field strong { display: block; margin-top: 5px; color: #2b2636; font-size: 13px; }
+.trip-detail-field strong { display: block; margin-top: 5px; color: #2b2636; font-size: 13px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
 .trip-detail-note { padding: 12px 14px; border-left: 3px solid #A9D7F5; border-radius: 4px; color: #6e6a78; background: #EDF3FA; font-size: 12px; line-height: 1.5; }
 .trip-actions { flex-wrap: wrap; }
 .role-matrix-panel { padding: 19px 20px; }
@@ -724,6 +724,17 @@ body { min-width: 0; background: var(--paper); }
 /* === Flota: badges y financiamiento === */
 .financed-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; margin-left: 6px; color: #101230; background: linear-gradient(135deg, #cfd122, #a3a80f); }
 .financed-badge.cash { background: linear-gradient(135deg, #6b8aa5, #4c6078); }
+.status-pill.inactivo { color: #91434b; background: #fbe5e7; border-color: #f1b8be; }
+.evidence-pair-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.evidence-picker { display: grid; gap: 6px; padding: 12px; border: 1px dashed #aab9c8; border-radius: 12px; background: #f7fafc; }
+.evidence-picker span { color: #66758a; font-size: 11px; min-height: 28px; overflow-wrap: anywhere; }
+.evidence-picker .secondary-button { justify-self: start; }
+.fullscreen-map-shell:fullscreen { width: 100vw; height: 100vh; margin: 0; border-radius: 0; background: #eef3f7; }
+.fullscreen-map-shell:fullscreen > .map-canvas, .fullscreen-map-shell:fullscreen > div:first-child { height: 100vh; }
+.fullscreen-map-button { white-space: nowrap; }
+.driver-profile-modal .trip-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.driver-profile-modal .trip-detail-field strong { word-break: break-word; }
+@media (max-width: 760px) { .evidence-pair-grid { grid-template-columns: 1fr; } .fullscreen-map-button { width: 100%; } }
 .function-label { font-size: 11px; color: #2c3f5c; }
 .finance-card { margin-top: 14px; padding: 13px 15px; border: 1px solid #DFDAE2; border-radius: 12px; background: linear-gradient(180deg, #f8fafd, #F0ECF3); }
 .finance-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -877,16 +888,16 @@ input, select, textarea, button, th, td, .filter-chip, .status-pill, .priority-p
 
 /* === Modulo de Tarifas === */
 .tarifas-panel { margin-bottom: 16px; }
-.param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 18px; }
-.param-grid.compact { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-.param-cell { padding: 13px 14px; border: 1px solid #DED9E2; border-radius: 11px; background: #FBFAFD; display: flex; flex-direction: column; gap: 8px; }
+.param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; align-items: stretch; }
+.param-grid.compact { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.param-cell { min-width: 0; min-height: 126px; padding: 13px 14px; border: 1px solid #DED9E2; border-radius: 11px; background: #FBFAFD; display: flex; flex-direction: column; gap: 8px; }
 .param-cell > span { color: #504b59; font-size: 11.5px; font-weight: 700; }
-.param-cell > small { color: #948f9d; font-size: 10.5px; line-height: 1.35; }
+.param-cell > small { margin-top: auto; color: #948f9d; font-size: 10.5px; line-height: 1.35; }
 .param-input { width: 100%; border: 1px solid #E9D36A; border-radius: 7px; outline: 0; padding: 8px 10px; color: #2b2636; background: #FFF9D9; font-size: 13px; font-weight: 700; font-family: 'Acumin Pro', 'Segoe UI', sans-serif; }
 .param-input:focus { border-color: #C9A227; box-shadow: 0 0 0 3px rgba(201, 162, 39, .18); }
 select.param-input { height: 37px; }
-.param-input-wrap { display: flex; align-items: center; gap: 7px; }
-.param-input-wrap .param-input { flex: 1; }
+.param-input-wrap { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.param-input-wrap .param-input { flex: 1; min-width: 0; }
 .param-currency { color: #6e6a78; font-size: 12px; font-weight: 700; }
 .param-unit { color: #948f9d; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .yesno-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -912,6 +923,8 @@ select.param-input { height: 37px; }
 .mini-btn.danger-mini { color: #d64545; border-color: #f2c9cc; }
 .mini-btn.danger-mini:hover { background: #FDF0F0; border-color: #e8a4a9; }
 @media (max-width: 760px) { .calc-grid, .calc-selectors { grid-template-columns: 1fr; } }
+@media (max-width: 1050px) { .param-grid.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .param-grid, .param-grid.compact { grid-template-columns: 1fr; } }
 
 /* === Evidencia de incidencias === */
 .evidence-image { max-width: 100%; max-height: 300px; border-radius: 11px; border: 1px solid #CFE5F7; cursor: zoom-in; object-fit: cover; }
@@ -935,6 +948,7 @@ select.param-input { height: 37px; }
 .table-toolbar .export-buttons { flex-shrink: 0; flex-wrap: wrap; row-gap: 8px; }
 .action-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; vertical-align: middle; }
 .action-group .mini-btn { flex: 0 0 auto; border-radius: 7px !important; }
+.action-group .mini-btn { width: auto; min-width: max-content; height: auto; min-height: 30px; padding: 6px 10px; }
 .action-group .filter-chip, .action-group .primary-button, .action-group .secondary-button { flex: 0 0 auto; white-space: nowrap; }
 .mini-btn.proceso-mini { color: #7A5B00; border-color: #E3C65C; background: #FBF6DC; }
 .mini-btn.proceso-mini:hover { background: #F7EFC4; border-color: #CFAF3A; }
@@ -949,6 +963,9 @@ select.param-input { height: 37px; }
 .trip-detail-field.full select.mini-select { min-width: 0; }
 .action-group.toolbar-actions { display: flex; gap: 8px; }
 .action-group.toolbar-actions button { white-space: nowrap; }
+.action-group.toolbar-actions button.secondary-button { width: auto; min-height: 38px; height: auto; padding: 10px 14px; border-radius: 10px !important; font-size: 13px; }
+.form-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 10px 12px; border: 1px solid #f0c2c5; border-radius: 9px; color: #b33f48; background: #fff5f5; font-size: 12px; line-height: 1.4; }
+.form-error svg { flex: none; margin-top: 1px; }
 
 /* === Login: mostrar/ocultar contrasena === */
 .password-wrap { position: relative; display: block; }
