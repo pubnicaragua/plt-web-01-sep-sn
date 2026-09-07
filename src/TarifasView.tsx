@@ -50,6 +50,8 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
   const [destId, setDestId] = useState('')
   const [result, setResult] = useState<FareResult | null>(null)
   const [search, setSearch] = useState('')
+  const [catalogPage, setCatalogPage] = useState(1)
+  const catalogPageSize = 8
   const [loadError, setLoadError] = useState(false)
   const load = () => {
     setLoadError(false)
@@ -204,6 +206,9 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
     const query = search.trim().toLowerCase()
     return !query || [d.name, d.district, d.category, d.status].join(' ').toLowerCase().includes(query)
   })
+  const catalogPageCount = Math.max(1, Math.ceil(filteredDestinations.length / catalogPageSize))
+  const safeCatalogPage = Math.min(catalogPage, catalogPageCount)
+  const visibleDestinations = filteredDestinations.slice((safeCatalogPage - 1) * catalogPageSize, safeCatalogPage * catalogPageSize)
 
   const origin = data.destinations.find((d) => d.id === originId)
   const destination = data.destinations.find((d) => d.id === destId)
@@ -447,7 +452,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
         <section className="panel table-panel">
           <div className="table-toolbar">
             <div className="filter-row">
-              <div className="search-box"><Icon name="search" size={13} /><input placeholder="Buscar destino, distrito o categoría…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+              <div className="search-box"><Icon name="search" size={13} /><input placeholder="Buscar destino, distrito o categoría…" value={search} onChange={(e) => { setSearch(e.target.value); setCatalogPage(1) }} /></div>
             </div>
             <button className="primary-button" onClick={() => openForm()}><Icon name="plus" size={13} /> Agregar destino</button>
           </div>
@@ -465,7 +470,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
                 </tr>
               </thead>
               <tbody>
-                {filteredDestinations.map((destination) => (
+                {visibleDestinations.map((destination) => (
                   <tr key={destination.id}>
                     <td><b>{destination.name}</b></td>
                     <td>{destination.district}</td>
@@ -485,7 +490,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
             </table>
           </div>
           {filteredDestinations.length === 0 && <EmptyState title="Sin destinos que coincidan" detail="Ajusta la búsqueda o agrega un destino nuevo al catálogo." />}
-          <div className="table-footer"><span>{filteredDestinations.length} de {data.destinations.length} destinos · alimentan las validaciones de la calculadora</span></div>
+          <div className="table-footer"><span>Mostrando {visibleDestinations.length} de {filteredDestinations.length} destinos · alimentan las validaciones de la calculadora</span><div className="pagination"><button disabled={safeCatalogPage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>‹</button>{Array.from({ length: catalogPageCount }, (_, index) => index + 1).map((page) => <button className={page === safeCatalogPage ? 'active' : ''} key={page} onClick={() => setCatalogPage(page)}>{page}</button>)}<button disabled={safeCatalogPage >= catalogPageCount} onClick={() => setCatalogPage((page) => Math.min(catalogPageCount, page + 1))}>›</button></div></div>
         </section>
       )}
 

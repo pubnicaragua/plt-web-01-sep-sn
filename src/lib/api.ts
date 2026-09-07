@@ -55,7 +55,7 @@ export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
 export function createDriver(body: { name: string; phone?: string; email?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
-export function updateDriver(id: string, body: { vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function updateDriver(id: string, body: { name?: string; phone?: string; email?: string; vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
 export function getClientProfile(id: string) { return getJson<ClientProfile>(`/clients/${encodeURIComponent(id)}`) }

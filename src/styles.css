@@ -866,6 +866,8 @@ body { font-family: 'Acumin Pro', 'Segoe UI', sans-serif; }
 .app-shell.sidebar-collapsed .sidebar { width: 64px; flex: 0 0 64px; min-width: 0; }
 .table-toolbar { flex-wrap: wrap; row-gap: 10px; }
 .table-toolbar .filter-row { flex-wrap: wrap; }
+.table-top-pagination { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; color: #7d8ba1; font-size: 11px; }
+.table-top-pagination .pagination-note { display: none; }
 .action-group.toolbar-actions, .action-group { flex-wrap: wrap; }
 .filter-chip b { margin-left: 4px; }
 .modal-backdrop { overflow-y: auto; }
@@ -885,6 +887,25 @@ input, select, textarea, button, th, td, .filter-chip, .status-pill, .priority-p
 .driver-position-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 9px 11px; border: 1px solid #DFDAE2; border-radius: 9px; background: #FBFAFD; font-size: 12px; }
 .driver-position-row b { color: #2b2636; }
 .driver-position-row small { display: block; color: #6e6a78; margin-top: 2px; }
+.secondary-mini { padding: 8px; border: 1px solid #ded9e2; border-radius: 7px; color: #5f708b; background: #fff; font-size: 12px; cursor: pointer; }
+.secondary-mini:hover { border-color: #66b9ea; color: #1273b0; }
+.assignment-callout { display: flex; align-items: flex-start; gap: 11px; margin: 4px 0 16px; padding: 12px 14px; border: 1px solid #cce7f8; border-radius: 11px; background: linear-gradient(135deg, #eff8fe, #f8fbff); }
+.assignment-callout-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px; color: #1273b0; background: #dff1fc; }
+.assignment-callout strong, .assignment-callout small { display: block; }
+.assignment-callout strong { color: #163151; font-size: 12px; }
+.assignment-callout small { margin-top: 3px; color: #71819a; font-size: 11px; line-height: 1.35; }
+.driver-edit-modal { width: min(920px, 96vw); }
+.help-modal { width: min(680px, 96vw); }
+.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.help-action { display: flex; align-items: center; gap: 10px; min-height: 76px; padding: 13px; border: 1px solid #e2e8f1; border-radius: 11px; color: inherit; background: #fbfdff; text-align: left; cursor: pointer; }
+.help-action:hover { border-color: #66b9ea; background: #f0f8fe; transform: translateY(-1px); }
+.help-action > span:nth-child(2) { flex: 1; }
+.help-action-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px; color: #1273b0; background: #e3f1fc; }
+.help-action strong, .help-action small { display: block; }
+.help-action strong { color: #1b2740; font-size: 12px; }
+.help-action small { margin-top: 4px; color: #7d8ba1; font-size: 10.5px; line-height: 1.35; }
+.help-note { display: flex; gap: 8px; margin-top: 15px; padding: 11px 12px; border-radius: 9px; color: #60718c; background: #f3f7fb; font-size: 11px; line-height: 1.4; }
+.help-note svg { flex: none; color: #1273b0; }
 
 /* === Modulo de Tarifas === */
 .tarifas-panel { margin-bottom: 16px; }
@@ -922,6 +943,12 @@ select.param-input { height: 37px; }
 .cell-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: #504b59; }
 .mini-btn.danger-mini { color: #d64545; border-color: #f2c9cc; }
 .mini-btn.danger-mini:hover { background: #FDF0F0; border-color: #e8a4a9; }
+.catalog-actions { justify-content: flex-end; gap: 6px; }
+.catalog-actions .mini-btn { min-width: 58px; }
+.table-panel:has(.catalog-actions) { overflow: hidden; }
+.table-panel:has(.catalog-actions) .table-scroll { border: 1px solid #e6ebf2; border-radius: 10px; background: #fff; }
+.table-panel:has(.catalog-actions) .data-table th { background: #f6f9fc; color: #6f7f96; }
+.table-panel:has(.catalog-actions) .data-table td { padding-top: 12px; padding-bottom: 12px; }
 @media (max-width: 760px) { .calc-grid, .calc-selectors { grid-template-columns: 1fr; } }
 @media (max-width: 1050px) { .param-grid.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .param-grid, .param-grid.compact { grid-template-columns: 1fr; } }
@@ -1033,6 +1060,7 @@ select.param-input { height: 37px; }
   .large-map { height: 470px; }
   .tracking-card { width: 160px; padding: 10px; font-size: 10px; }
   .table-toolbar { padding: 12px; }
+  .table-top-pagination { width: 100%; justify-content: space-between; margin-left: 0; }
   .filter-row { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
   .table-footer { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px; }
   .modal-backdrop { padding: 10px; }
@@ -1040,4 +1068,5 @@ select.param-input { height: 37px; }
   .trip-detail-grid, .driver-profile-modal .trip-detail-grid { grid-template-columns: 1fr; }
   .trip-actions { display: grid; grid-template-columns: 1fr; }
   .trip-actions button { width: 100%; }
+  .help-grid { grid-template-columns: 1fr; }
 }
