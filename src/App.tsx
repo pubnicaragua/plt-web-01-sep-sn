@@ -631,7 +631,17 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
 }
 
 function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }; selected: boolean; compact?: boolean; onClick: () => void }) {
-  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><span className="dashboard-kpi-arrow">↗</span></button>
+  const sparkline: Record<DashboardMetric, string> = {
+    target: '4,22 16,18 28,21 40,11 52,15 64,5',
+    income: '4,21 16,17 28,19 40,9 52,13 64,4',
+    pending: '4,8 16,14 28,11 40,18 52,15 64,21',
+    incidents: '4,6 16,10 28,8 40,16 52,12 64,20',
+    fuel: '4,20 16,15 28,17 40,10 52,13 64,7',
+    depreciation: '4,19 16,18 28,16 40,14 52,10 64,8',
+    maintenance: '4,19 16,19 28,9 40,18 52,17 64,7',
+    leasing: '4,18 16,16 28,17 40,11 52,12 64,8',
+  }
+  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><span className="dashboard-kpi-sparkline" aria-hidden="true"><svg viewBox="0 0 68 26" preserveAspectRatio="none"><polyline points={sparkline[card.id]} /></svg></span><span className="dashboard-kpi-arrow">↗</span></button>
 }
 
 function DashboardMetricView({ metric, cards, finance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
