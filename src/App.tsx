@@ -496,7 +496,7 @@ function App() {
 
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
-          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} history={history} finance={finance} onNavigate={navigate} onRefresh={() => void refreshDashboardData()} />}
+          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} incidents={incidents} vehicles={vehicles} maintenance={maintenance} tracking={tracking} history={history} finance={finance} onNavigate={navigate} onRefresh={() => void refreshDashboardData()} />}
           {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
           {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
     {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
@@ -571,52 +571,81 @@ function sectionDescription(section: Section) {
   return descriptions[section]
 }
 
-function Dashboard({ summary, trips, drivers, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
-  return <>
-    <div className="metrics-grid">
-      <MetricCard label="Viajes de hoy" value={summary.tripsToday} delta="creados hoy" tone="blue" icon="trips" hint="Solicitudes de viaje creadas en el día operativo actual." onClick={() => onNavigate('trips')} />
-      <MetricCard label="Viajes en curso" value={summary.activeTrips} delta="Asignado · En camino · En entrega" tone="cyan" icon="truck" hint="Viajes que ya tienen conductor asignado y no han sido entregados ni cancelados." onClick={() => onNavigate('tracking')} />
-      <MetricCard label="Pendientes" value={summary.pendingTrips} delta="sin asignar" tone="gold" icon="clock" hint="Solicitudes aprobadas que aún no tienen conductor asignado." onClick={() => onNavigate('requests')} />
-      <MetricCard label="Entregas completadas" value={summary.completedTrips} delta="hoy" tone="mint" icon="checkCircle" hint="Viajes marcados como Completado en el día." onClick={() => onNavigate('trips')} />
-      <MetricCard label="Conductores activos" value={summary.activeDrivers} delta="conectados" tone="mint" icon="drivers" hint="Conductores disponibles, en viaje o en entrega." onClick={() => onNavigate('drivers')} />
-      <MetricCard label="Conductores disponibles" value={summary.availableDrivers} delta="para asignar" tone="blue" icon="assignment" hint="Conductores en estado Disponible que pueden recibir una asignación ahora." onClick={() => onNavigate('assignment')} />
-      <MetricCard label="Clientes registrados" value={summary.registeredClients} delta={`${summary.activeClients} activos`} tone="blue" icon="clients" hint="Cuentas corporativas y particulares registradas; activos son los que han operado en el último mes." onClick={() => onNavigate('clients')} />
-      <MetricCard label="Paquetes en tránsito" value={summary.packagesInTransit} delta="suma de paquetes en viajes en curso" tone="slate" icon="packages" hint="Suma de paquetes de todos los viajes en curso. Un viaje puede aportar varios paquetes." onClick={() => onNavigate('packages')} />
-      <MetricCard label="Entregas retrasadas" value={summary.delayedTrips} delta="requieren atención" tone="gold" icon="clock" hint="Viajes con incidencia de retraso abierta." onClick={() => onNavigate('incidents')} />
-      <MetricCard label="Incidencias abiertas" value={summary.openIncidents} delta="abiertas + en proceso" tone="red" icon="incidents" hint="Incidencias no resueltas que requieren atención de soporte u operaciones." onClick={() => onNavigate('incidents')} />
+type DashboardPeriod = 'today' | 'week' | 'range'
+type DashboardMetric = 'target' | 'income' | 'pending' | 'incidents' | 'fuel' | 'depreciation' | 'maintenance' | 'leasing'
+
+function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, tracking, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; tracking: TrackingOverview | null; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
+  const [period, setPeriod] = useState<DashboardPeriod>('today')
+  const [metric, setMetric] = useState<DashboardMetric | null>(null)
+  const [rangeStart, setRangeStart] = useState(() => inputDate(new Date()))
+  const [rangeEnd, setRangeEnd] = useState(() => inputDate(new Date()))
+  const [selectedDriver, setSelectedDriver] = useState('')
+  const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.all : finance?.periods.today
+  const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : `${rangeStart} → ${rangeEnd}`
+  const targetBase = vehicles.reduce((sum, vehicle) => sum + Math.max(0, vehicle.minTripsMonth || 0), 0)
+  const targetFactor = period === 'today' ? 1 / 30 : period === 'week' ? 7 / 30 : Math.max(1, daysBetween(rangeStart, rangeEnd)) / 30
+  const targetTrips = Math.round(targetBase * targetFactor)
+  const liveDrivers = (tracking?.drivers?.length ? tracking.drivers : drivers).map((driver) => {
+    const live = tracking?.live.find((position) => position.driver.toLowerCase() === driver.name.toLowerCase())
+    return live ? { ...driver, latitude: live.latitude, longitude: live.longitude, status: live.status, vehicle: live.vehicle, plate: live.plate } : driver
+  })
+  const activeTrips = (tracking?.trips?.length ? tracking.trips : trips).filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status))
+  const demandCounts = activeTrips.reduce<Record<string, number>>((counts, trip) => { counts[trip.origin] = (counts[trip.origin] ?? 0) + 1; return counts }, {})
+  const demandZone = Object.entries(demandCounts).sort((a, b) => b[1] - a[1])[0]
+  const demandTrip = demandZone ? activeTrips.find((trip) => trip.origin === demandZone[0] && Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng)) : undefined
+  const demandPoint = demandTrip ? { lat: demandTrip.originLat as number, lng: demandTrip.originLng as number, label: demandZone?.[0] ?? 'Zona activa', count: Number(demandZone?.[1] ?? 0) } : undefined
+  const depreciation = vehicles.reduce((sum, vehicle) => sum + (vehicle.financing?.monthlyDepreciationCs ?? 0), 0)
+  const leasing = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').reduce((sum, vehicle) => sum + (vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 0)
+  const cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; section?: Section }> = [
+    { id: 'target', label: 'Meta total de viajes', value: targetTrips.toLocaleString('es-NI'), detail: `${periodName} · meta mensual distribuida`, icon: 'trips', tone: 'blue', section: 'trips' },
+    { id: 'income', label: 'Total de ingresos', value: formatCs(selectedPeriod?.incomeCs ?? 0), detail: `${periodName} · viajes completados`, icon: 'wallet', tone: 'cyan', section: 'reports' },
+    { id: 'pending', label: 'Solicitudes pendientes de viaje', value: summary.pendingTrips.toLocaleString('es-NI'), detail: 'Sin conductor asignado', icon: 'clock', tone: 'gold', section: 'requests' },
+    { id: 'incidents', label: 'Incidencias reportadas', value: incidents.length.toLocaleString('es-NI'), detail: `${summary.openIncidents} abiertas o en proceso`, icon: 'incidents', tone: 'red', section: 'incidents' },
+    { id: 'fuel', label: 'Combustible', value: formatCs(selectedPeriod?.fuelCs ?? 0), detail: `${periodName} · costo calculado`, icon: 'fuel', tone: 'cyan', section: 'vehicles' },
+    { id: 'depreciation', label: 'Depreciación', value: formatCs(depreciation), detail: 'Costo mensual de la flota', icon: 'trendingUp', tone: 'violet', section: 'vehicles' },
+    { id: 'maintenance', label: 'Mantenimientos', value: formatCs(selectedPeriod?.maintenanceCs ?? 0), detail: `${maintenance.length} registros en historial`, icon: 'wrench', tone: 'gold', section: 'vehicles' },
+    { id: 'leasing', label: 'Leasing de vehículos', value: formatCs(leasing), detail: 'Cuotas mensuales activas', icon: 'billing', tone: 'violet', section: 'vehicles' },
+  ]
+  const topCards = cards.slice(0, 3)
+  const sideCards = cards.slice(3)
+  const focusedDriver = liveDrivers.find((driver) => driver.name === selectedDriver)
+  return <div className="dashboard-clean">
+    <div className="dashboard-filter-bar">
+      <div><span className="eyebrow">CENTRO DE OPERACIONES</span><strong>Resumen operativo</strong><small>Datos conectados a la API · actualizado {finance?.generatedAt ? new Date(finance.generatedAt).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '—'}</small></div>
+      <div className="dashboard-filters"><button className={period === 'today' ? 'active' : ''} onClick={() => setPeriod('today')}>Hoy</button><button className={period === 'week' ? 'active' : ''} onClick={() => setPeriod('week')}>Esta semana</button><button className={period === 'range' ? 'active' : ''} onClick={() => setPeriod('range')}>Rango</button>{period === 'range' && <><input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} aria-label="Inicio del rango" /><span>→</span><input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} aria-label="Fin del rango" /></>}<button className="dashboard-refresh" onClick={onRefresh}><Icon name="refresh" size={13} /> Actualizar</button></div>
     </div>
-    {finance && <FinancePanel finance={finance} onNavigate={onNavigate} onRefresh={onRefresh} />}
-    <section className="panel attention-panel">
-      <PanelHeader title="Requiere atención" action="Ver incidencias" onAction={() => onNavigate('incidents')} />
-      <div className="attention-grid">
-        <button onClick={() => onNavigate('trips')}><span className="attention-icon gold"><Icon name="clock" size={15} /></span><div><strong>{summary.delayedTrips} entregas retrasadas</strong><small>Viajes con retraso reportado</small></div></button>
-        <button onClick={() => onNavigate('incidents')}><span className="attention-icon red"><Icon name="alert" size={15} /></span><div><strong>{summary.openIncidents} incidencias abiertas</strong><small>Requieren resolución</small></div></button>
-        <button onClick={() => onNavigate('requests')}><span className="attention-icon blue"><Icon name="requests" size={15} /></span><div><strong>{summary.pendingTrips} solicitudes pendientes</strong><small>Esperan asignación</small></div></button>
-        <button onClick={() => onNavigate('assignment')}><span className="attention-icon mint"><Icon name="drivers" size={15} /></span><div><strong>{summary.availableDrivers} conductores disponibles</strong><small>Listos para asignar</small></div></button>
-      </div>
-    </section>
-    <div className="dashboard-grid">
-      <section className="panel map-panel">
-        <PanelHeader title="Mapa de operaciones" action="Ver mapa completo" onAction={() => onNavigate('tracking')} />
-        <div className="operations-map">
-          <GoogleMap drivers={drivers} />
-          <div className="map-legend"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponibles</span><span><i className="legend gold" />Pendientes</span><span><i className="legend red" />Alertas</span></div>
-        </div>
+    <div className="dashboard-kpi-top">{topCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} onClick={() => setMetric(metric === card.id ? null : card.id)} />)}</div>
+    <div className="dashboard-workspace">
+      <section className="panel dashboard-map-stage">
+        {metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
+          <div className="dashboard-map-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES GPS</span><h2>Mapa operativo</h2><p>Ubicación, estado, rutas activas y puntos de recogida/entrega.</p></div><button className="secondary-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button></div>
+          <div className="map-control-strip"><span><i className="legend mint" />{liveDrivers.length} conductores</span><span><i className="legend cyan" />{activeTrips.length} rutas activas</span><span><i className="legend gold" />Demanda alta: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</span></div>
+          <div className="operations-map dashboard-map"><GoogleMap drivers={liveDrivers} trips={activeTrips} highlightDriver={selectedDriver} demandZone={demandPoint} /><div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div></div>
+          <div className="dashboard-driver-selector"><span>Ruta actual por conductor</span><button className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
+          {focusedDriver && <div className="selected-route-note"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span><button onClick={() => onNavigate('drivers')}>Ver perfil</button></div>}
+        </>}
       </section>
-      <section className="panel activity-panel">
-        <PanelHeader title="Actividad reciente" action="Ver historial" onAction={() => onNavigate('history')} />
-        <div className="activity-list">{history.slice(0, 6).map((event) => <Activity key={event.id} time={event.time} color={event.color} title={event.title} detail={event.detail} />)}</div>
-      </section>
+      <aside className="dashboard-side-kpis">{sideCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} compact onClick={() => setMetric(metric === card.id ? null : card.id)} />)}<section className="dashboard-activity"><div className="dashboard-side-title"><strong>Actividad reciente</strong><button onClick={() => onNavigate('history')}>Ver todo →</button></div>{history.slice(0, 4).map((event) => <Activity key={event.id} time={event.time} color={event.color} title={event.title} detail={event.detail} />)}</section></aside>
     </div>
-    <section className="quick-actions">
-      <div><span className="eyebrow">Acciones rápidas</span><h2>Lo importante, a un clic.</h2></div>
-      <button onClick={() => onNavigate('trips')}><span className="quick-icon"><Icon name="trips" size={17} /></span><strong>Revisar solicitudes</strong><small>{summary.pendingTrips} pendientes</small></button>
-      <button onClick={() => onNavigate('tracking')}><span className="quick-icon"><Icon name="tracking" size={17} /></span><strong>Abrir tracking</strong><small>{summary.activeTrips} operaciones</small></button>
-      <button onClick={() => onNavigate('incidents')}><span className="quick-icon"><Icon name="incidents" size={17} /></span><strong>Atender incidencias</strong><small>{summary.openIncidents} abiertas</small></button>
-      <button onClick={() => onNavigate('vehicles')}><span className="quick-icon"><Icon name="vehicles" size={17} /></span><strong>Gestionar flota</strong><small>{trips ? 'ver vehículos y mantenimiento' : 'ver vehículos'}</small></button>
-    </section>
-  </>
+  </div>
 }
+
+function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }; selected: boolean; compact?: boolean; onClick: () => void }) {
+  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><span className="dashboard-kpi-arrow">↗</span></button>
+}
+
+function DashboardMetricView({ metric, cards, finance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
+  const current = cards.find((card) => card.id === metric) ?? cards[0]
+  const selectedPeriod = metric === 'income' || metric === 'fuel' || metric === 'maintenance'
+    ? (period === 'today' ? finance?.periods.today : period === 'week' ? finance?.periods.week : finance?.periods.all)
+    : null
+  const series = metric === 'fuel' ? finance?.daily.map((day) => ({ label: day.label, value: day.fuelCs })) : finance?.daily.map((day) => ({ label: day.label, value: day.incomeCs }))
+  const max = Math.max(...(series?.map((item) => item.value) ?? [1]), 1)
+  return <div className="dashboard-focus-view"><div className="dashboard-focus-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{current.label}</h2><p>{current.detail}. Selecciona otra tarjeta para cambiar esta vista.</p></div><span className={`dashboard-focus-icon tone-${current.tone}`}><Icon name={current.icon} size={22} /></span></div><div className="dashboard-focus-total"><strong>{current.value}</strong><span>total del indicador</span></div>{series && (metric === 'income' || metric === 'fuel') ? <div className="dashboard-focus-chart">{series.map((item) => <div className="focus-bar-column" title={`${item.label}: ${formatCs(item.value)}`} key={item.label}><div className="focus-bar" style={{ height: `${Math.max(5, (item.value / max) * 100)}%` }} /><small>{item.label}</small></div>)}</div> : <div className="dashboard-focus-breakdown"><div><span>Periodo seleccionado</span><strong>{selectedPeriod?.label ?? periodName}</strong></div><div><span>Indicador</span><strong>{current.value}</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate(metric === 'incidents' ? 'incidents' : metric === 'pending' ? 'requests' : 'vehicles')}>Abrir módulo →</button></div></div>}<div className="dashboard-focus-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>La tarjeta y el gráfico se recalculan al actualizar el dashboard.</small></div></div>
+}
+
+function inputDate(date: Date) { return date.toISOString().slice(0, 10) }
+function daysBetween(start: string, end: string) { const from = new Date(`${start}T00:00:00`).getTime(); const to = new Date(`${end}T00:00:00`).getTime(); return Number.isFinite(from) && Number.isFinite(to) && to >= from ? Math.round((to - from) / 86400000) + 1 : 1 }
 
 function HelpDialog({ onClose, onNavigate }: { onClose: () => void; onNavigate: (section: Section) => void }) {
   const actions: Array<{ title: string; detail: string; section: Section; icon: IconName }> = [
@@ -765,11 +794,12 @@ function NotificationBell({ openIncidents, pendingTrips, history, open, onToggle
   )
 }
 
-function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] }) {
+function GoogleMap({ drivers, trips = [], highlightDriver = '', demandZone }: { drivers: Driver[]; trips?: Trip[]; highlightDriver?: string; demandZone?: { lat: number; lng: number; label: string; count: number } }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const polylinesRef = useRef<any[]>([])
+  const demandCircleRef = useRef<any>(null)
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
 
@@ -819,7 +849,7 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
             position: { lat: driver.latitude, lng: driver.longitude },
             map,
             title: `${driver.name} · ${driver.status}`,
-            icon: incoexPin(maps, googleStatusColor(driver.status), 1.15),
+            icon: incoexPin(maps, googleStatusColor(driver.status), driver.name === highlightDriver ? 1.45 : 1.15),
           })
           marker.addListener('click', () => {
             new maps.InfoWindow({
@@ -828,8 +858,29 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
           })
           return marker
         })
+      demandCircleRef.current?.setMap(null)
+      demandCircleRef.current = demandZone ? new maps.Circle({
+        map,
+        center: { lat: demandZone.lat, lng: demandZone.lng },
+        radius: 850,
+        fillColor: '#F4B740',
+        fillOpacity: 0.16,
+        strokeColor: '#D99416',
+        strokeOpacity: 0.55,
+        strokeWeight: 2,
+        clickable: false,
+      }) : null
+      trips
+        .filter((trip) => !highlightDriver || trip.driver === highlightDriver)
+        .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.destinationLng))
+        .forEach((trip) => {
+          const originMarker = new maps.Marker({ position: { lat: trip.originLat as number, lng: trip.originLng as number }, map, title: `Recogida · ${trip.id}`, icon: incoexPin(maps, '#32AAF0', .8) })
+          const destinationMarker = new maps.Marker({ position: { lat: trip.destinationLat as number, lng: trip.destinationLng as number }, map, title: `Entrega · ${trip.id}`, icon: incoexPin(maps, '#8974DC', .8) })
+          markersRef.current.push(originMarker, destinationMarker)
+        })
       polylinesRef.current.forEach((polyline) => polyline.setMap(null))
       polylinesRef.current = trips
+        .filter((trip) => !highlightDriver || trip.driver === highlightDriver)
         .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLng))
         .map((trip) => new maps.Polyline({
           path: curvedPath(maps, { lat: trip.originLat as number, lng: trip.originLng as number }, { lat: trip.destinationLat as number, lng: trip.destinationLng as number }),
@@ -845,11 +896,13 @@ function GoogleMap({ drivers, trips = [] }: { drivers: Driver[]; trips?: Trip[] 
       try {
         markersRef.current.forEach((marker) => marker.setMap(null))
         polylinesRef.current.forEach((polyline) => polyline.setMap(null))
+        demandCircleRef.current?.setMap(null)
+        demandCircleRef.current = null
       } catch {
         // limpieza segura
       }
     }
-  }, [drivers, trips, mapState])
+  }, [drivers, trips, highlightDriver, demandZone, mapState])
 
   return (
     <div className="google-map-wrap">
