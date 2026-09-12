@@ -85,7 +85,10 @@ export function deleteTariffDestination(id: string) { return sendJson<{ deleted:
 export function calculateFare(body: { originLat: number; originLng: number; destLat: number; destLng: number; originCoverage?: boolean; destCoverage?: boolean }) { return sendJson<FareResult>('/tarifas/calculator', 'POST', body) }
 export function getHistory() { return getJson<HistoryEvent[]>('/history') }
 export function getReportsSummary() { return getJson<ReportsSummary>('/reports/summary') }
-export function getFinanceSummary() { return getJson<FinanceSummary>('/finance/summary') }
+export function getFinanceSummary(start?: string, end?: string) {
+  const query = start && end ? `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : ''
+  return getJson<FinanceSummary>(`/finance/summary${query}`)
+}
 export function getTrackingOverview() { return getJson<TrackingOverview>('/tracking/overview') }
 export function getDeliverables() { return getJson<Deliverable[]>('/deliverables') }
 export function getDeliverablesSummary() { return getJson<DeliverableSummary>('/deliverables/summary') }

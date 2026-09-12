@@ -39,6 +39,7 @@ export interface FinanceSummary {
     week: FinancePeriod
     month: FinancePeriod
     all: FinancePeriod
+    range?: FinancePeriod
   }
   invoicingCs: number
   invoicingTrips: number

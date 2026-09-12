@@ -392,14 +392,14 @@ function App() {
     }
   }
 
-  async function refreshDashboardData() {
+  async function refreshDashboardData(startDate?: string, endDate?: string) {
     try {
       const [nextSummary, nextTrips, nextDrivers, nextHistory, nextFinance, nextTracking] = await Promise.all([
         getDashboardSummary(),
         getTrips(),
         getDrivers(),
         getHistory(),
-        getFinanceSummary(),
+        getFinanceSummary(startDate, endDate),
         getTrackingOverview(),
       ])
       setSummary(nextSummary)
@@ -574,13 +574,13 @@ function sectionDescription(section: Section) {
 type DashboardPeriod = 'today' | 'week' | 'range'
 type DashboardMetric = 'target' | 'income' | 'pending' | 'incidents' | 'fuel' | 'depreciation' | 'maintenance' | 'leasing'
 
-function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, tracking, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; tracking: TrackingOverview | null; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: () => void }) {
+function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, tracking, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; tracking: TrackingOverview | null; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: (startDate?: string, endDate?: string) => void }) {
   const [period, setPeriod] = useState<DashboardPeriod>('today')
   const [metric, setMetric] = useState<DashboardMetric | null>(null)
   const [rangeStart, setRangeStart] = useState(() => inputDate(new Date()))
   const [rangeEnd, setRangeEnd] = useState(() => inputDate(new Date()))
   const [selectedDriver, setSelectedDriver] = useState('')
-  const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.all : finance?.periods.today
+  const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today
   const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : `${rangeStart} → ${rangeEnd}`
   const targetBase = vehicles.reduce((sum, vehicle) => sum + Math.max(0, vehicle.minTripsMonth || 0), 0)
   const targetFactor = period === 'today' ? 1 / 30 : period === 'week' ? 7 / 30 : Math.max(1, daysBetween(rangeStart, rangeEnd)) / 30
@@ -612,7 +612,7 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
   return <div className="dashboard-clean">
     <div className="dashboard-filter-bar">
       <div><span className="eyebrow">CENTRO DE OPERACIONES</span><strong>Resumen operativo</strong><small>Datos conectados a la API · actualizado {finance?.generatedAt ? new Date(finance.generatedAt).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '—'}</small></div>
-      <div className="dashboard-filters"><button className={period === 'today' ? 'active' : ''} onClick={() => setPeriod('today')}>Hoy</button><button className={period === 'week' ? 'active' : ''} onClick={() => setPeriod('week')}>Esta semana</button><button className={period === 'range' ? 'active' : ''} onClick={() => setPeriod('range')}>Rango</button>{period === 'range' && <><input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} aria-label="Inicio del rango" /><span>→</span><input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} aria-label="Fin del rango" /></>}<button className="dashboard-refresh" onClick={onRefresh}><Icon name="refresh" size={13} /> Actualizar</button></div>
+      <div className="dashboard-filters"><button className={period === 'today' ? 'active' : ''} onClick={() => setPeriod('today')}>Hoy</button><button className={period === 'week' ? 'active' : ''} onClick={() => setPeriod('week')}>Esta semana</button><button className={period === 'range' ? 'active' : ''} onClick={() => setPeriod('range')}>Rango</button>{period === 'range' && <><input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} aria-label="Inicio del rango" /><span>→</span><input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} aria-label="Fin del rango" /></>}<button className="dashboard-refresh" onClick={() => onRefresh(period === 'range' ? rangeStart : undefined, period === 'range' ? rangeEnd : undefined)}><Icon name="refresh" size={13} /> Actualizar</button></div>
     </div>
     <div className="dashboard-kpi-top">{topCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} onClick={() => setMetric(metric === card.id ? null : card.id)} />)}</div>
     <div className="dashboard-workspace">
@@ -637,7 +637,7 @@ function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id
 function DashboardMetricView({ metric, cards, finance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
   const current = cards.find((card) => card.id === metric) ?? cards[0]
   const selectedPeriod = metric === 'income' || metric === 'fuel' || metric === 'maintenance'
-    ? (period === 'today' ? finance?.periods.today : period === 'week' ? finance?.periods.week : finance?.periods.all)
+    ? (period === 'today' ? finance?.periods.today : period === 'week' ? finance?.periods.week : finance?.periods.range ?? finance?.periods.all)
     : null
   const series = metric === 'fuel' ? finance?.daily.map((day) => ({ label: day.label, value: day.fuelCs })) : finance?.daily.map((day) => ({ label: day.label, value: day.incomeCs }))
   const max = Math.max(...(series?.map((item) => item.value) ?? [1]), 1)
