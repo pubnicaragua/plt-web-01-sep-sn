@@ -1,105 +1,78 @@
-﻿import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getApiBase } from '../lib/api'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import type { Section, TrackingOverview } from '../types'
+import { googleStatusColor, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction } from '../lib/googleMaps'
 
-function buildIcon(className: string, html: string): L.DivIcon {
-  return L.divIcon({ className: `live-marker ${className}`, html, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -16] })
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character] ?? character))
 }
-
-const DRIVER_ICON = buildIcon('', '<div class="driver-dot"></div>')
-const OFFLINE_ICON = buildIcon('offline', '<div class="driver-dot"></div>')
-const ORIGIN_ICON = buildIcon('origin', '<div class="dot-peg">A</div>')
-const DEST_ICON = buildIcon('dest', '<div class="dot-peg">B</div>')
-const INCIDENT_ICON = buildIcon('incident', '<div class="dot-peg">!</div>')
 
 export function LiveMap({ tracking, onNavigate, showDemo = false }: { tracking: TrackingOverview; onNavigate: (section: Section) => void; showDemo?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const layerRef = useRef<{ drivers: L.LayerGroup; routes: L.LayerGroup; incidents: L.LayerGroup } | null>(null)
+  const mapRef = useRef<any>(null)
+  const objectsRef = useRef<any[]>([])
   const navigateRef = useRef(onNavigate)
+  const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
+  navigateRef.current = onNavigate
 
   useEffect(() => {
-    navigateRef.current = onNavigate
-  }, [onNavigate])
-
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
-    const container = containerRef.current
-    const map = L.map(container, { zoomControl: true, attributionControl: true })
-    mapRef.current = map
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 19,
-    }).addTo(map)
-    map.setView([12.114993, -86.236174], 12)
-    layerRef.current = {
-      drivers: L.layerGroup().addTo(map),
-      routes: L.layerGroup().addTo(map),
-      incidents: L.layerGroup().addTo(map),
-    }
-    const handlePopupAction = (event: MouseEvent) => {
-      const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-go]')
-      const section = target?.dataset.go
-      if (!target || (section !== 'drivers' && section !== 'trips' && section !== 'incidents')) return
-      event.preventDefault()
-      navigateRef.current(section)
-      map.closePopup()
-    }
-    container.addEventListener('click', handlePopupAction)
-    return () => {
-      container.removeEventListener('click', handlePopupAction)
-      map.remove()
-      mapRef.current = null
-    }
+    let cancelled = false
+    loadGoogleMaps().then((maps) => {
+      if (cancelled || !containerRef.current || !maps) return
+      try {
+        const map = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, fullscreenControl: false, streetViewControl: false, mapTypeControl: false, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
+        mapRef.current = map
+        containerRef.current.addEventListener('click', (event) => {
+          const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-go]')
+          const section = target?.dataset.go
+          if (section === 'drivers' || section === 'trips' || section === 'incidents') navigateRef.current(section)
+        })
+        setMapState('ready')
+      } catch { if (!cancelled) setMapState('error') }
+    }).catch(() => { if (!cancelled) setMapState('error') })
+    return () => { cancelled = true; objectsRef.current.forEach((object) => object.setMap?.(null)); objectsRef.current = []; mapRef.current = null }
   }, [])
 
   useEffect(() => {
+    const maps = window.google?.maps
     const map = mapRef.current
-    const layers = layerRef.current
-    if (!map || !layers) return
-    layers.drivers.clearLayers()
-    layers.routes.clearLayers()
-    layers.incidents.clearLayers()
-
-    const bounds: L.LatLng[] = []
-    const statusColor: Record<string, string> = { Disponible: '#22c97e', 'En viaje': '#3e8bff', 'En entrega': '#8a6be8', 'Fuera de servicio': '#9aa4b5' }
-
-    for (const position of (tracking.live ?? []).filter((item) => showDemo || !item.demo)) {
-      const latLng: [number, number] = [position.latitude, position.longitude]
-      bounds.push(L.latLng(latLng))
-      const color = statusColor[position.status] ?? '#22c97e'
-      const marker = L.marker(latLng, { icon: position.online ? DRIVER_ICON : OFFLINE_ICON })
-      const onlineLabel = position.online ? (position.demo ? 'en línea (demo)' : 'en línea') : `desconectado · ${position.ageSeconds >= 300 ? 'sin señal' : `hace ${position.ageSeconds} s`}`
-      marker.bindPopup(`<div class="live-popup"><span class="live-popup-driver">${position.driver}</span><span class="live-popup-plate">${position.plate || position.vehicle}</span><span class="live-popup-row"><i style="background:${color}"></i>${position.status} · ${onlineLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h${position.demo ? ' · posición de referencia' : ''}</span><button type="button" class="live-popup-action" data-go="drivers">Ver conductores</button></div>`, { className: 'live-popup-wrap' })
-      marker.addTo(layers.drivers)
+    if (!maps || !map || mapState !== 'ready') return
+    objectsRef.current.forEach((object) => object.setMap?.(null))
+    objectsRef.current = []
+    const bounds = new maps.LatLngBounds()
+    let hasBounds = false
+    const add = (object: any) => { object.setMap(map); objectsRef.current.push(object); return object }
+    const info = (position: any, content: string) => { const windowInfo = new maps.InfoWindow({ content }); windowInfo.setPosition(position); windowInfo.open({ map }); objectsRef.current.push(windowInfo) }
+    const positions = (tracking.live ?? []).filter((item) => showDemo || !item.demo)
+    for (const position of positions) {
+      const point = { lat: position.latitude, lng: position.longitude }
+      const color = googleStatusColor(position.status)
+      const marker = add(new maps.Marker({ position: point, title: `${position.driver} · ${position.status}`, icon: { path: maps.SymbolPath.CIRCLE, scale: position.online ? 8 : 7, fillColor: position.online ? color : '#9aa4b5', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } }))
+      const onlineLabel = position.online ? (position.demo ? 'en línea · referencia' : 'en línea') : `desconectado · ${position.ageSeconds >= 300 ? 'sin señal' : `hace ${position.ageSeconds} s`}`
+      marker.addListener('click', () => info(point, `<div class="live-popup"><strong class="live-popup-driver">${escapeHtml(position.driver)}</strong><span class="live-popup-plate">${escapeHtml(position.plate || position.vehicle)}</span><span class="live-popup-row"><i style="background:${color}"></i>${escapeHtml(position.status)} · ${onlineLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h</span><button type="button" class="live-popup-action" data-go="drivers">Ver conductores</button></div>`))
+      bounds.extend(point)
+      hasBounds = true
     }
-
-    const withRoute = tracking.trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status) && Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat)).slice(0, 6)
-    for (const trip of withRoute) {
-      const origin: [number, number] = [trip.originLat as number, trip.originLng as number]
-      const destination: [number, number] = [trip.destinationLat as number, trip.destinationLng as number]
-      bounds.push(L.latLng(origin), L.latLng(destination))
-      const dashed = trip.status === 'Pendiente' || trip.status === 'Asignado'
-      L.polyline([origin, destination], { color: '#17d3e0', weight: 3, opacity: 0.85, dashArray: dashed ? '6 6' : undefined }).addTo(layers.routes)
-      L.marker(origin, { icon: ORIGIN_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Recogida · ${trip.id}</span><span>${trip.origin}</span><span class="live-popup-row">${trip.client}</span></div>`).addTo(layers.routes)
-      L.marker(destination, { icon: DEST_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Entrega · ${trip.id}</span><span>${trip.destination}</span><span class="live-popup-row">${trip.client} · ${trip.driver} · ${trip.status}</span><button type="button" class="live-popup-action" data-go="trips">Ver viajes</button></div>`, { className: 'live-popup-wrap' }).addTo(layers.routes)
+    for (const trip of tracking.trips.filter((item) => ['Asignado', 'En camino', 'En entrega'].includes(item.status) && Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng)).slice(0, 8)) {
+      const origin = { lat: trip.originLat as number, lng: trip.originLng as number }
+      const destination = { lat: trip.destinationLat as number, lng: trip.destinationLng as number }
+      const route = add(new maps.Polyline({ path: [origin, destination], strokeColor: '#13a8da', strokeOpacity: .86, strokeWeight: 4, icons: trip.status === 'Asignado' ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] : undefined }))
+      route.addListener('click', () => info({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 }, `<div class="live-popup"><strong class="live-popup-driver">${escapeHtml(trip.id)}</strong><span>${escapeHtml(trip.origin)} → ${escapeHtml(trip.destination)}</span><span class="live-popup-row">${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}</span><button type="button" class="live-popup-action" data-go="trips">Ver viajes</button></div>`))
+      add(new maps.Marker({ position: origin, title: `Recogida · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#22b77a', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } }))
+      add(new maps.Marker({ position: destination, title: `Entrega · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#8067dc', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } }))
+      bounds.extend(origin); bounds.extend(destination); hasBounds = true
     }
-
     for (const incident of tracking.incidents) {
       if (!Number.isFinite(incident.latitude) || !Number.isFinite(incident.longitude)) continue
-      const position: [number, number] = [incident.latitude as number, incident.longitude as number]
-      bounds.push(L.latLng(position))
+      const point = { lat: incident.latitude as number, lng: incident.longitude as number }
+      const marker = add(new maps.Marker({ position: point, title: `Incidencia ${incident.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#e45d67', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } }))
       const evidenceSrc = incident.evidence ? (incident.evidence.startsWith('http') || incident.evidence.startsWith('data:') ? incident.evidence : `${getApiBase()}/uploads/evidence/${incident.evidence}`) : ''
-      const evidence = evidenceSrc ? `<img class="live-popup-evidence" src="${evidenceSrc}" alt="evidencia" loading="lazy" />` : ''
-      L.marker(position, { icon: INCIDENT_ICON }).bindPopup(`<div class="live-popup"><span class="live-popup-driver">Incidencia ${incident.priority} · ${incident.id}</span><span>${incident.type}</span><span class="live-popup-row"><i style="background:#d64545"></i>${incident.driver} · ${incident.status}</span>${incident.description ? `<span class="live-popup-desc">${incident.description}</span>` : ''}${evidence}<button type="button" class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`, { className: 'live-popup-wrap' }).addTo(layers.incidents)
+      marker.addListener('click', () => info(point, `<div class="live-popup"><strong class="live-popup-driver">Incidencia ${escapeHtml(incident.priority)} · ${escapeHtml(incident.id)}</strong><span>${escapeHtml(incident.type)}</span><span class="live-popup-row"><i style="background:#e45d67"></i>${escapeHtml(incident.driver)} · ${escapeHtml(incident.status)}</span>${evidenceSrc ? `<img class="live-popup-evidence" src="${escapeHtml(evidenceSrc)}" alt="evidencia" loading="lazy" />` : ''}<button type="button" class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`))
+      bounds.extend(point); hasBounds = true
     }
+    if (hasBounds) map.fitBounds(bounds, { top: 38, right: 38, bottom: 38, left: 38 })
+    else map.setCenter(MANAGUA_CENTER)
+  }, [tracking, showDemo, mapState])
 
-    if (bounds.length > 0) {
-      map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 14 })
-    }
-  }, [tracking, showDemo])
-
-  return <div className="live-map-container" ref={containerRef} />
+  return <div className="live-map-container" ref={containerRef}>{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}</div>
 }

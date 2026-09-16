@@ -70,10 +70,11 @@ import {
   type FuelRecord,
   type FuelStatsRow,
 } from './lib/api'
-import { googleStatusColor, loadGoogleMaps, resetGoogleMapsLoader, MANAGUA_CENTER, INCOEX_MAP_STYLE, incoexPin, nicaraguaRestriction, rationalizePoint, curvedPath, ROUTE_COLOR } from './lib/googleMaps'
 import { Icon, type IconName } from './lib/icons'
 import { TarifasView } from './TarifasView'
 import { LiveMap } from './components/LiveMap'
+import { DashboardMap } from './components/DashboardMap'
+import { curvedPath, incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, resetGoogleMapsLoader } from './lib/googleMaps'
 import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
@@ -293,6 +294,9 @@ function App() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('incoex-auth') === '1')
   const [sessionUser, setSessionUser] = useState<AuthUser>(() => readStoredAuthUser())
   const [section, setSection] = useState<Section>('dashboard')
+  const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>('week')
+  const [dashboardRangeStart, setDashboardRangeStart] = useState(() => inputDate(new Date()))
+  const [dashboardRangeEnd, setDashboardRangeEnd] = useState(() => inputDate(new Date()))
   const [summary, setSummary] = useState(emptySummary)
   const [trips, setTrips] = useState<Trip[]>([])
   const [drivers, setDrivers] = useState<Driver[]>([])
@@ -392,7 +396,7 @@ function App() {
     }
   }
 
-  async function refreshDashboardData(startDate?: string, endDate?: string) {
+  async function refreshDashboardData(startDate?: string, endDate?: string, silent = false) {
     try {
       const [nextSummary, nextTrips, nextDrivers, nextHistory, nextFinance, nextTracking] = await Promise.all([
         getDashboardSummary(),
@@ -409,12 +413,33 @@ function App() {
       setFinance(nextFinance)
       setTracking(nextTracking)
       setConnection('connected')
-      setNotice('Dashboard actualizado con datos de la API')
+      if (!silent) setNotice('Dashboard actualizado con datos de la API')
     } catch {
       setConnection('error')
-      setNotice('No se pudo actualizar el dashboard')
+      if (!silent) setNotice('No se pudo actualizar el dashboard')
     }
   }
+
+  function changeDashboardPeriod(next: DashboardPeriod) {
+    setDashboardPeriod(next)
+    if (next !== 'range') void refreshDashboardData()
+  }
+
+  useEffect(() => {
+    if (!authed || section !== 'dashboard' || dashboardPeriod !== 'range' || !dashboardRangeStart || !dashboardRangeEnd || dashboardRangeStart > dashboardRangeEnd) return
+    const timeout = window.setTimeout(() => { void refreshDashboardData(dashboardRangeStart, dashboardRangeEnd) }, 240)
+    return () => window.clearTimeout(timeout)
+  }, [authed, section, dashboardPeriod, dashboardRangeStart, dashboardRangeEnd])
+
+  useEffect(() => {
+    if (!authed || section !== 'dashboard') return
+    const timer = window.setInterval(() => {
+      void refreshTracking()
+      const hasValidRange = dashboardPeriod === 'range' && dashboardRangeStart && dashboardRangeEnd && dashboardRangeStart <= dashboardRangeEnd
+      void refreshDashboardData(hasValidRange ? dashboardRangeStart : undefined, hasValidRange ? dashboardRangeEnd : undefined, true)
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [authed, section, dashboardPeriod, dashboardRangeStart, dashboardRangeEnd])
 
   function logout() {
     sessionStorage.removeItem('incoex-auth')
@@ -426,7 +451,9 @@ function App() {
   if (!authed) return <LoginView onLogin={(user) => { sessionStorage.setItem('incoex-auth', '1'); sessionStorage.setItem('incoex-user', JSON.stringify(user)); setSessionUser(user); setAuthed(true) }} />
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}>
+    <>
+      <a className="skip-link" href="#main-content">Saltar al contenido</a>
+      <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}>
       <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} />
       <aside className="sidebar">
         <div className="brand-lockup">
@@ -457,8 +484,8 @@ function App() {
         </div>
       </aside>
 
-      <main className="main-area">
-        <header className="topbar">
+      <main className="main-area" id="main-content">
+        <header className={`topbar ${section === 'dashboard' ? 'dashboard-topbar' : ''}`}>
           <div className="topbar-leading">
             <button className="icon-button sidebar-toggle" aria-label="Mostrar u ocultar menú" title="Mostrar u ocultar menú" onClick={() => { if (window.innerWidth <= 900) setSidebarOpen((open) => !open); else setSidebarCollapsed((collapsed) => !collapsed) }}><Icon name="menu" size={17} /></button>
             <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
@@ -466,14 +493,14 @@ function App() {
           <div className="topbar-actions">
             <div className="search-box">
               <span className="search-icon"><Icon name="search" size={15} /></span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes..." />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes…" />
               <kbd>⌘ K</kbd>
             </div>
             <button className="live-pill" onClick={() => navigate('tracking')} title="Ver el mapa de operaciones"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</button>
             <NotificationBell openIncidents={summary.openIncidents} pendingTrips={summary.pendingTrips} history={history} onNavigate={(target) => { setNotificationsOpen(false); navigate(target) }} open={notificationsOpen} onToggle={() => setNotificationsOpen((current) => !current)} />
-            <button className="round-button" aria-label="Ayuda" title="Ayuda" onClick={() => setHelpOpen(true)}><Icon name="help" size={16} /></button>
+            <button className="round-button" aria-label="Configuración" title="Configuración" onClick={() => navigate('settings')}><img src="/settings.png" alt="" className="topbar-asset-icon" /></button>
             <div className="profile-menu" onClick={() => setProfileMenuOpen((current) => !current)} title={`Cuenta de ${roleLabel(sessionUser)}`}>
-              <div className="avatar small"><Icon name="drivers" size={14} /></div><span>{roleLabel(sessionUser)}</span><span className="chevron"><Icon name="chevronDown" size={13} /></span>
+              <div className="avatar small"><Icon name="profile" size={16} /></div><span>{roleLabel(sessionUser)}</span><span className="chevron"><Icon name="chevronDown" size={13} /></span>
               {profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>{sessionUser.displayName}</strong><small>{roleLabel(sessionUser)}</small></div><button onClick={() => navigate('users')}>Usuarios y roles</button><button onClick={() => navigate('settings')}>Configuración</button><button className="danger-item" onClick={logout}><Icon name="logout" size={13} /> Cerrar sesión</button></div>}
             </div>
           </div>
@@ -484,10 +511,15 @@ function App() {
             <div>
               <div className="eyebrow">{new Intl.DateTimeFormat('es-NI', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div>
               <h1>{currentPage?.label ?? 'Dashboard'}</h1>
-              <p>{sectionDescription(section)}</p>
+              {section !== 'dashboard' && <p>{sectionDescription(section)}</p>}
             </div>
             <div className="heading-actions">
+              {section === 'dashboard' && <div className="dashboard-heading-controls">
+                <label className="dashboard-period-select"><span className="sr-only">Periodo del dashboard</span><select aria-label="Periodo del dashboard" value={dashboardPeriod} onChange={(event) => changeDashboardPeriod(event.target.value as DashboardPeriod)}><option value="today">Hoy</option><option value="week">Esta semana</option><option value="range">Rango personalizado</option></select></label>
+                {dashboardPeriod === 'range' && <div className="dashboard-heading-range"><input name="dashboard-range-start" autoComplete="off" type="date" value={dashboardRangeStart} onChange={(event) => setDashboardRangeStart(event.target.value)} aria-label="Inicio del rango" /><span aria-hidden="true">→</span><input name="dashboard-range-end" autoComplete="off" type="date" value={dashboardRangeEnd} onChange={(event) => setDashboardRangeEnd(event.target.value)} aria-label="Fin del rango" /></div>}
+              </div>}
               {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
+              {section === 'dashboard' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo delivery</button>}
               {section === 'drivers' && <button className="primary-button" onClick={() => setDriverFormOpen(true)}><Icon name="plus" size={13} /> Agregar conductor</button>}
               {section === 'clients' && <button className="primary-button" onClick={() => setClientFormOpen(true)}><Icon name="plus" size={13} /> Nuevo cliente</button>}
               {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}><Icon name="download" size={13} /> Exportar PDF</button>}
@@ -496,7 +528,7 @@ function App() {
 
           {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
 
-          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} incidents={incidents} vehicles={vehicles} maintenance={maintenance} tracking={tracking} history={history} finance={finance} onNavigate={navigate} onRefresh={() => void refreshDashboardData()} />}
+          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} incidents={incidents} vehicles={vehicles} maintenance={maintenance} tracking={tracking} finance={finance} period={dashboardPeriod} rangeStart={dashboardRangeStart} rangeEnd={dashboardRangeEnd} onNavigate={navigate} />}
           {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
           {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
     {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
@@ -515,12 +547,13 @@ function App() {
           {section === 'settings' && <SettingsView connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
         </div>
       </main>
-      {notice && <div className="toast"><span className="toast-check">✓</span>{notice}</div>}
+      {notice && <div className="toast" role="status" aria-live="polite"><span className="toast-check">✓</span>{notice}</div>}
       {newTripOpen && <NewTripDialog settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
       {driverFormOpen && <DriverFormDialog onClose={() => setDriverFormOpen(false)} onCreated={(driver) => { setDrivers((current) => [...current, driver]); setDriverFormOpen(false); setNotice(`Conductor ${driver.name} registrado y disponible`) }} onError={setNotice} />}
       {clientFormOpen && <ClientFormDialog onClose={() => setClientFormOpen(false)} onCreated={(client) => { setClients((current) => [...current, client]); setClientFormOpen(false); setNotice(`Cliente ${client.name} registrado y activo`) }} onError={setNotice} />}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onNavigate={(target) => { setHelpOpen(false); navigate(target) }} />}
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -573,85 +606,274 @@ function sectionDescription(section: Section) {
 
 type DashboardPeriod = 'today' | 'week' | 'range'
 type DashboardMetric = 'target' | 'income' | 'pending' | 'incidents' | 'fuel' | 'depreciation' | 'maintenance' | 'leasing'
+type DashboardFeatureKey = 'incidents' | 'fuel' | 'depreciation' | 'maintenance' | 'leasing'
+type DashboardChartKind = 'line' | 'bars' | 'progress'
 
-function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, tracking, history, finance, onNavigate, onRefresh }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; tracking: TrackingOverview | null; history: HistoryEvent[]; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onRefresh: (startDate?: string, endDate?: string) => void }) {
-  const [period, setPeriod] = useState<DashboardPeriod>('today')
+interface DashboardFeatureCard {
+  id: DashboardFeatureKey
+  label: string
+  value: string
+  detail: string
+  image: string
+  tone: 'alert' | 'fuel' | 'depreciation' | 'maintenance' | 'leasing'
+  trend: number[]
+  chart: DashboardChartKind
+  chartValue?: number
+}
+
+function normalizeDashboardTrend(values: number[], size = 7) {
+  const clean = values.filter((value) => Number.isFinite(value)).map((value) => Math.max(0, value))
+  if (clean.length === 0) return Array.from({ length: size }, () => 0)
+  return clean.length >= size ? clean.slice(-size) : [...Array.from({ length: size - clean.length }, () => clean[0]), ...clean]
+}
+
+function DashboardMiniChart({ values, kind = 'line', value = 0, label = 'Tendencia del indicador' }: { values: number[]; kind?: DashboardChartKind; value?: number; label?: string }) {
+  const points = normalizeDashboardTrend(values)
+  const max = Math.max(...points, 1)
+  if (kind === 'progress') return <span className="mini-chart mini-chart-progress" aria-label={`${label}: ${Math.round(value)}%`}><i><b style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></i><em>{Math.round(value)}%</em></span>
+  if (kind === 'bars') return <span className="mini-chart mini-chart-bars" aria-label={label}>{points.map((point, index) => <i key={`${point}-${index}`} title={`${point}`} style={{ height: `${Math.max(12, (point / max) * 100)}%` }} />)}</span>
+  const min = Math.min(...points)
+  const spread = Math.max(...points) - min || 1
+  const polyline = points.map((point, index) => `${(index / Math.max(points.length - 1, 1)) * 72 + 2},${23 - ((point - min) / spread) * 17}`).join(' ')
+  const firstPoint = polyline.split(' ')[0]
+  const lastPoint = polyline.split(' ').at(-1) ?? firstPoint
+  const [firstX] = firstPoint.split(',')
+  const [lastX] = lastPoint.split(',')
+  return <span className="mini-chart mini-chart-line" aria-label={label}><svg viewBox="0 0 76 28" preserveAspectRatio="none"><path className="mini-chart-area" d={`M ${firstPoint} L ${polyline.replace(/ /g, ' L ')} L ${lastX},26 L ${firstX},26 Z`} /><polyline points={polyline} /><circle cx={lastX} cy={lastPoint.split(',')[1]} r="2.4" /></svg></span>
+}
+
+interface DashboardSeriesPoint { label: string; value: number }
+
+function DashboardAnalyticsChart({ series, kind = 'line', tone = 'blue', formatter = (value: number) => value.toLocaleString('es-NI'), onSelect }: { series: DashboardSeriesPoint[]; kind?: 'line' | 'bars'; tone?: string; formatter?: (value: number) => string; onSelect?: (point: DashboardSeriesPoint) => void }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const points = series.filter((point) => Number.isFinite(point.value)).map((point) => ({ ...point, value: Math.max(0, point.value) }))
+  const max = Math.max(...points.map((point) => point.value), 1)
+  if (points.length === 0) return <div className="analytics-chart analytics-chart-empty">Sin datos para el periodo seleccionado</div>
+  const choosePoint = (index: number) => {
+    setSelectedIndex(index)
+    onSelect?.(points[index])
+  }
+  const activePoint = activeIndex === null ? null : points[activeIndex]
+  const tooltipLeft = activeIndex === null ? 50 : 7 + (activeIndex / Math.max(points.length - 1, 1)) * 86
+  if (kind === 'bars') return <div className={`analytics-chart analytics-bars chart-${tone}`} onMouseLeave={() => setActiveIndex(null)}>
+    {points.map((point, index) => <div className={`analytics-bar-column ${selectedIndex === index ? 'is-selected' : ''}`} key={`${point.label}-${index}`} role="button" tabIndex={0} aria-label={`${point.label}: ${formatter(point.value)}`} onMouseEnter={() => setActiveIndex(index)} onFocus={() => setActiveIndex(index)} onClick={() => choosePoint(index)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choosePoint(index) } }}>
+      <div className="analytics-bar-track"><div className="analytics-bar-fill" style={{ height: `${Math.max(5, (point.value / max) * 100)}%` }}><span>{formatter(point.value)}</span></div></div><small>{point.label}</small>
+    </div>)}
+    {activePoint && <div className="analytics-tooltip" style={{ left: `${tooltipLeft}%` }}><small>{activePoint.label}</small><strong>{formatter(activePoint.value)}</strong></div>}
+    <div className="analytics-axis-caption"><span>X · categoría</span><span>Y · valor</span></div>
+  </div>
+  const width = 760
+  const height = 210
+  const left = 16
+  const right = 16
+  const top = 18
+  const bottom = 31
+  const chartWidth = width - left - right
+  const chartHeight = height - top - bottom
+  const linePoints = points.map((point, index) => `${left + (index / Math.max(points.length - 1, 1)) * chartWidth},${top + chartHeight - (point.value / max) * chartHeight}`).join(' ')
+  const first = linePoints.split(' ')[0]
+  const last = linePoints.split(' ').at(-1) ?? first
+  const firstX = first.split(',')[0]
+  const lastX = last.split(',')[0]
+  const area = `M ${first} L ${linePoints.replace(/ /g, ' L ')} L ${lastX},${top + chartHeight} L ${firstX},${top + chartHeight} Z`
+  return <div className={`analytics-chart analytics-line chart-${tone}`} onMouseLeave={() => setActiveIndex(null)}>
+    <div className="analytics-y-scale"><span>{formatter(max)}</span><span>{formatter(max / 2)}</span><span>0</span></div>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Evolución interactiva del indicador">
+      <line className="analytics-grid-line" x1={left} x2={width - right} y1={top} y2={top} /><line className="analytics-grid-line" x1={left} x2={width - right} y1={top + chartHeight / 2} y2={top + chartHeight / 2} /><line className="analytics-grid-line" x1={left} x2={width - right} y1={top + chartHeight} y2={top + chartHeight} /><path className="analytics-area" d={area} /><polyline className="analytics-polyline" points={linePoints} />
+      {points.map((point, index) => { const [cx, cy] = linePoints.split(' ')[index].split(','); return <circle className={`analytics-point ${selectedIndex === index ? 'is-selected' : ''}`} key={`${point.label}-${index}`} cx={cx} cy={cy} r={selectedIndex === index ? 6 : 4} tabIndex={0} role="button" aria-label={`${point.label}: ${formatter(point.value)}`} onMouseEnter={() => setActiveIndex(index)} onFocus={() => setActiveIndex(index)} onClick={() => choosePoint(index)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choosePoint(index) } }} /> })}
+    </svg>
+    {activePoint && <div className="analytics-tooltip" style={{ left: `${tooltipLeft}%`, top: `${20 + (activePoint.value / max) * 52}%` }}><small>{activePoint.label}</small><strong>{formatter(activePoint.value)}</strong></div>}
+    <div className="analytics-labels">{points.map((point) => <small key={point.label}>{point.label}</small>)}</div><div className="analytics-axis-caption"><span>X · periodo</span><span>Y · valor</span></div>
+  </div>
+}
+
+function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, tracking, finance, period, rangeStart, rangeEnd, onNavigate }: { summary: DashboardSummary; trips: Trip[]; drivers: Driver[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; tracking: TrackingOverview | null; finance: FinanceSummary | null; period: DashboardPeriod; rangeStart: string; rangeEnd: string; onNavigate: (section: Section) => void }) {
   const [metric, setMetric] = useState<DashboardMetric | null>(null)
-  const [rangeStart, setRangeStart] = useState(() => inputDate(new Date()))
-  const [rangeEnd, setRangeEnd] = useState(() => inputDate(new Date()))
+  const [feature, setFeature] = useState<DashboardFeatureKey | null>(null)
   const [selectedDriver, setSelectedDriver] = useState('')
+  const [driverStatusFilter, setDriverStatusFilter] = useState<'Todos' | Driver['status']>('Todos')
+  const [mapMode, setMapMode] = useState<'all' | 'routes' | 'demand'>('all')
   const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today
-  const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : `${rangeStart} → ${rangeEnd}`
-  const targetBase = vehicles.reduce((sum, vehicle) => sum + Math.max(0, vehicle.minTripsMonth || 0), 0)
-  const targetFactor = period === 'today' ? 1 / 30 : period === 'week' ? 7 / 30 : Math.max(1, daysBetween(rangeStart, rangeEnd)) / 30
-  const targetTrips = Math.round(targetBase * targetFactor)
-  const liveDrivers = (tracking?.drivers?.length ? tracking.drivers : drivers).map((driver) => {
-    const live = tracking?.live.find((position) => position.driver.toLowerCase() === driver.name.toLowerCase())
-    return live ? { ...driver, latitude: live.latitude, longitude: live.longitude, status: live.status, vehicle: live.vehicle, plate: live.plate } : driver
-  })
+  const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : 'Rango seleccionado'
+  const trackingDrivers = tracking?.drivers?.length ? tracking.drivers : drivers
+  const liveDrivers = [
+    ...trackingDrivers.map((driver) => {
+      const live = tracking?.live.find((position) => position.driver.trim().toLowerCase() === driver.name.trim().toLowerCase())
+      return live ? { ...driver, latitude: live.latitude, longitude: live.longitude, status: live.status, vehicle: live.vehicle, plate: live.plate } : driver
+    }),
+    ...(tracking?.live ?? []).filter((position) => !trackingDrivers.some((driver) => driver.name.trim().toLowerCase() === position.driver.trim().toLowerCase())).map((position) => ({
+      id: `live-${position.driver}`,
+      name: position.driver,
+      phone: '',
+      vehicle: position.vehicle,
+      plate: position.plate,
+      status: position.status,
+      route: '',
+      latitude: position.latitude,
+      longitude: position.longitude,
+      external: true,
+    })),
+  ]
   const activeTrips = (tracking?.trips?.length ? tracking.trips : trips).filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status))
+  const visibleDrivers = liveDrivers.filter((driver) => driverStatusFilter === 'Todos' || driver.status === driverStatusFilter)
+  const visibleTrips = selectedDriver ? activeTrips.filter((trip) => trip.driver === selectedDriver) : activeTrips
   const demandCounts = activeTrips.reduce<Record<string, number>>((counts, trip) => { counts[trip.origin] = (counts[trip.origin] ?? 0) + 1; return counts }, {})
   const demandZone = Object.entries(demandCounts).sort((a, b) => b[1] - a[1])[0]
   const demandTrip = demandZone ? activeTrips.find((trip) => trip.origin === demandZone[0] && Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng)) : undefined
   const demandPoint = demandTrip ? { lat: demandTrip.originLat as number, lng: demandTrip.originLng as number, label: demandZone?.[0] ?? 'Zona activa', count: Number(demandZone?.[1] ?? 0) } : undefined
   const depreciation = vehicles.reduce((sum, vehicle) => sum + (vehicle.financing?.monthlyDepreciationCs ?? 0), 0)
   const leasing = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').reduce((sum, vehicle) => sum + (vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 0)
-  const cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; section?: Section }> = [
-    { id: 'target', label: 'Meta total de viajes', value: targetTrips.toLocaleString('es-NI'), detail: `${periodName} · meta mensual distribuida`, icon: 'trips', tone: 'blue', section: 'trips' },
-    { id: 'income', label: 'Total de ingresos', value: formatCs(selectedPeriod?.incomeCs ?? 0), detail: `${periodName} · viajes completados`, icon: 'wallet', tone: 'cyan', section: 'reports' },
-    { id: 'pending', label: 'Solicitudes pendientes de viaje', value: summary.pendingTrips.toLocaleString('es-NI'), detail: 'Sin conductor asignado', icon: 'clock', tone: 'gold', section: 'requests' },
-    { id: 'incidents', label: 'Incidencias reportadas', value: incidents.length.toLocaleString('es-NI'), detail: `${summary.openIncidents} abiertas o en proceso`, icon: 'incidents', tone: 'red', section: 'incidents' },
-    { id: 'fuel', label: 'Combustible', value: formatCs(selectedPeriod?.fuelCs ?? 0), detail: `${periodName} · costo calculado`, icon: 'fuel', tone: 'cyan', section: 'vehicles' },
-    { id: 'depreciation', label: 'Depreciación', value: formatCs(depreciation), detail: 'Costo mensual de la flota', icon: 'trendingUp', tone: 'violet', section: 'vehicles' },
-    { id: 'maintenance', label: 'Mantenimientos', value: formatCs(selectedPeriod?.maintenanceCs ?? 0), detail: `${maintenance.length} registros en historial`, icon: 'wrench', tone: 'gold', section: 'vehicles' },
-    { id: 'leasing', label: 'Leasing de vehículos', value: formatCs(leasing), detail: 'Cuotas mensuales activas', icon: 'billing', tone: 'violet', section: 'vehicles' },
+  const routeDrivers = liveDrivers.filter((driver) => driver.status === 'En viaje' || driver.status === 'En entrega').length
+  const dailyLabels = finance?.daily.map((day) => day.label) ?? []
+  const completedTripTrend = dailyLabels.map((label) => trips.filter((trip) => trip.date === label && trip.status === 'Completado').length)
+  const pendingTripTrend = dailyLabels.map((label) => trips.filter((trip) => trip.date === label && trip.status === 'Pendiente').length)
+  const incomeTrend = finance?.daily.map((day) => day.incomeCs) ?? []
+  const fuelTrend = finance?.daily.map((day) => day.fuelCs) ?? []
+  const incidentTrend = ['Abierta', 'En proceso', 'Resuelta'].map((status) => incidents.filter((incident) => incident.status === status).length)
+  const depreciationTrend = vehicles.map((vehicle) => vehicle.financing?.monthlyDepreciationCs ?? 0)
+  const maintenanceTrend = maintenance.slice(0, 7).map((record) => record.cost)
+  const leasingTrend = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').map((vehicle) => vehicle.financing?.leaseMonthlyPaymentCs ?? 0)
+  const monthlyTripTarget = vehicles.reduce((sum, vehicle) => sum + Math.max(0, vehicle.minTripsMonth || 0), 0)
+  const monthlyCompletedTrips = finance?.periods.month.trips ?? 0
+  const targetProgress = monthlyTripTarget > 0 ? Math.min(100, Math.round((monthlyCompletedTrips / monthlyTripTarget) * 100)) : 0
+  const pendingPressure = summary.pendingTrips + summary.availableDrivers > 0 ? Math.round((summary.pendingTrips / (summary.pendingTrips + summary.availableDrivers)) * 100) : 0
+  const resolvedIncidents = incidents.filter((incident) => incident.status === 'Resuelta').length
+  const activeIncidentRate = incidents.length > 0 ? Math.round((summary.openIncidents / incidents.length) * 100) : 0
+  const depreciationVehicles = vehicles.filter((vehicle) => (vehicle.financing?.monthlyDepreciationCs ?? 0) > 0).length
+  const averageDepreciation = depreciationVehicles > 0 ? depreciation / depreciationVehicles : 0
+  const averageMaintenance = maintenance.length > 0 ? (maintenance.reduce((sum, record) => sum + record.cost, 0) / maintenance.length) : 0
+  const leasingVehicles = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').length
+  const averageLeasing = leasingVehicles > 0 ? leasing / leasingVehicles : 0
+  const cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; trend: number[]; chart: DashboardChartKind; chartValue?: number; section?: Section }> = [
+    { id: 'target', label: 'Meta total de viajes', value: monthlyTripTarget.toLocaleString('es-NI'), detail: monthlyTripTarget > 0 ? `${monthlyCompletedTrips.toLocaleString('es-NI')} completados · ${targetProgress}% de meta mensual` : 'Configura la meta mensual por vehículo', icon: 'trendingUp', tone: 'blue', trend: completedTripTrend, chart: 'line', chartValue: targetProgress, section: 'trips' },
+    { id: 'income', label: 'Total de ingresos', value: formatCs(selectedPeriod?.incomeCs ?? 0), detail: `${periodName} · ${selectedPeriod?.trips ?? 0} viajes · ${formatCs(selectedPeriod?.avgTripCs ?? 0)} promedio`, icon: 'wallet', tone: 'cyan', trend: incomeTrend, chart: 'line', section: 'reports' },
+    { id: 'pending', label: 'Solicitudes pendientes de viaje', value: summary.pendingTrips.toLocaleString('es-NI'), detail: `${summary.availableDrivers.toLocaleString('es-NI')} disponibles · ${pendingPressure}% de capacidad usada`, icon: 'clock', tone: 'slate', trend: pendingTripTrend, chart: 'line', chartValue: pendingPressure, section: 'requests' },
+    { id: 'incidents', label: 'Incidencias reportadas', value: incidents.length.toLocaleString('es-NI'), detail: `${summary.openIncidents} activas · ${resolvedIncidents} resueltas · ${activeIncidentRate}% abiertas`, icon: 'incidents', tone: 'red', trend: incidentTrend, chart: 'bars', section: 'incidents' },
+    { id: 'fuel', label: 'Combustible', value: formatCs(selectedPeriod?.fuelCs ?? 0), detail: `${periodName} · ${formatCs(finance?.fleet.avgFuelPerKmCs ?? 0)}/km · ${selectedPeriod?.km?.toLocaleString('es-NI') ?? 0} km`, icon: 'fuel', tone: 'cyan', trend: fuelTrend, chart: 'line', section: 'vehicles' },
+    { id: 'depreciation', label: 'Depreciación', value: formatCs(depreciation), detail: `${depreciationVehicles} vehículos · ${formatCs(averageDepreciation)} promedio mensual`, icon: 'trendingUp', tone: 'violet', trend: depreciationTrend, chart: 'bars', section: 'vehicles' },
+    { id: 'maintenance', label: 'Mantenimientos', value: formatCs(selectedPeriod?.maintenanceCs ?? 0), detail: `${maintenance.length} registros · ${formatCs(averageMaintenance)} promedio histórico`, icon: 'wrench', tone: 'gold', trend: maintenanceTrend, chart: 'bars', section: 'vehicles' },
+    { id: 'leasing', label: 'Leasing del vehículo', value: formatCs(leasing), detail: `${leasingVehicles} cuotas activas · ${formatCs(averageLeasing)} promedio mensual`, icon: 'billing', tone: 'violet', trend: leasingTrend, chart: 'bars', section: 'vehicles' },
   ]
   const topCards = cards.slice(0, 3)
-  const sideCards = cards.slice(3)
+  const featureCards: DashboardFeatureCard[] = [
+    { id: 'incidents', label: 'Incidencias reportadas', value: incidents.length.toLocaleString('es-NI'), detail: `${summary.openIncidents} activas · ${resolvedIncidents} resueltas`, image: '/incidencias.png', tone: 'alert', trend: incidentTrend, chart: 'bars' },
+    { id: 'fuel', label: 'Combustible', value: formatCs(selectedPeriod?.fuelCs ?? 0), detail: `${periodName} · ${formatCs(finance?.fleet.avgFuelPerKmCs ?? 0)}/km`, image: '/gasolina.png', tone: 'fuel', trend: fuelTrend, chart: 'line' },
+    { id: 'depreciation', label: 'Depreciación', value: formatCs(depreciation), detail: `${depreciationVehicles} vehículos · ${formatCs(averageDepreciation)} promedio`, image: '/depreciacion.png', tone: 'depreciation', trend: depreciationTrend, chart: 'bars' },
+    { id: 'maintenance', label: 'Mantenimientos', value: formatCs(selectedPeriod?.maintenanceCs ?? 0), detail: `${maintenance.length} registros · ${formatCs(averageMaintenance)} promedio`, image: '/mantenimientos.png', tone: 'maintenance', trend: maintenanceTrend, chart: 'bars' },
+    { id: 'leasing', label: 'Leasing del vehículo', value: formatCs(leasing), detail: `${leasingVehicles} cuotas · ${formatCs(averageLeasing)} promedio`, image: '/leasing.png', tone: 'leasing', trend: leasingTrend, chart: 'bars' },
+  ]
   const focusedDriver = liveDrivers.find((driver) => driver.name === selectedDriver)
+  const focusFeature = featureCards.find((card) => card.id === feature)
+  const openFeature = (next: DashboardFeatureKey) => { setFeature(next); setMetric(null) }
+  const openMetric = (next: DashboardMetric) => { setMetric(metric === next ? null : next); setFeature(null) }
   return <div className="dashboard-clean">
-    <div className="dashboard-filter-bar">
-      <div><span className="eyebrow">CENTRO DE OPERACIONES</span><strong>Resumen operativo</strong><small>Datos conectados a la API · actualizado {finance?.generatedAt ? new Date(finance.generatedAt).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '—'}</small></div>
-      <div className="dashboard-filters"><button className={period === 'today' ? 'active' : ''} onClick={() => setPeriod('today')}>Hoy</button><button className={period === 'week' ? 'active' : ''} onClick={() => setPeriod('week')}>Esta semana</button><button className={period === 'range' ? 'active' : ''} onClick={() => setPeriod('range')}>Rango</button>{period === 'range' && <><input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} aria-label="Inicio del rango" /><span>→</span><input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} aria-label="Fin del rango" /></>}<button className="dashboard-refresh" onClick={() => onRefresh(period === 'range' ? rangeStart : undefined, period === 'range' ? rangeEnd : undefined)}><Icon name="refresh" size={13} /> Actualizar</button></div>
-    </div>
-    <div className="dashboard-kpi-top">{topCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} onClick={() => setMetric(metric === card.id ? null : card.id)} />)}</div>
+    <div className="dashboard-kpi-top">{topCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} onClick={() => openMetric(card.id)} />)}</div>
     <div className="dashboard-workspace">
       <section className="panel dashboard-map-stage">
-        {metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
-          <div className="dashboard-map-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES GPS</span><h2>Mapa operativo</h2><p>Ubicación, estado, rutas activas y puntos de recogida/entrega.</p></div><button className="secondary-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button></div>
-          <div className="map-control-strip"><span><i className="legend mint" />{liveDrivers.length} conductores</span><span><i className="legend cyan" />{activeTrips.length} rutas activas</span><span><i className="legend gold" />Demanda alta: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</span></div>
-          <div className="operations-map dashboard-map"><GoogleMap drivers={liveDrivers} trips={activeTrips} highlightDriver={selectedDriver} demandZone={demandPoint} /><div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div></div>
-          <div className="dashboard-driver-selector"><span>Ruta actual por conductor</span><button className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
-          {focusedDriver && <div className="selected-route-note"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span><button onClick={() => onNavigate('drivers')}>Ver perfil</button></div>}
+        {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
+          <div className="operations-map dashboard-map">
+            <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} />
+            <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter"><span>Estado</span><select aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
+            <div className="map-overlay-stats"><button type="button" className={mapMode === 'all' ? 'active' : ''} onClick={() => setMapMode('all')}><i className="legend mint" />{visibleDrivers.length} conductores</button><button type="button" className={mapMode === 'routes' ? 'active' : ''} onClick={() => setMapMode('routes')}><i className="legend cyan" />{visibleTrips.length} rutas activas</button><button type="button" disabled={!demandPoint} className={mapMode === 'demand' ? 'active' : ''} onClick={() => setMapMode('demand')}><i className="legend gold" />Mayor demanda: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</button></div>
+            <div className="dashboard-driver-selector map-driver-selector"><span>Ruta por conductor</span><button type="button" className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button type="button" className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
+            <div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div>
+            {focusedDriver && <div className="selected-route-note map-selected-route"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span></div>}
+          </div>
         </>}
       </section>
-      <aside className="dashboard-side-kpis">{sideCards.map((card) => <DashboardKpi key={card.id} card={card} selected={metric === card.id} compact onClick={() => setMetric(metric === card.id ? null : card.id)} />)}<section className="dashboard-activity"><div className="dashboard-side-title"><strong>Actividad reciente</strong><button onClick={() => onNavigate('history')}>Ver todo →</button></div>{history.slice(0, 4).map((event) => <Activity key={event.id} time={event.time} color={event.color} title={event.title} detail={event.detail} />)}</section></aside>
+      <aside className="dashboard-side-kpis">{featureCards.map((card) => <DashboardFeatureCard key={card.id} card={card} selected={feature === card.id} onClick={() => openFeature(card.id)} />)}</aside>
     </div>
   </div>
 }
 
-function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }; selected: boolean; compact?: boolean; onClick: () => void }) {
-  const sparkline: Record<DashboardMetric, string> = {
-    target: '4,22 16,18 28,21 40,11 52,15 64,5',
-    income: '4,21 16,17 28,19 40,9 52,13 64,4',
-    pending: '4,8 16,14 28,11 40,18 52,15 64,21',
-    incidents: '4,6 16,10 28,8 40,16 52,12 64,20',
-    fuel: '4,20 16,15 28,17 40,10 52,13 64,7',
-    depreciation: '4,19 16,18 28,16 40,14 52,10 64,8',
-    maintenance: '4,19 16,19 28,9 40,18 52,17 64,7',
-    leasing: '4,18 16,16 28,17 40,11 52,12 64,8',
-  }
-  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><span className="dashboard-kpi-sparkline" aria-hidden="true"><svg viewBox="0 0 68 26" preserveAspectRatio="none"><polyline points={sparkline[card.id]} /></svg></span><span className="dashboard-kpi-arrow">↗</span></button>
+function DashboardFeatureCard({ card, selected, onClick }: { card: DashboardFeatureCard; selected: boolean; onClick: () => void }) {
+  return <button type="button" className={`dashboard-feature-card feature-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick} aria-pressed={selected}>
+    <span className="dashboard-feature-image"><img src={card.image} alt="" width="62" height="62" /></span>
+    <span className="dashboard-feature-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span>
+    <DashboardMiniChart values={card.trend} kind={card.chart} value={card.chartValue} label={`${card.label}: ${card.detail}`} />
+    <span className="dashboard-feature-arrow">↗</span>
+  </button>
 }
 
-function DashboardMetricView({ metric, cards, finance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
+function DashboardFeatureView({ feature, period, periodName, finance, incidents, vehicles, maintenance, onNavigate, onShowMap }: { feature: DashboardFeatureCard; period: DashboardPeriod; periodName: string; finance: FinanceSummary | null; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('Todos')
+  const [selectedPoint, setSelectedPoint] = useState<DashboardSeriesPoint | null>(null)
+  useEffect(() => { setQuery(''); setFilter('Todos'); setSelectedPoint(null) }, [feature.id])
+  const normalizedQuery = query.trim().toLowerCase()
+  const selectedPeriod = feature.id === 'fuel' ? period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today : undefined
+  const featureAction: Section = feature.id === 'incidents' ? 'incidents' : 'vehicles'
+  const filteredIncidents = incidents.filter((incident) => {
+    const matchesFilter = filter === 'Todos' || incident.status === filter || incident.priority === filter
+    const haystack = `${incident.id} ${incident.driver} ${incident.client} ${incident.type}`.toLowerCase()
+    return matchesFilter && (!normalizedQuery || haystack.includes(normalizedQuery))
+  })
+  const filteredVehicles = vehicles.filter((vehicle) => {
+    const mode = feature.id === 'leasing' ? 'leasing' : filter === 'Todos' ? '' : filter
+    const haystack = `${vehicle.plate} ${vehicle.model} ${vehicle.driver}`.toLowerCase()
+    return (!mode || vehicle.acquisitionMode === mode) && (!normalizedQuery || haystack.includes(normalizedQuery))
+  })
+  const filteredMaintenance = maintenance.filter((record) => `${record.plate} ${record.description} ${record.provider}`.toLowerCase().includes(normalizedQuery))
+  const dailyFuel = finance?.daily ?? []
+  const depreciationTotal = vehicles.reduce((sum, vehicle) => sum + (vehicle.financing?.monthlyDepreciationCs ?? 0), 0)
+  const leasingTotal = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').reduce((sum, vehicle) => sum + (vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 0)
+  const maintenanceTotal = maintenance.reduce((sum, record) => sum + record.cost, 0)
+  const incidentSeries: DashboardSeriesPoint[] = ['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: incidents.filter((incident) => incident.status === status).length }))
+  const depreciationSeries: DashboardSeriesPoint[] = filteredVehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.monthlyDepreciationCs ?? 0 }))
+  const maintenanceSeries: DashboardSeriesPoint[] = filteredMaintenance.slice(0, 8).map((record) => ({ label: `${record.date} · ${record.plate}`, value: record.cost }))
+  const leasingSeries: DashboardSeriesPoint[] = filteredVehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.leaseMonthlyPaymentCs ?? 0 }))
+  const toolbar = <div className="insight-toolbar"><label className="insight-search"><Icon name="search" size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por nombre, placa o cliente" /></label>{feature.id === 'incidents' && <select value={filter} onChange={(event) => setFilter(event.target.value)}><option>Todos</option><option>Abierta</option><option>En proceso</option><option>Resuelta</option><option>Alta</option><option>Crítica</option></select>}{(feature.id === 'depreciation' || feature.id === 'leasing') && <select value={feature.id === 'leasing' ? 'leasing' : filter} onChange={(event) => setFilter(event.target.value)} disabled={feature.id === 'leasing'}><option value="Todos">Todos los vehículos</option><option value="cash">Compra directa</option><option value="financed">Financiados</option><option value="leasing">Leasing</option></select>}<span className="insight-result">{feature.id === 'incidents' ? `${filteredIncidents.length} registros` : feature.id === 'maintenance' ? `${filteredMaintenance.length} registros` : `${filteredVehicles.length} vehículos`}</span></div>
+  return <div className="dashboard-insight-view">
+    <div className="dashboard-insight-head"><div><span className="eyebrow">DETALLE DE GESTIÓN · {periodName.toUpperCase()}</span><h2>{feature.label}</h2><p>Información operativa conectada a la API. Usa los filtros para revisar el detalle sin salir del dashboard.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <div className={`insight-summary ${feature.tone}`}><div><small>Indicador seleccionado</small><strong>{feature.value}</strong><span>{feature.detail}</span></div><div className="insight-summary-art"><img src={feature.image} alt="" width="74" height="74" /></div><button type="button" onClick={() => onNavigate(featureAction)}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+    {selectedPoint && <div className="analytics-selection" aria-live="polite"><span>Punto seleccionado</span><strong>{selectedPoint.label}</strong><b>{feature.id === 'incidents' ? selectedPoint.value.toLocaleString('es-NI') : formatCs(selectedPoint.value)}</b></div>}
+    {feature.id === 'incidents' && <><div className="insight-section-head"><div><strong>Incidencias activas y resueltas</strong><small>Distribución por estado · cambia con los filtros de la API</small></div></div><DashboardAnalyticsChart series={['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: filteredIncidents.filter((incident) => incident.status === status).length }))} kind="bars" tone="red" formatter={(value) => value.toLocaleString('es-NI')} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list">{filteredIncidents.length === 0 && <div className="empty-column">No hay incidencias con esos filtros.</div>}{filteredIncidents.slice(0, 7).map((incident) => <div className="insight-row" key={incident.id}><span className={`insight-status ${statusClass(incident.status)}`} /> <div><strong>{incident.type}</strong><small>{incident.id} · {incident.driver} · {incident.client}</small></div><span className={`status-pill ${statusClass(incident.status)}`}>{incident.status}</span><span className={`priority-pill ${statusClass(incident.priority)}`}>{incident.priority}</span></div>)}</div></>}
+    {feature.id === 'fuel' && <><div className="insight-section-head"><div><strong>Consumo registrado</strong><small>Costos de combustible de los últimos 14 días</small></div><span className="insight-total">{formatCs(selectedPeriod?.fuelCs ?? 0)} <small>{periodName.toLowerCase()}</small></span></div><div className="insight-fuel-grid"><DashboardAnalyticsChart series={dailyFuel.map((day) => ({ label: day.label, value: day.fuelCs }))} tone="cyan" formatter={formatCs} onSelect={setSelectedPoint} /><div className="insight-callout"><span className="insight-callout-icon"><Icon name="fuel" size={18} /></span><small>Costo del periodo</small><strong>{formatCs(selectedPeriod?.fuelCs ?? 0)}</strong><p>{formatCs(finance?.fleet.avgFuelPerKmCs ?? 0)} por km · seguimiento del gasto real de la flota.</p><button onClick={() => onNavigate('vehicles')}>Revisar flota <Icon name="arrowRight" size={13} /></button></div></div></>}
+    {feature.id === 'depreciation' && <><div className="insight-section-head"><div><strong>Valor mensual por vehículo</strong><small>Distribución de depreciación de la flota</small></div><span className="insight-total">{formatCs(depreciationTotal)} <small>mensual</small></span></div><DashboardAnalyticsChart series={depreciationSeries} kind="bars" tone="violet" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredVehicles.slice(0, 7).map((vehicle) => <div className="insight-row" key={vehicle.id}><span className="insight-vehicle-chip">{vehicle.plate.slice(-2)}</span><div><strong>{vehicle.model}</strong><small>{vehicle.plate} · {vehicle.driver || 'Sin conductor'}</small></div><span className="insight-row-money">{formatCs(vehicle.financing?.monthlyDepreciationCs ?? 0)}</span></div>)}</div></>}
+    {feature.id === 'maintenance' && <><div className="insight-section-head"><div><strong>Historial de mantenimiento</strong><small>Registros y costos acumulados</small></div><span className="insight-total">{formatCs(maintenanceTotal)} <small>histórico</small></span></div><DashboardAnalyticsChart series={maintenanceSeries} kind="bars" tone="gold" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredMaintenance.slice(0, 7).map((record) => <div className="insight-row" key={record.id}><span className="insight-vehicle-chip wrench-chip"><Icon name="wrench" size={13} /></span><div><strong>{record.description}</strong><small>{record.plate} · {record.provider} · {record.date}</small></div><span className="insight-row-money">{formatCs(record.cost)}</span></div>)}</div></>}
+    {feature.id === 'leasing' && <><div className="insight-section-head"><div><strong>Compromisos de leasing</strong><small>Cuotas mensuales activas de la flota</small></div><span className="insight-total">{formatCs(leasingTotal)} <small>mensual</small></span></div><DashboardAnalyticsChart series={leasingSeries} kind="bars" tone="violet" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredVehicles.slice(0, 7).map((vehicle) => <div className="insight-row" key={vehicle.id}><span className="insight-vehicle-chip lease-chip"><Icon name="billing" size={13} /></span><div><strong>{vehicle.model}</strong><small>{vehicle.plate} · {vehicle.financing?.monthsRemaining ?? 0} meses restantes</small></div><span className="insight-row-money">{formatCs(vehicle.financing?.leaseMonthlyPaymentCs ?? 0)}</span></div>)}</div></>}
+  </div>
+}
+
+function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; trend: number[]; chart: DashboardChartKind; chartValue?: number }; selected: boolean; compact?: boolean; onClick: () => void }) {
+  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><DashboardMiniChart values={card.trend} kind={card.chart} value={card.chartValue} label={`${card.label}: ${card.detail}`} /><span className="dashboard-kpi-arrow">↗</span></button>
+}
+
+function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicles, maintenance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; trips: Trip[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
+  const [selectedPoint, setSelectedPoint] = useState<DashboardSeriesPoint | null>(null)
+  useEffect(() => { setSelectedPoint(null) }, [metric, period])
   const current = cards.find((card) => card.id === metric) ?? cards[0]
-  const selectedPeriod = metric === 'income' || metric === 'fuel' || metric === 'maintenance'
+  const selectedPeriod = ['income', 'fuel', 'maintenance'].includes(metric)
     ? (period === 'today' ? finance?.periods.today : period === 'week' ? finance?.periods.week : finance?.periods.range ?? finance?.periods.all)
     : null
-  const series = metric === 'fuel' ? finance?.daily.map((day) => ({ label: day.label, value: day.fuelCs })) : finance?.daily.map((day) => ({ label: day.label, value: day.incomeCs }))
-  const max = Math.max(...(series?.map((item) => item.value) ?? [1]), 1)
-  return <div className="dashboard-focus-view"><div className="dashboard-focus-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{current.label}</h2><p>{current.detail}. Selecciona otra tarjeta para cambiar esta vista.</p></div><span className={`dashboard-focus-icon tone-${current.tone}`}><Icon name={current.icon} size={22} /></span></div><div className="dashboard-focus-total"><strong>{current.value}</strong><span>total del indicador</span></div>{series && (metric === 'income' || metric === 'fuel') ? <div className="dashboard-focus-chart">{series.map((item) => <div className="focus-bar-column" title={`${item.label}: ${formatCs(item.value)}`} key={item.label}><div className="focus-bar" style={{ height: `${Math.max(5, (item.value / max) * 100)}%` }} /><small>{item.label}</small></div>)}</div> : <div className="dashboard-focus-breakdown"><div><span>Periodo seleccionado</span><strong>{selectedPeriod?.label ?? periodName}</strong></div><div><span>Indicador</span><strong>{current.value}</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate(metric === 'incidents' ? 'incidents' : metric === 'pending' ? 'requests' : 'vehicles')}>Abrir módulo →</button></div></div>}<div className="dashboard-focus-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>La tarjeta y el gráfico se recalculan al actualizar el dashboard.</small></div></div>
+  const daily = finance?.daily ?? []
+  const dailyCompleted = daily.map((day) => ({ label: day.label, value: trips.filter((trip) => trip.date === day.label && trip.status === 'Completado').length }))
+  const dailyPending = daily.map((day) => ({ label: day.label, value: trips.filter((trip) => trip.date === day.label && trip.status === 'Pendiente').length }))
+  let series: DashboardSeriesPoint[] = []
+  let chartKind: 'line' | 'bars' = 'line'
+  let tone = current.tone
+  let formatter: (value: number) => string = (value) => value.toLocaleString('es-NI')
+  if (metric === 'target') series = dailyCompleted
+  if (metric === 'income') { series = daily.map((day) => ({ label: day.label, value: day.incomeCs })); formatter = formatCs }
+  if (metric === 'pending') { series = dailyPending; tone = 'slate' }
+  if (metric === 'incidents') { series = ['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: incidents.filter((incident) => incident.status === status).length })); chartKind = 'bars' }
+  if (metric === 'fuel') { series = daily.map((day) => ({ label: day.label, value: day.fuelCs })); formatter = formatCs; tone = 'cyan' }
+  if (metric === 'depreciation') { series = vehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.monthlyDepreciationCs ?? 0 })); chartKind = 'bars'; tone = 'violet'; formatter = formatCs }
+  if (metric === 'maintenance') { series = maintenance.slice(0, 8).map((record) => ({ label: `${record.date} · ${record.plate}`, value: record.cost })); chartKind = 'bars'; tone = 'gold'; formatter = formatCs }
+  if (metric === 'leasing') { series = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.leaseMonthlyPaymentCs ?? 0 })); chartKind = 'bars'; tone = 'violet'; formatter = formatCs }
+  const seriesValues = series.map((point) => point.value).filter((value) => Number.isFinite(value) && value >= 0)
+  const seriesTotal = seriesValues.reduce((sum, value) => sum + value, 0)
+  const seriesAverage = seriesValues.length > 0 ? seriesTotal / seriesValues.length : 0
+  const seriesPeak = seriesValues.length > 0 ? Math.max(...seriesValues) : 0
+  const targetValue = Number(current.value.replace(/[^0-9]/g, ''))
+  const metricStats: Array<{ label: string; value: string }> = metric === 'target'
+    ? [{ label: 'Meta mensual', value: current.value }, { label: 'Completados', value: seriesTotal.toLocaleString('es-NI') }, { label: 'Avance', value: `${targetValue > 0 ? Math.round((seriesTotal / targetValue) * 100) : 0}%` }]
+    : metric === 'incidents'
+      ? [{ label: 'Reportadas', value: current.value }, { label: 'Abiertas', value: (incidents.filter((incident) => incident.status !== 'Resuelta').length).toLocaleString('es-NI') }, { label: 'Resueltas', value: incidents.filter((incident) => incident.status === 'Resuelta').length.toLocaleString('es-NI') }]
+      : [{ label: 'Valor seleccionado', value: current.value }, { label: 'Promedio visible', value: formatter(seriesAverage) }, { label: 'Pico visible', value: formatter(seriesPeak) }]
+  const action: Section = metric === 'incidents' ? 'incidents' : metric === 'pending' ? 'requests' : metric === 'target' || metric === 'income' ? 'trips' : 'vehicles'
+  return <div className="dashboard-focus-view"><div className="dashboard-focus-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{current.label}</h2><p>{current.detail}. La visualización se recalcula con el periodo y los datos recibidos.</p></div><span className={`dashboard-focus-icon tone-${current.tone}`}><Icon name={current.icon} size={22} /></span></div><div className="dashboard-focus-total"><strong>{current.value}</strong><span>valor seleccionado</span></div><div className="dashboard-focus-insights">{metricStats.map((stat) => <div key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong></div>)}</div><div className="dashboard-focus-chart analytics-focus-chart"><DashboardAnalyticsChart series={series} kind={chartKind} tone={tone} formatter={formatter} onSelect={setSelectedPoint} /></div>{selectedPoint && <div className="analytics-selection" aria-live="polite"><span>Punto seleccionado</span><strong>{selectedPoint.label}</strong><b>{formatter(selectedPoint.value)}</b></div>}<div className="dashboard-focus-breakdown"><div><span>Periodo seleccionado</span><strong>{selectedPeriod?.label ?? periodName}</strong></div><div><span>Lectura del KPI</span><strong>{metric === 'target' ? 'Completados vs. meta mensual' : metric === 'pending' ? 'Solicitudes frente a capacidad disponible' : current.detail}</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate(action)}>Abrir módulo →</button></div></div><div className="dashboard-focus-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>La tarjeta y el gráfico se recalculan con el periodo y los datos recibidos.</small></div></div>
 }
 
 function inputDate(date: Date) { return date.toISOString().slice(0, 10) }
@@ -668,7 +890,7 @@ function HelpDialog({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
     <div className="modal-card help-modal">
       <div className="modal-header"><div><span className="eyebrow">CENTRO DE OPERACIONES · AYUDA RÁPIDA</span><h2>¿Qué necesitas hacer?</h2><p>Accesos directos para resolver la operación diaria desde el dashboard.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
       <div className="help-grid">{actions.map((action) => <button className="help-action" key={action.section} onClick={() => onNavigate(action.section)}><span className="help-action-icon"><Icon name={action.icon} size={17} /></span><span><strong>{action.title}</strong><small>{action.detail}</small></span><Icon name="arrowRight" size={13} /></button>)}</div>
-      <div className="help-note"><Icon name="info" size={14} /><span>Los indicadores del dashboard se actualizan desde la API. Usa “Actualizar” en Rentabilidad para consultar los últimos viajes, combustible y mantenimiento.</span></div>
+      <div className="help-note"><Icon name="info" size={14} /><span>Los indicadores del dashboard se actualizan desde la API al cambiar el periodo; la posición de los conductores se refresca automáticamente mientras permaneces en esta vista.</span></div>
     </div>
   </div>
 }
@@ -740,7 +962,7 @@ function Activity({ time, color, title, detail }: { time: string; color: string;
 }
 
 function BrandMark() {
-  return <img src="/brand/logo.png" alt="INCOEX" className="brand-logo-img" />
+  return <span className="brand-mark-lockup" aria-label="INCOEX Logistics"><span className="brand-x" aria-hidden="true" /><span className="brand-wordmark"><strong>INCOEX</strong><small>Logistics</small></span></span>
 }
 function LoginView({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [username, setUsername] = useState('')
@@ -789,7 +1011,7 @@ function NotificationBell({ openIncidents, pendingTrips, history, open, onToggle
   const total = openIncidents + pendingTrips
   return (
     <div className="notifications-wrap">
-      <button className="round-button" aria-label="Notificaciones" onClick={onToggle}><Icon name="bell" size={16} />{total > 0 && <span className="notification-dot">{total}</span>}</button>
+      <button className="round-button" aria-label={`Notificaciones${total > 0 ? `, ${total} pendientes` : ''}`} title={total > 0 ? `${total} pendientes` : 'Notificaciones'} onClick={onToggle}><img src="/notificaciones.png" alt="" className="topbar-asset-icon" /></button>
       {open && (
         <div className="notifications-dropdown">
           <div className="notifications-head"><strong>Notificaciones</strong><span>{total} sin atender</span></div>
@@ -798,138 +1020,6 @@ function NotificationBell({ openIncidents, pendingTrips, history, open, onToggle
           {total === 0 && <p className="notifications-empty">Todo al día, sin pendientes.</p>}
           <div className="notifications-foot"><span>Última actividad</span></div>
           {history.slice(0, 3).map((event) => <div className="notification-row" key={event.id}><span className={`activity-marker ${event.color}`} /><div><strong>{event.title}</strong><small>{event.detail}</small></div><span>{event.time}</span></div>)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function GoogleMap({ drivers, trips = [], highlightDriver = '', demandZone }: { drivers: Driver[]; trips?: Trip[]; highlightDriver?: string; demandZone?: { lat: number; lng: number; label: string; count: number } }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>(null)
-  const markersRef = useRef<any[]>([])
-  const polylinesRef = useRef<any[]>([])
-  const demandCircleRef = useRef<any>(null)
-  const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    setMapState('loading')
-    loadGoogleMaps()
-      .then((maps) => {
-        if (cancelled || !containerRef.current) return
-        if (!maps) throw new Error('maps-unavailable')
-        try {
-          mapRef.current = new maps.Map(containerRef.current, {
-            center: MANAGUA_CENTER,
-            zoom: 12,
-            disableDefaultUI: true,
-            zoomControl: false,
-            fullscreenControl: false,
-            streetViewControl: false,
-            mapTypeControl: false,
-            gestureHandling: 'greedy',
-            styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(),
-          })
-          setMapState('ready')
-        } catch {
-          if (!cancelled) setMapState('error')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMapState('error')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [attempt])
-
-  useEffect(() => {
-    const maps = window.google?.maps
-    const map = mapRef.current
-    if (!maps || !map || mapState !== 'ready') return
-    try {
-      markersRef.current.forEach((marker) => marker.setMap(null))
-      markersRef.current = drivers
-        .filter((driver) => Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude))
-        .map((driver) => {
-          const marker = new maps.Marker({
-            position: { lat: driver.latitude, lng: driver.longitude },
-            map,
-            title: `${driver.name} · ${driver.status}`,
-            icon: incoexPin(maps, googleStatusColor(driver.status), driver.name === highlightDriver ? 1.45 : 1.15),
-          })
-          marker.addListener('click', () => {
-            new maps.InfoWindow({
-              content: `<strong>${driver.name}</strong><br/>${driver.vehicle} · ${driver.plate}<br/>Estado: ${driver.status}`,
-            }).open({ anchor: marker, map })
-          })
-          return marker
-        })
-      demandCircleRef.current?.setMap(null)
-      demandCircleRef.current = demandZone ? new maps.Circle({
-        map,
-        center: { lat: demandZone.lat, lng: demandZone.lng },
-        radius: 850,
-        fillColor: '#F4B740',
-        fillOpacity: 0.16,
-        strokeColor: '#D99416',
-        strokeOpacity: 0.55,
-        strokeWeight: 2,
-        clickable: false,
-      }) : null
-      trips
-        .filter((trip) => !highlightDriver || trip.driver === highlightDriver)
-        .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.destinationLng))
-        .forEach((trip) => {
-          const originMarker = new maps.Marker({ position: { lat: trip.originLat as number, lng: trip.originLng as number }, map, title: `Recogida · ${trip.id}`, icon: incoexPin(maps, '#32AAF0', .8) })
-          const destinationMarker = new maps.Marker({ position: { lat: trip.destinationLat as number, lng: trip.destinationLng as number }, map, title: `Entrega · ${trip.id}`, icon: incoexPin(maps, '#8974DC', .8) })
-          markersRef.current.push(originMarker, destinationMarker)
-        })
-      polylinesRef.current.forEach((polyline) => polyline.setMap(null))
-      polylinesRef.current = trips
-        .filter((trip) => !highlightDriver || trip.driver === highlightDriver)
-        .filter((trip) => Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat) && Number.isFinite(trip.originLng) && Number.isFinite(trip.destinationLng))
-        .map((trip) => new maps.Polyline({
-          path: curvedPath(maps, { lat: trip.originLat as number, lng: trip.originLng as number }, { lat: trip.destinationLat as number, lng: trip.destinationLng as number }),
-          map,
-          strokeColor: ROUTE_COLOR,
-          strokeOpacity: 0.85,
-          strokeWeight: 3,
-        }))
-    } catch {
-      // el proveedor rechazó los marcadores; el mapa sigue visible
-    }
-    return () => {
-      try {
-        markersRef.current.forEach((marker) => marker.setMap(null))
-        polylinesRef.current.forEach((polyline) => polyline.setMap(null))
-        demandCircleRef.current?.setMap(null)
-        demandCircleRef.current = null
-      } catch {
-        // limpieza segura
-      }
-    }
-  }, [drivers, trips, highlightDriver, demandZone, mapState])
-
-  return (
-    <div className="google-map-wrap">
-      <div ref={containerRef} className="google-map-canvas" />
-      <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
-      {mapState === 'loading' && (
-        <div className="map-status">
-          <span className="map-status-card"><span className="map-spinner" />Cargando mapa en vivo…</span>
-        </div>
-      )}
-      {mapState === 'error' && (
-        <div className="map-status error">
-          <span className="map-status-card">
-            <strong>No se pudo cargar Google Maps</strong>
-            <small>Revisa la API key o la conexión a internet.</small>
-            <button onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button>
-          </span>
         </div>
       )}
     </div>
@@ -1121,29 +1211,7 @@ function haversineKm(a: LatLng, b: LatLng) {
 }
 
 function PlaceInput({ value, onChange, onPlace, placeholder, required }: { value: string; onChange: (next: string) => void; onPlace: (place: { label: string; lat: number; lng: number }) => void; placeholder: string; required?: boolean }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    let autocomplete: any
-    let mounted = true
-    loadGoogleMaps().then((maps) => {
-      if (!mounted || !inputRef.current || !maps?.places?.Autocomplete) return
-      autocomplete = new maps.places.Autocomplete(inputRef.current, {
-        componentRestrictions: { country: 'ni' },
-        fields: ['formatted_address', 'geometry', 'name'],
-      })
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace()
-        const label = place?.formatted_address || place?.name || ''
-        if (label) onChange(label)
-        const location = place?.geometry?.location
-        if (location && typeof location.lat === 'function') {
-          onPlace({ label, lat: location.lat(), lng: location.lng() })
-        }
-      })
-    })
-    return () => { mounted = false }
-  }, [])
-  return <input ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete="off" />
+  return <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete="off" />
 }
 
 const TRIP_STEPS = ['Cliente y servicio', 'Ruta en el mapa', 'Destinatario y carga', 'Confirmar']
@@ -1238,8 +1306,8 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
           {step === 1 && (
             <div className="route-step">
               <div className="form-grid route-fields">
-                <label>Recogida<PlaceInput value={origin} onChange={setOrigin} onPlace={(place) => placeOnMap(place, 'origin')} placeholder="Busca una dirección o lugar (auto-sugerencias)" required /></label>
-                <label>Destino<PlaceInput value={destination} onChange={setDestination} onPlace={(place) => placeOnMap(place, 'destination')} placeholder="Busca una dirección o lugar (auto-sugerencias)" required /></label>
+                <label>Recogida<PlaceInput value={origin} onChange={setOrigin} onPlace={(place) => placeOnMap(place, 'origin')} placeholder="Escribe una dirección o usa el mapa" required /></label>
+                <label>Destino<PlaceInput value={destination} onChange={setDestination} onPlace={(place) => placeOnMap(place, 'destination')} placeholder="Escribe una dirección o usa el mapa" required /></label>
                 <label className="full-field">Referencia de la recogida<input value={originRefs} onChange={(event) => setOriginRefs(event.target.value)} placeholder="Ej: portón azul después del semáforo, frente a la estación" /></label>
                 <label className="full-field">Referencia de la entrega<input value={destinationRefs} onChange={(event) => setDestinationRefs(event.target.value)} placeholder="Ej: recepción del tercer nivel, costado del edificio" /></label>
               </div>
@@ -1290,212 +1358,86 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
 function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | null; destination: LatLng | null; onChange: (point: LatLng, type: 'origin' | 'destination') => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const originMarkerRef = useRef<any>(null)
-  const destinationMarkerRef = useRef<any>(null)
-  const polylineRef = useRef<any>(null)
+  const objectsRef = useRef<any[]>([])
+  const onChangeRef = useRef(onChange)
+  const activePickRef = useRef<'origin' | 'destination'>('origin')
+  const [activePick, setActivePick] = useState<'origin' | 'destination'>('origin')
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
-  const [activePick, setActivePick] = useState<'origin' | 'destination'>('origin')
-  const activePickRef = useRef(activePick)
+  onChangeRef.current = onChange
   activePickRef.current = activePick
 
   useEffect(() => {
     let cancelled = false
     setMapState('loading')
-    loadGoogleMaps()
-      .then((maps) => {
-        if (cancelled || !containerRef.current) return
-        if (!maps) throw new Error('maps-unavailable')
-        try {
-          const map = new maps.Map(containerRef.current, {
-            center: MANAGUA_CENTER,
-            zoom: 12,
-            disableDefaultUI: true,
-            zoomControl: false,
-            fullscreenControl: false,
-            streetViewControl: false,
-            mapTypeControl: false,
-            gestureHandling: 'greedy',
-            styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(),
-          })
-          mapRef.current = map
-          map.addListener('click', (event: any) => {
-            const point = { lat: event.latLng.lat(), lng: event.latLng.lng() }
-            onChange(point, activePickRef.current)
-          })
-          setMapState('ready')
-        } catch {
-          if (!cancelled) setMapState('error')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMapState('error')
-      })
-    return () => {
-      cancelled = true
-    }
+    loadGoogleMaps().then((maps) => {
+      if (cancelled || !containerRef.current || !maps) return
+      try {
+        const map = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
+        mapRef.current = map
+        map.addListener('click', (event: any) => onChangeRef.current({ lat: event.latLng.lat(), lng: event.latLng.lng() }, activePickRef.current))
+        setMapState('ready')
+      } catch { if (!cancelled) setMapState('error') }
+    }).catch(() => { if (!cancelled) setMapState('error') })
+    return () => { cancelled = true; objectsRef.current.forEach((object) => object.setMap?.(null)); objectsRef.current = []; mapRef.current = null }
   }, [attempt])
 
   useEffect(() => {
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
-    try {
-      originMarkerRef.current?.setMap(null)
-      destinationMarkerRef.current?.setMap(null)
-      polylineRef.current?.setMap(null)
-      if (origin) {
-        originMarkerRef.current = new maps.Marker({
-          position: origin,
-          map,
-          draggable: true,
-          title: 'Recogida',
-          icon: incoexPin(maps, '#32AAF0', 1.2),
-        })
-        originMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'origin'))
-      }
-      if (destination) {
-        destinationMarkerRef.current = new maps.Marker({
-          position: destination,
-          map,
-          draggable: true,
-          title: 'Destino',
-          icon: incoexPin(maps, '#ef6262', 1.2),
-        })
-        destinationMarkerRef.current.addListener('dragend', (event: any) => onChange({ lat: event.latLng.lat(), lng: event.latLng.lng() }, 'destination'))
-      }
-      if (origin && destination) {
-        polylineRef.current = new maps.Polyline({
-          path: curvedPath(maps, origin, destination),
-          map,
-          strokeColor: ROUTE_COLOR,
-          strokeOpacity: 0.9,
-          strokeWeight: 3,
-        })
-        const bounds = new maps.LatLngBounds(origin, destination)
-        map.fitBounds(bounds, 60)
-      } else if (origin || destination) {
-        map.setCenter(origin ?? destination)
-        map.setZoom(14)
-      }
-    } catch {
-      // el marcador o la ruta no se pudieron dibujar; el mapa sigue operativo
+    objectsRef.current.forEach((object) => object.setMap?.(null))
+    objectsRef.current = []
+    const bounds = new maps.LatLngBounds()
+    const addPoint = (point: LatLng, type: 'origin' | 'destination') => {
+      const position = rationalizePoint(point)
+      const color = type === 'origin' ? '#159bdc' : '#e45d67'
+      const marker = new maps.Marker({ position, map, draggable: true, title: type === 'origin' ? 'Recogida' : 'Destino', label: { text: type === 'origin' ? 'A' : 'B', color: '#fff', fontWeight: '700' }, icon: incoexPin(maps, color, .9) })
+      marker.addListener('dragend', (event: any) => onChangeRef.current({ lat: event.latLng.lat(), lng: event.latLng.lng() }, type))
+      objectsRef.current.push(marker)
+      bounds.extend(position)
     }
-    return () => {
-      try {
-        originMarkerRef.current?.setMap(null)
-        destinationMarkerRef.current?.setMap(null)
-        polylineRef.current?.setMap(null)
-      } catch {
-        // limpieza segura
-      }
-    }
+    if (origin) addPoint(origin, 'origin')
+    if (destination) addPoint(destination, 'destination')
+    if (origin && destination) {
+      objectsRef.current.push(new maps.Polyline({ path: curvedPath(maps, rationalizePoint(origin), rationalizePoint(destination)), map, strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] }))
+      map.fitBounds(bounds, 42)
+    } else if (origin || destination) map.setCenter(rationalizePoint(origin ?? destination!))
   }, [origin, destination, mapState])
 
-  return (
-    <div className="map-picker">
-      <div className="map-picker-toolbar">
-        <span className="eyebrow">SELECCIONA LOS PUNTOS EN EL MAPA</span>
-        <div className="pick-toggle">
-          <button type="button" className={activePick === 'origin' ? 'active' : ''} onClick={() => setActivePick('origin')}><i className="dot blue" />Recogida</button>
-          <button type="button" className={activePick === 'destination' ? 'active' : ''} onClick={() => setActivePick('destination')}><i className="dot red" />Destino</button>
-        </div>
-      </div>
-      <div className="map-picker-canvas">
-        <div ref={containerRef} className="google-map-canvas" />
-        <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
-        {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando mapa…</span></div>}
-        {mapState === 'error' && (
-          <div className="map-status error">
-            <span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Revisa la API key o la conexión a internet.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button></span>
-          </div>
-        )}
-      </div>
-      <p className="wizard-hint">Haz clic en el mapa para colocar {activePick === 'origin' ? 'la recogida' : 'el destino'} · Arrastra los marcadores para ajustar la ubicación.</p>
-    </div>
-  )
+  return <div className="map-picker"><div className="map-picker-toolbar"><span className="eyebrow">SELECCIONA LOS PUNTOS EN EL MAPA</span><div className="pick-toggle"><button type="button" className={activePick === 'origin' ? 'active' : ''} onClick={() => setActivePick('origin')}><i className="dot blue" />Recogida</button><button type="button" className={activePick === 'destination' ? 'active' : ''} onClick={() => setActivePick('destination')}><i className="dot red" />Destino</button></div></div><div className="map-picker-canvas"><div ref={containerRef} className="google-map-canvas" /><img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}>Reintentar</button></span></div>}</div><p className="wizard-hint">Haz clic en el mapa para colocar {activePick === 'origin' ? 'la recogida' : 'el destino'} o arrastra los marcadores para ajustar la ubicación.</p></div>
 }
 
 function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const objectsRef = useRef<any[]>([])
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    setMapState('loading')
-    loadGoogleMaps()
-      .then((maps) => {
-        if (cancelled || !containerRef.current) return
-        if (!maps) throw new Error('maps-unavailable')
-        const origin0 = rationalizePoint(origin)
-        const destination0 = rationalizePoint(destination)
-        try {
-          const map = new maps.Map(containerRef.current, {
-            center: MANAGUA_CENTER,
-            zoom: 12,
-            disableDefaultUI: true,
-            zoomControl: false,
-            fullscreenControl: false,
-            streetViewControl: false,
-            mapTypeControl: false,
-            gestureHandling: 'greedy',
-            styles: INCOEX_MAP_STYLE,
-            restriction: nicaraguaRestriction(),
-          })
-          mapRef.current = map
-          const spanLat = Math.abs(origin0.lat - destination0.lat)
-          const spanLng = Math.abs(origin0.lng - destination0.lng)
-          const coversWorld = spanLat > 1.2 || spanLng > 1.2
-          if (coversWorld) {
-            map.setCenter(MANAGUA_CENTER)
-            map.setZoom(11)
-          } else {
-            try {
-              const bounds = new maps.LatLngBounds(origin0, destination0)
-              map.fitBounds(bounds, 60)
-              map.setZoom(Math.min(map.getZoom() ?? 12, 13))
-            } catch {
-              map.setCenter({ lat: (origin0.lat + destination0.lat) / 2, lng: (origin0.lng + destination0.lng) / 2 })
-              map.setZoom(12)
-            }
-          }
-          new maps.Marker({
-            position: origin0,
-            map,
-            title: 'Recogida',
-            icon: incoexPin(maps, '#32AAF0', 1.15),
-          })
-          new maps.Marker({
-            position: destination0,
-            map,
-            title: 'Destino',
-            icon: incoexPin(maps, '#ef6262', 1.15),
-          })
-          new maps.Polyline({ path: curvedPath(maps, origin0, destination0), map, strokeColor: ROUTE_COLOR, strokeOpacity: 0.9, strokeWeight: 3.5 })
-          setMapState('ready')
-        } catch {
-          if (!cancelled) setMapState('error')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMapState('error')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [attempt])
+    loadGoogleMaps().then((maps) => {
+      if (cancelled || !containerRef.current || !maps) return
+      try {
+        mapRef.current = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
+        setMapState('ready')
+      } catch { if (!cancelled) setMapState('error') }
+    }).catch(() => { if (!cancelled) setMapState('error') })
+    return () => { cancelled = true; objectsRef.current.forEach((object) => object.setMap?.(null)); objectsRef.current = []; mapRef.current = null }
+  }, [])
 
-  return (
-    <div className="route-map-wrap">
-      <div ref={containerRef} className="google-map-canvas" />
-      <img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />
-      {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando ruta…</span></div>}
-      {mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>Mapa no disponible</strong><small>Revisa la API key o la conexión.</small><button onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}><Icon name="refresh" size={12} /> Reintentar</button></span></div>}
-    </div>
-  )
+  useEffect(() => {
+    const maps = window.google?.maps
+    const map = mapRef.current
+    if (!maps || !map || mapState !== 'ready') return
+    const origin0 = rationalizePoint(origin)
+    const destination0 = rationalizePoint(destination)
+    objectsRef.current.forEach((object) => object.setMap?.(null))
+    objectsRef.current = [new maps.Marker({ position: origin0, map, title: 'Recogida', icon: incoexPin(maps, '#159bdc', .9) }), new maps.Marker({ position: destination0, map, title: 'Destino', icon: incoexPin(maps, '#e45d67', .9) }), new maps.Polyline({ path: curvedPath(maps, origin0, destination0), map, strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] })]
+    map.fitBounds(new maps.LatLngBounds(origin0, destination0), 42)
+  }, [origin, destination, mapState])
+
+  return <div className="route-map-wrap"><div ref={containerRef} className="google-map-canvas" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}<img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" /></div>
 }
 
 function TripsView({ trips, clients, search, settings, finance, onNavigate, onNotice, onChanged, onDeleted }: { trips: Trip[]; clients: Client[]; search: string; settings: AppSettings | null; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onNotice: (message: string) => void; onChanged: (trip: Trip) => void; onDeleted: (id: string) => void }) {
