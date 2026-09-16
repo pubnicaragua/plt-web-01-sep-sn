@@ -96,7 +96,7 @@ export function curvedPath(maps: any, from: { lat: number; lng: number }, to: { 
 }
 
 export function nicaraguaRestriction() {
-  return { north: 15.5, south: 10.6, east: -82.5, west: -88, strictBounds: true }
+  return { latLngBounds: { north: 15.5, south: 10.6, east: -82.5, west: -88 }, strictBounds: true }
 }
 
 export function rationalizePoint(point: { lat: number; lng: number }): { lat: number; lng: number } {

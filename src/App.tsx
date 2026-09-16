@@ -1373,6 +1373,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
     loadGoogleMaps().then((maps) => {
       if (cancelled || !containerRef.current || !maps) return
       try {
+        containerRef.current.replaceChildren()
         const map = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
         mapRef.current = map
         map.addListener('click', (event: any) => onChangeRef.current({ lat: event.latLng.lat(), lng: event.latLng.lng() }, activePickRef.current))
@@ -1419,6 +1420,7 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
     loadGoogleMaps().then((maps) => {
       if (cancelled || !containerRef.current || !maps) return
       try {
+        containerRef.current.replaceChildren()
         mapRef.current = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
         setMapState('ready')
       } catch { if (!cancelled) setMapState('error') }

@@ -30,6 +30,7 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
     loadGoogleMaps().then((maps) => {
       if (cancelled || !containerRef.current || !maps) return
       try {
+        containerRef.current.replaceChildren()
         const map = new maps.Map(containerRef.current, {
           center: MANAGUA_CENTER,
           zoom: 12,
@@ -40,7 +41,7 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
           mapTypeControl: false,
           gestureHandling: 'greedy',
           styles: INCOEX_MAP_STYLE,
-          restriction: { north: 15.5, south: 10.6, east: -82.5, west: -88, strictBounds: false },
+          restriction: { latLngBounds: { north: 15.5, south: 10.6, east: -82.5, west: -88 }, strictBounds: false },
         })
         mapRef.current = map
         setMapState('ready')
@@ -112,7 +113,8 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
     else map.setCenter(MANAGUA_CENTER)
   }, [drivers, trips, highlightDriver, demandZone, mode, mapState])
 
-  return <div className="dashboard-google-map" ref={containerRef} aria-label="Mapa operativo de Google Maps con posiciones, rutas y demanda de la API">
+  return <div className="dashboard-google-map" aria-label="Mapa operativo de Google Maps con posiciones, rutas y demanda de la API">
+    <div ref={containerRef} className="google-map-canvas" />
     {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}
     {mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key de Google Maps y la conexión.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}>Reintentar</button></span></div>}
   </div>

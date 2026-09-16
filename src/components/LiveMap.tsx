@@ -20,6 +20,7 @@ export function LiveMap({ tracking, onNavigate, showDemo = false }: { tracking: 
     loadGoogleMaps().then((maps) => {
       if (cancelled || !containerRef.current || !maps) return
       try {
+        containerRef.current.replaceChildren()
         const map = new maps.Map(containerRef.current, { center: MANAGUA_CENTER, zoom: 12, disableDefaultUI: true, zoomControl: true, fullscreenControl: false, streetViewControl: false, mapTypeControl: false, gestureHandling: 'greedy', styles: INCOEX_MAP_STYLE, restriction: nicaraguaRestriction() })
         mapRef.current = map
         containerRef.current.addEventListener('click', (event) => {
@@ -74,5 +75,5 @@ export function LiveMap({ tracking, onNavigate, showDemo = false }: { tracking: 
     else map.setCenter(MANAGUA_CENTER)
   }, [tracking, showDemo, mapState])
 
-  return <div className="live-map-container" ref={containerRef}>{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}</div>
+  return <div className="live-map-container"> <div ref={containerRef} className="google-map-canvas" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}</div>
 }
