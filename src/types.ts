@@ -325,6 +325,38 @@ export interface TrackingOverview {
   incidents: Incident[]
 }
 
+export interface TrackingRoutePoint {
+  latitude: number
+  longitude: number
+  label?: string
+}
+
+export interface TrackingLive {
+  tripId: string
+  status: string
+  driver: string
+  lastUpdate: string
+  distanceKm: number
+  estimatedCostCs: number
+  route: TrackingRoutePoint[]
+  routeProvider?: 'google' | 'fallback' | string
+  routeDistanceKm?: number
+  routeDurationSeconds?: number
+  driverLocation?: {
+    latitude: number
+    longitude: number
+    accuracy?: number
+    speedKmh?: number
+    updatedAt?: number
+  }
+  transport?: string
+  driverVehicle?: string
+  driverPlate?: string
+  driverPhone?: string
+  currentLocationLabel?: string
+  shareUrl?: string
+}
+
 export type VehicleStatus = 'Disponible' | 'En servicio' | 'Mantenimiento' | 'Fuera de servicio'
 export type FuelType = 'Gasolina' | 'Diésel' | 'Eléctrico' | 'Híbrido'
 

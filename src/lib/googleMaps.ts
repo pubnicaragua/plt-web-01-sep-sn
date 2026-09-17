@@ -109,3 +109,45 @@ export function incoexPin(maps: any, fill: string, scale = 1.15) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path d="M12 1C5.9 1 1 5.9 1 12c0 8.2 11 23 11 23s11-14.8 11-23C23 5.9 18.1 1 12 1z" fill="${fill}" stroke="#fff" stroke-width="1.8"/><circle cx="12" cy="12" r="4.6" fill="#fff" opacity=".95"/><circle cx="12" cy="12" r="2.7" fill="#075cf5"/></svg>`
   return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, size: new maps.Size(24 * scale, 36 * scale), anchor: new maps.Point(12 * scale, 36 * scale) }
 }
+
+export function vehicleMarkerIcon(maps: any, vehicle = '', color = ROUTE_COLOR, online = true) {
+  const normalized = vehicle.toLowerCase()
+  const glyph = normalized.includes('moto') || normalized.includes('scooter')
+    ? '<path d="M10.4 28.6h3.2l2.8-6.1h3.2a4.2 4.2 0 0 1 4.2 4.2v1.9h-1.8a3.2 3.2 0 0 0-6.3.6H9.1a3.2 3.2 0 0 0-6.3-.6H1.1v-1.9a4.2 4.2 0 0 1 4.2-4.2h3.7l1.4 3.1Zm-5.1 1.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm13.9 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8ZM8.5 20.3h7.2l-2-4.3h-4l-1.2 4.3Z"/> '
+    : normalized.includes('camion') || normalized.includes('truck') || normalized.includes('sprinter')
+      ? '<path d="M3 13.2h13.4v11.1H3V13.2Zm13.4 4h4.4l3.1 3.2v3.9h-7.5v-7.1Zm-9.9 9.4a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Zm12.3 0a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM18 18.8v2.1h3.2L19.4 19H18Z"/> '
+      : '<path d="M4.2 17.4 6 12.5h13.7l2.2 4.9h1.4a1.7 1.7 0 0 1 1.7 1.7v7.4h-2.7a3.1 3.1 0 0 0-6.2 0H10a3.1 3.1 0 0 0-6.2 0H1.2v-7.4a1.7 1.7 0 0 1 1.7-1.7h1.3Zm4-3.1-1.1 3.1h11.6l-1.4-3.1H8.2ZM6.9 27a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm11.7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/> '
+  const muted = online ? color : '#8090aa'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><circle cx="28" cy="28" r="25" fill="#071b4f" fill-opacity=".82" stroke="#fff" stroke-opacity=".92" stroke-width="2.4"/><circle cx="28" cy="28" r="21" fill="${muted}"/><g fill="#fff" transform="translate(15 13) scale(.92)">${glyph}</g><circle cx="42" cy="12" r="4.2" fill="${online ? '#21c88a' : '#aab3c2'}" stroke="#071b4f" stroke-width="2"/></svg>`
+  return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new maps.Size(56, 56), anchor: new maps.Point(28, 28) }
+}
+
+export type DrivingRouteResult = { path: any[]; distanceKm: number; durationSeconds: number }
+
+const routePromises = new Map<string, Promise<DrivingRouteResult | null>>()
+
+export function getDrivingRoute(maps: any, from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<DrivingRouteResult | null> {
+  const key = `${from.lat.toFixed(5)},${from.lng.toFixed(5)}:${to.lat.toFixed(5)},${to.lng.toFixed(5)}`
+  const existing = routePromises.get(key)
+  if (existing) return existing
+  const pending = new Promise<DrivingRouteResult | null>((resolve) => {
+    if (!maps.DirectionsService) { resolve(null); return }
+    const service = new maps.DirectionsService()
+    service.route({
+      origin: from,
+      destination: to,
+      travelMode: maps.TravelMode?.DRIVING ?? 'DRIVING',
+      provideRouteAlternatives: false,
+      drivingOptions: { departureTime: new Date(), trafficModel: 'bestguess' },
+    }, (result: any, status: string) => {
+      if (status !== 'OK' || !result?.routes?.[0]) { resolve(null); return }
+      const route = result.routes[0]
+      const legs = Array.isArray(route.legs) ? route.legs : []
+      const distanceMeters = legs.reduce((sum: number, leg: any) => sum + Number(leg.distance?.value ?? 0), 0)
+      const durationSeconds = legs.reduce((sum: number, leg: any) => sum + Number(leg.duration_in_traffic?.value ?? leg.duration?.value ?? 0), 0)
+      resolve({ path: route.overview_path ?? [], distanceKm: distanceMeters / 1000, durationSeconds })
+    })
+  }).catch(() => null)
+  routePromises.set(key, pending)
+  return pending
+}

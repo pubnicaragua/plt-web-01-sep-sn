@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingOverview, TariffDestination, TariffDistrict, TariffSettings, Trip, TripStatus, UserRole, Vehicle, VehicleStatus, FareResult } from '../types'
+import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingLive, TrackingOverview, TariffDestination, TariffDistrict, TariffSettings, Trip, TripStatus, UserRole, Vehicle, VehicleStatus, FareResult } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -48,7 +48,7 @@ export function getDashboardSummary() {
   return getJson<DashboardSummary>('/dashboard/summary')
 }
 export function getTrackingLive(id: string) {
-  return getJson<unknown>(`/tracking/${encodeURIComponent(id)}`)
+  return getJson<TrackingLive>(`/tracking/${encodeURIComponent(id)}`)
 }
 
 export function getTrips() { return getJson<Trip[]>('/trips') }

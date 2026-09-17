@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Driver, Trip } from '../types'
-import { googleStatusColor, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, resetGoogleMapsLoader } from '../lib/googleMaps'
+import { getDrivingRoute, googleStatusColor, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, resetGoogleMapsLoader, vehicleMarkerIcon } from '../lib/googleMaps'
+import { getTrackingLive } from '../lib/api'
 
 type DemandZone = { lat: number; lng: number; label: string; count: number }
 type MapMode = 'all' | 'routes' | 'demand'
@@ -11,10 +12,6 @@ function escapeHtml(value: string) {
 
 function popupHtml(title: string, rows: string[]) {
   return `<div class="dashboard-map-popup"><strong>${escapeHtml(title)}</strong>${rows.map((row) => `<span>${row}</span>`).join('')}</div>`
-}
-
-function driverIcon(maps: any, color: string, selected: boolean) {
-  return { path: maps.SymbolPath.CIRCLE, scale: selected ? 9 : 7, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: selected ? 4 : 3 }
 }
 
 export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone, mode = 'all' }: { drivers: Driver[]; trips: Trip[]; highlightDriver?: string; demandZone?: DemandZone; mode?: MapMode }) {
@@ -62,6 +59,7 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
+    let cancelled = false
     objectsRef.current.forEach((object) => object.setMap?.(null))
     objectsRef.current = []
     const bounds = new maps.LatLngBounds()
@@ -77,25 +75,50 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
     for (const driver of drivers.filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))) {
       const position = { lat: driver.latitude, lng: driver.longitude }
       const color = googleStatusColor(driver.status)
-      const marker = add(new maps.Marker({ position, title: `${driver.name} · ${driver.status}`, icon: driverIcon(maps, color, driver.name === highlightDriver), zIndex: driver.name === highlightDriver ? 20 : 10 }))
+      const marker = add(new maps.Marker({ position, title: `${driver.name} · ${driver.status}`, icon: vehicleMarkerIcon(maps, driver.vehicle, color, driver.status !== 'Fuera de servicio'), zIndex: driver.name === highlightDriver ? 20 : 10 }))
       marker.addListener('click', () => openInfo(position, popupHtml(driver.name, [`${escapeHtml(driver.vehicle)} · ${escapeHtml(driver.plate)}`, `<i class="dashboard-popup-dot" style="background:${color}"></i>${escapeHtml(driver.status)}`, 'Posición recibida desde la API'])))
       bounds.extend(position)
       hasBounds = true
     }
 
     if (mode !== 'demand') {
-      for (const trip of trips.filter((item) => Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng))) {
-        const origin = { lat: trip.originLat as number, lng: trip.originLng as number }
-        const destination = { lat: trip.destinationLat as number, lng: trip.destinationLng as number }
-        const color = trip.status === 'En entrega' ? '#8067dc' : '#075cf5'
-        const route = add(new maps.Polyline({ path: [origin, destination], strokeColor: color, strokeOpacity: .86, strokeWeight: 4, icons: trip.status === 'Asignado' ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] : undefined }))
-        route.addListener('click', () => openInfo({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 }, popupHtml(`Ruta ${trip.id}`, [`${escapeHtml(trip.origin)} → ${escapeHtml(trip.destination)}`, `${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}`])))
-        add(new maps.Marker({ position: origin, title: `Recogida · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#13a8da', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } })).addListener('click', () => openInfo(origin, popupHtml(`Recogida · ${trip.id}`, [escapeHtml(trip.origin), `${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}`])))
-        add(new maps.Marker({ position: destination, title: `Entrega · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#8067dc', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } })).addListener('click', () => openInfo(destination, popupHtml(`Entrega · ${trip.id}`, [escapeHtml(trip.destination), `${escapeHtml(trip.client)} · ${escapeHtml(trip.driver)}`])))
-        bounds.extend(origin)
-        bounds.extend(destination)
-        hasBounds = true
+      const routeTrips = trips.filter((item) => Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng))
+      const drawRoutes = async () => {
+        const routes = await Promise.all(routeTrips.map(async (trip) => {
+          const origin = { lat: trip.originLat as number, lng: trip.originLng as number }
+          const destination = { lat: trip.destinationLat as number, lng: trip.destinationLng as number }
+          let routeOrigin = origin
+          try {
+            const live = await getTrackingLive(trip.id)
+            if (live.routeProvider === 'google' && live.route.length >= 2) {
+              return { trip, origin, destination, path: live.route.map((point) => ({ lat: point.latitude, lng: point.longitude })) }
+            }
+            if (live.driverLocation) routeOrigin = { lat: live.driverLocation.latitude, lng: live.driverLocation.longitude }
+          } catch {
+            // El cálculo directo de Google Maps mantiene el mapa operativo si el proxy está frío.
+          }
+          const calculated = await getDrivingRoute(maps, routeOrigin, destination)
+          return { trip, origin, destination, path: calculated?.path ?? [] }
+        }))
+        if (cancelled) return
+        for (const { trip, origin, destination, path } of routes) {
+          const color = trip.status === 'En entrega' ? '#8067dc' : '#075cf5'
+          if (path.length >= 2) {
+            const route = add(new maps.Polyline({ path, strokeColor: color, strokeOpacity: .94, strokeWeight: 5, icons: trip.status === 'Asignado' ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] : undefined }))
+            route.addListener('click', () => openInfo({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 }, popupHtml(`Ruta ${trip.id}`, [`${escapeHtml(trip.origin)} → ${escapeHtml(trip.destination)}`, `${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}`])))
+          }
+          add(new maps.Marker({ position: origin, title: `Recogida · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#13a8da', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } })).addListener('click', () => openInfo(origin, popupHtml(`Recogida · ${trip.id}`, [escapeHtml(trip.origin), `${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}`])))
+          add(new maps.Marker({ position: destination, title: `Entrega · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#8067dc', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } })).addListener('click', () => openInfo(destination, popupHtml(`Entrega · ${trip.id}`, [escapeHtml(trip.destination), `${escapeHtml(trip.client)} · ${escapeHtml(trip.driver)}`])))
+          bounds.extend(origin)
+          bounds.extend(destination)
+          hasBounds = true
+        }
+        if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
+        else map.setCenter(MANAGUA_CENTER)
       }
+      void drawRoutes()
+    } else if (mode === 'demand' && demandZone) {
+      map.setZoom(14)
     }
 
     if (demandZone && Number.isFinite(demandZone.lat) && Number.isFinite(demandZone.lng)) {
@@ -109,8 +132,11 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
     }
 
     if (mode === 'demand' && demandZone) map.setZoom(14)
-    else if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
-    else map.setCenter(MANAGUA_CENTER)
+    else if (mode === 'demand' || !trips.some((item) => Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng))) {
+      if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
+      else map.setCenter(MANAGUA_CENTER)
+    }
+    return () => { cancelled = true }
   }, [drivers, trips, highlightDriver, demandZone, mode, mapState])
 
   return <div className="dashboard-google-map" aria-label="Mapa operativo de Google Maps con posiciones, rutas y demanda de la API">
