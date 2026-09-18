@@ -214,7 +214,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
   const destination = data.destinations.find((d) => d.id === destId)
 
   const paramRow = (label: string, value: string, unit: string, detail: string) => (
-    <div className="param-row">
+    <div className={`param-row ${detail ? 'has-detail' : ''}`}>
       <span className="param-label">{label}</span>
       <span className="param-value">{value}</span>
       <span className="param-unit">{unit}</span>
@@ -229,7 +229,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
           <span className="eyebrow">MÓDULO DE TARIFAS · PARÁMETROS DEL CATÁLOGO</span>
           <h2 className="report-title">Tarifas y catálogo de Managua</h2>
           <p className="panel-sub">
-            Las celdas amarillas pueden modificarse. Las listas alimentan las validaciones del catálogo y de la calculadora de tarifas.
+            Los parámetros editables alimentan las validaciones del catálogo y de la calculadora de tarifas.
           </p>
         </div>
         <div className="report-header-meta">
@@ -449,7 +449,7 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
       )}
 
       {tab === 'catalog' && (
-        <section className="panel table-panel">
+        <section className="panel table-panel tarifas-catalog-panel">
           <div className="table-toolbar">
             <div className="filter-row">
               <div className="search-box"><Icon name="search" size={13} /><input placeholder="Buscar destino, distrito o categoría…" value={search} onChange={(e) => { setSearch(e.target.value); setCatalogPage(1) }} /></div>

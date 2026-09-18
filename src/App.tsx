@@ -74,7 +74,7 @@ import { Icon, type IconName } from './lib/icons'
 import { TarifasView } from './TarifasView'
 import { LiveMap } from './components/LiveMap'
 import { DashboardMap } from './components/DashboardMap'
-import { curvedPath, incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, resetGoogleMapsLoader } from './lib/googleMaps'
+import { incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, requestRoadRoute, resetGoogleMapsLoader } from './lib/googleMaps'
 import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs } from './types'
 
@@ -693,6 +693,7 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
   const [feature, setFeature] = useState<DashboardFeatureKey | null>(null)
   const [selectedDriver, setSelectedDriver] = useState('')
   const [driverStatusFilter, setDriverStatusFilter] = useState<'Todos' | Driver['status']>('Todos')
+  const statusFilterRef = useRef<HTMLSelectElement>(null)
   const [mapMode, setMapMode] = useState<'all' | 'routes' | 'demand'>('all')
   const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today
   const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : 'Rango seleccionado'
@@ -715,7 +716,8 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
       external: true,
     })),
   ]
-  const activeTrips = (tracking?.trips?.length ? tracking.trips : trips).filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status))
+  const trackingActiveTrips = tracking?.trips?.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status)) ?? []
+  const activeTrips = trackingActiveTrips.length ? trackingActiveTrips : trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status))
   const visibleDrivers = liveDrivers.filter((driver) => driverStatusFilter === 'Todos' || driver.status === driverStatusFilter)
   const visibleTrips = selectedDriver ? activeTrips.filter((trip) => trip.driver === selectedDriver) : activeTrips
   const demandCounts = activeTrips.reduce<Record<string, number>>((counts, trip) => { counts[trip.origin] = (counts[trip.origin] ?? 0) + 1; return counts }, {})
@@ -774,7 +776,7 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
         {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
           <div className="operations-map dashboard-map">
             <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} />
-            <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter"><span>Estado</span><select aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
+             <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); statusFilterRef.current?.showPicker?.() } }}><span>Estado</span><select ref={statusFilterRef} aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
             <div className="map-overlay-stats"><button type="button" className={mapMode === 'all' ? 'active' : ''} onClick={() => setMapMode('all')}><i className="legend mint" />{visibleDrivers.length} conductores</button><button type="button" className={mapMode === 'routes' ? 'active' : ''} onClick={() => setMapMode('routes')}><i className="legend cyan" />{visibleTrips.length} rutas activas</button><button type="button" disabled={!demandPoint} className={mapMode === 'demand' ? 'active' : ''} onClick={() => setMapMode('demand')}><i className="legend gold" />Mayor demanda: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</button></div>
             <div className="dashboard-driver-selector map-driver-selector"><span>Ruta por conductor</span><button type="button" className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button type="button" className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
             <div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div>
@@ -1384,6 +1386,7 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
   }, [attempt])
 
   useEffect(() => {
+    let cancelled = false
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
@@ -1401,9 +1404,18 @@ function RoutePickerMap({ origin, destination, onChange }: { origin: LatLng | nu
     if (origin) addPoint(origin, 'origin')
     if (destination) addPoint(destination, 'destination')
     if (origin && destination) {
-      objectsRef.current.push(new maps.Polyline({ path: curvedPath(maps, rationalizePoint(origin), rationalizePoint(destination)), map, strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] }))
+      const origin0 = rationalizePoint(origin)
+      const destination0 = rationalizePoint(destination)
+      const directionsRenderer = new maps.DirectionsRenderer({ map, suppressMarkers: true, suppressInfoWindows: true, preserveViewport: true, polylineOptions: { strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4 } })
+      objectsRef.current.push(directionsRenderer)
+      requestRoadRoute(maps, origin0, destination0).then((result) => {
+        if (cancelled) return
+        if (result) directionsRenderer.setDirections(result)
+        else directionsRenderer.setMap(null)
+      })
       map.fitBounds(bounds, 42)
     } else if (origin || destination) map.setCenter(rationalizePoint(origin ?? destination!))
+    return () => { cancelled = true }
   }, [origin, destination, mapState])
 
   return <div className="map-picker"><div className="map-picker-toolbar"><span className="eyebrow">SELECCIONA LOS PUNTOS EN EL MAPA</span><div className="pick-toggle"><button type="button" className={activePick === 'origin' ? 'active' : ''} onClick={() => setActivePick('origin')}><i className="dot blue" />Recogida</button><button type="button" className={activePick === 'destination' ? 'active' : ''} onClick={() => setActivePick('destination')}><i className="dot red" />Destino</button></div></div><div className="map-picker-canvas"><div ref={containerRef} className="google-map-canvas" /><img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}>Reintentar</button></span></div>}</div><p className="wizard-hint">Haz clic en el mapa para colocar {activePick === 'origin' ? 'la recogida' : 'el destino'} o arrastra los marcadores para ajustar la ubicación.</p></div>
@@ -1429,14 +1441,22 @@ function RouteMap({ origin, destination }: { origin: LatLng; destination: LatLng
   }, [])
 
   useEffect(() => {
+    let cancelled = false
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
     const origin0 = rationalizePoint(origin)
     const destination0 = rationalizePoint(destination)
     objectsRef.current.forEach((object) => object.setMap?.(null))
-    objectsRef.current = [new maps.Marker({ position: origin0, map, title: 'Recogida', icon: incoexPin(maps, '#159bdc', .9) }), new maps.Marker({ position: destination0, map, title: 'Destino', icon: incoexPin(maps, '#e45d67', .9) }), new maps.Polyline({ path: curvedPath(maps, origin0, destination0), map, strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] })]
+    const directionsRenderer = new maps.DirectionsRenderer({ map, suppressMarkers: true, suppressInfoWindows: true, preserveViewport: true, polylineOptions: { strokeColor: '#075cf5', strokeOpacity: .88, strokeWeight: 4 } })
+    objectsRef.current = [new maps.Marker({ position: origin0, map, title: 'Recogida', icon: incoexPin(maps, '#159bdc', .9) }), new maps.Marker({ position: destination0, map, title: 'Destino', icon: incoexPin(maps, '#e45d67', .9) }), directionsRenderer]
+    requestRoadRoute(maps, origin0, destination0).then((result) => {
+      if (cancelled) return
+      if (result) directionsRenderer.setDirections(result)
+      else directionsRenderer.setMap(null)
+    })
     map.fitBounds(new maps.LatLngBounds(origin0, destination0), 42)
+    return () => { cancelled = true }
   }, [origin, destination, mapState])
 
   return <div className="route-map-wrap"><div ref={containerRef} className="google-map-canvas" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}<img src="/brand/logo.png" alt="INCOEX" className="map-brand-overlay" /></div>

@@ -105,6 +105,84 @@ export function rationalizePoint(point: { lat: number; lng: number }): { lat: nu
   return point
 }
 
+function haversineMeters(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const radius = 6371000
+  const toRad = (value: number) => value * Math.PI / 180
+  const dLat = toRad(to.lat - from.lat)
+  const dLng = toRad(to.lng - from.lng)
+  const latFrom = toRad(from.lat)
+  const latTo = toRad(to.lat)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(latFrom) * Math.cos(latTo) * Math.sin(dLng / 2) ** 2
+  return 2 * radius * Math.asin(Math.sqrt(h))
+}
+
+function routeDistanceMeters(route: any) {
+  return (route?.legs ?? []).reduce((total: number, leg: any) => total + Number(leg?.distance?.value ?? Number.POSITIVE_INFINITY), 0)
+}
+
+function routeEndpoints(route: any) {
+  const firstLeg = route?.legs?.[0]
+  const lastLeg = route?.legs?.[route.legs.length - 1]
+  const start = firstLeg?.start_location
+  const end = lastLeg?.end_location
+  if (!start || !end) return null
+  return {
+    start: { lat: typeof start.lat === 'function' ? start.lat() : start.lat, lng: typeof start.lng === 'function' ? start.lng() : start.lng },
+    end: { lat: typeof end.lat === 'function' ? end.lat() : end.lat, lng: typeof end.lng === 'function' ? end.lng() : end.lng },
+  }
+}
+
+function chooseRoadRoute(result: any, origin: { lat: number; lng: number }, destination: { lat: number; lng: number }) {
+  const routes = Array.isArray(result?.routes) ? result.routes.filter((route: any) => routeDistanceMeters(route) < Number.POSITIVE_INFINITY) : []
+  if (!routes.length) return null
+  const directDistance = Math.max(1, haversineMeters(origin, destination))
+  return routes.reduce((best: any, route: any) => {
+    const distance = routeDistanceMeters(route)
+    const directness = distance / directDistance
+    const bestDistance = routeDistanceMeters(best)
+    const bestDirectness = bestDistance / directDistance
+    // Prefer the shortest route, with a small penalty for an unusually indirect detour.
+    const score = distance * (directness > 2.35 ? 1.2 : 1)
+    const bestScore = bestDistance * (bestDirectness > 2.35 ? 1.2 : 1)
+    return score < bestScore ? route : best
+  })
+}
+
+/**
+ * Requests a driving route while keeping endpoints on the nearest usable road.
+ * Google Directions already performs road matching, but retrying once with the
+ * matched endpoints avoids large access-road returns when a point was clicked
+ * inside a property or parking area.
+ */
+export function requestRoadRoute(maps: any, origin: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<any | null> {
+  const service = new maps.DirectionsService()
+  const request = (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => new Promise<any | null>((resolve) => {
+    service.route({
+      origin: from,
+      destination: to,
+      travelMode: maps.TravelMode.DRIVING,
+      provideRouteAlternatives: true,
+      avoidFerries: true,
+      region: 'ni',
+      unitSystem: maps.UnitSystem?.METRIC,
+    }, (result: any, status: any) => resolve(status === 'OK' && result ? result : null))
+  })
+
+  return request(origin, destination).then(async (result) => {
+    if (!result) return null
+    const selected = chooseRoadRoute(result, origin, destination)
+    if (!selected) return null
+    const endpoints = routeEndpoints(selected)
+    if (!endpoints || haversineMeters(origin, endpoints.start) <= 120 && haversineMeters(destination, endpoints.end) <= 120) {
+      return { ...result, routes: [selected] }
+    }
+    const rematched = await request(endpoints.start, endpoints.end)
+    if (!rematched) return { ...result, routes: [selected] }
+    const rematchedSelected = chooseRoadRoute(rematched, endpoints.start, endpoints.end)
+    return rematchedSelected ? { ...rematched, routes: [rematchedSelected] } : { ...result, routes: [selected] }
+  })
+}
+
 export function incoexPin(maps: any, fill: string, scale = 1.15) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path d="M12 1C5.9 1 1 5.9 1 12c0 8.2 11 23 11 23s11-14.8 11-23C23 5.9 18.1 1 12 1z" fill="${fill}" stroke="#fff" stroke-width="1.8"/><circle cx="12" cy="12" r="4.6" fill="#fff" opacity=".95"/><circle cx="12" cy="12" r="2.7" fill="#075cf5"/></svg>`
   return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, size: new maps.Size(24 * scale, 36 * scale), anchor: new maps.Point(12 * scale, 36 * scale) }
