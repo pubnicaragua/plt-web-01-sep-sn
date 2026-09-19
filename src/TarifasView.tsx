@@ -7,8 +7,9 @@ import {
   updateTariffDistrict,
   updateTariffDestination,
   updateTariffSettings,
+  updateSettings,
 } from './lib/api'
-import type { FareResult, TariffDestination, TariffDistrict, TariffSettings } from './types'
+import type { AppSettings, FareResult, TariffDestination, TariffDistrict, TariffSettings, VehicleRate } from './types'
 import { Icon } from './lib/icons'
 
 const DISTRICT_STATUSES = [
@@ -35,16 +36,23 @@ const CATEGORIES = [
 
 const DISTRICTS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 
+const DEFAULT_VEHICLE_RATES: AppSettings['vehicleRates'] = {
+  Moto: { baseFeeCs: 60, farePerKmCs: 6.5 },
+  Vehículo: { baseFeeCs: 80, farePerKmCs: 8.5 },
+  Camión: { baseFeeCs: 130, farePerKmCs: 13.5 },
+}
+
 interface TarifasData {
   settings: TariffSettings
   districts: TariffDistrict[]
   destinations: TariffDestination[]
 }
 
-export function TarifasView({ onNotice }: { onNotice: (message: string) => void }) {
+export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice: (message: string) => void; settings: AppSettings | null; onSettingsSaved: (settings: AppSettings) => void }) {
   const [tab, setTab] = useState<'params' | 'calc' | 'catalog'>('params')
   const [data, setData] = useState<TarifasData | null>(null)
   const [draft, setDraft] = useState<TariffSettings | null>(null)
+  const [vehicleRates, setVehicleRates] = useState<AppSettings['vehicleRates']>(settings?.vehicleRates ?? DEFAULT_VEHICLE_RATES)
   const [busy, setBusy] = useState('')
   const [originId, setOriginId] = useState('')
   const [destId, setDestId] = useState('')
@@ -53,6 +61,9 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
   const [catalogPage, setCatalogPage] = useState(1)
   const catalogPageSize = 8
   const [loadError, setLoadError] = useState(false)
+  useEffect(() => {
+    if (settings?.vehicleRates) setVehicleRates(settings.vehicleRates)
+  }, [settings])
   const load = () => {
     setLoadError(false)
     getTarifas()
@@ -86,8 +97,25 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
     }
   }
 
+  async function saveVehicleRates() {
+    setBusy('vehicle-rates')
+    try {
+      const updated = await updateSettings({ vehicleRates })
+      onSettingsSaved(updated)
+      onNotice('Tarifas por vehículo guardadas y disponibles para la app móvil')
+    } catch {
+      onNotice('No se pudieron guardar las tarifas por vehículo')
+    } finally {
+      setBusy('')
+    }
+  }
+
   function setParam<K extends keyof TariffSettings>(key: K, value: TariffSettings[K]) {
     setDraft((current) => (current ? { ...current, [key]: value } : current))
+  }
+
+  function setVehicleRate(vehicle: keyof AppSettings['vehicleRates'], key: keyof VehicleRate, value: number) {
+    setVehicleRates((current) => ({ ...current, [vehicle]: { ...current[vehicle], [key]: value } }))
   }
 
   async function toggleDistrict(id: string, inCoverage: boolean) {
@@ -339,6 +367,32 @@ export function TarifasView({ onNotice }: { onNotice: (message: string) => void 
                 <small>La tarifa final se redondea hacia arriba al múltiplo indicado.</small>
               </div>
             </div>
+            <div className="tarifas-vehicle-head">
+              <div>
+                <span className="eyebrow">TARIFAS POR VEHÍCULO</span>
+                <h3>Valores que usa la operación</h3>
+                <p>Define una tarifa base y un valor por kilómetro para cada tipo de transporte. Estos valores se guardan en la configuración compartida con la app móvil.</p>
+              </div>
+              <button className="secondary-button" onClick={() => void saveVehicleRates()} disabled={busy === 'vehicle-rates' || !settings}>
+                {busy === 'vehicle-rates' ? 'Guardando…' : 'Guardar tarifas por vehículo'}
+              </button>
+            </div>
+            <div className="vehicle-rates tarifas-vehicle-rates">
+              {([['Moto', 'moto'], ['Vehículo', 'vehiculo'], ['Camión', 'camion']] as const).map(([vehicle, tone]) => (
+                <div className="vehicle-rate-card" key={vehicle}>
+                  <span className={`vehicle-rate-icon ${tone}`}><Icon name={tone === 'moto' ? 'moto' : tone === 'camion' ? 'truck' : 'car'} size={17} /></span>
+                  <div>
+                    <strong>{vehicle}</strong>
+                    <small>Tarifa base · C$</small>
+                    <input aria-label={`Tarifa base para ${vehicle}`} type="number" min={0} step={0.01} value={vehicleRates[vehicle].baseFeeCs} onChange={(event) => setVehicleRate(vehicle, 'baseFeeCs', Number(event.target.value))} disabled={!settings} />
+                    <small>Por kilómetro · C$</small>
+                    <input aria-label={`Tarifa por kilómetro para ${vehicle}`} type="number" min={0} step={0.01} value={vehicleRates[vehicle].farePerKmCs} onChange={(event) => setVehicleRate(vehicle, 'farePerKmCs', Number(event.target.value))} disabled={!settings} />
+                    <em>10 km ≈ C$ {(vehicleRates[vehicle].baseFeeCs + vehicleRates[vehicle].farePerKmCs * 10).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="tarifas-vehicle-note">Última actualización compartida: {settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString('es-NI') : '—'} · La tarifa se aplica según el tipo de transporte seleccionado en la operación.</div>
           </section>
 
           <section className="panel tarifas-panel">

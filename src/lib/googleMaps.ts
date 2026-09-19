@@ -141,19 +141,14 @@ function chooseRoadRoute(result: any, origin: { lat: number; lng: number }, dest
     const directness = distance / directDistance
     const bestDistance = routeDistanceMeters(best)
     const bestDirectness = bestDistance / directDistance
-    // Prefer the shortest route, with a small penalty for an unusually indirect detour.
+    
     const score = distance * (directness > 2.35 ? 1.2 : 1)
     const bestScore = bestDistance * (bestDirectness > 2.35 ? 1.2 : 1)
     return score < bestScore ? route : best
   })
 }
 
-/**
- * Requests a driving route while keeping endpoints on the nearest usable road.
- * Google Directions already performs road matching, but retrying once with the
- * matched endpoints avoids large access-road returns when a point was clicked
- * inside a property or parking area.
- */
+
 export function requestRoadRoute(maps: any, origin: { lat: number; lng: number }, destination: { lat: number; lng: number }): Promise<any | null> {
   const service = new maps.DirectionsService()
   const request = (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => new Promise<any | null>((resolve) => {

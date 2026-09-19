@@ -992,6 +992,11 @@ input, select, textarea, button, th, td, .filter-chip, .status-pill, .priority-p
 .tarifas-catalog-panel .table-toolbar { padding: 0 0 16px; border-bottom: 0; }
 .param-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; align-items: stretch; }
 .param-grid.compact { grid-template-columns: repeat(5, minmax(170px, 1fr)); }
+.tarifas-vehicle-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e5eb; }
+.tarifas-vehicle-head h3 { margin: 4px 0 5px; color: #15244a; font-size: 18px; }
+.tarifas-vehicle-head p { max-width: 760px; margin: 0; color: #697894; font-size: 11.5px; line-height: 1.55; }
+.tarifas-vehicle-rates { margin-top: 14px; }
+.tarifas-vehicle-note { margin-top: 12px; color: #77849b; font-size: 10.5px; line-height: 1.45; }
 .param-cell { min-width: 0; min-height: 126px; padding: 13px 14px; border: 1px solid #DED9E2; border-radius: 11px; background: #FBFAFD; display: flex; flex-direction: column; gap: 8px; }
 .param-cell > span, .param-cell > small { min-width: 0; overflow-wrap: anywhere; }
 .param-cell > span { color: #504b59; font-size: 11.5px; font-weight: 700; line-height: 1.25; }
@@ -1038,6 +1043,7 @@ select.param-input { height: 37px; }
 @media (max-width: 900px) { .param-grid:not(.compact), .param-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .calc-grid, .calc-selectors { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .param-grid, .param-grid.compact { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .tarifas-vehicle-head { align-items: stretch; flex-direction: column; gap: 12px; } .tarifas-vehicle-head .secondary-button { align-self: flex-start; } }
 @media (max-width: 700px) { .tarifas-panel { padding: 17px 14px 18px; } .tarifas-catalog-panel { padding: 14px; } }
 
 /* === Evidencia de incidencias === */
