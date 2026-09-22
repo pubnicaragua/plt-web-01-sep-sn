@@ -54,8 +54,8 @@ export function getTrackingLive(id: string) {
 export function getTrips() { return getJson<Trip[]>('/trips') }
 export function deleteTrip(id: string) { return sendJson<{ deleted: string }>(`/trips/${encodeURIComponent(id)}`, 'DELETE') }
 export function getDrivers() { return getJson<Driver[]>('/drivers') }
-export function createDriver(body: { name: string; phone?: string; email?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
-export function updateDriver(id: string, body: { name?: string; phone?: string; email?: string; vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function createDriver(body: { name: string; phone?: string; email?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string; residence?: string; emergencyContact1Name?: string; emergencyContact1Phone?: string; emergencyContact2Name?: string; emergencyContact2Phone?: string; emergencyContact3Name?: string; emergencyContact3Phone?: string }) { return sendJson<Driver>('/drivers', 'POST', body) }
+export function updateDriver(id: string, body: { name?: string; phone?: string; email?: string; vehicle?: string; plate?: string; external?: boolean; licenseNo?: string; licenseExp?: string; docNo?: string; notes?: string; licenseCategories?: string; bloodType?: string; residence?: string; emergencyContact1Name?: string; emergencyContact1Phone?: string; emergencyContact2Name?: string; emergencyContact2Phone?: string; emergencyContact3Name?: string; emergencyContact3Phone?: string }) { return sendJson<Driver>(`/drivers/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteDriver(id: string) { return sendJson<{ deleted: string }>(`/drivers/${encodeURIComponent(id)}`, 'DELETE') }
 export function getClients() { return getJson<Client[]>('/clients') }
 export function getClientProfile(id: string) { return getJson<ClientProfile>(`/clients/${encodeURIComponent(id)}`) }
@@ -82,7 +82,7 @@ export function updateTariffDistrict(id: string, body: { inCoverage?: boolean; s
 export function createTariffDestination(body: { name: string; district: string; category?: string; latitude: number; longitude: number; inCoverage?: boolean; status?: string }) { return sendJson<TariffDestination>('/tarifas/destinations', 'POST', body) }
 export function updateTariffDestination(id: string, body: Partial<TariffDestination>) { return sendJson<TariffDestination>(`/tarifas/destinations/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function deleteTariffDestination(id: string) { return sendJson<{ deleted: boolean }>(`/tarifas/destinations/${encodeURIComponent(id)}`, 'DELETE') }
-export function calculateFare(body: { originLat: number; originLng: number; destLat: number; destLng: number; originCoverage?: boolean; destCoverage?: boolean }) { return sendJson<FareResult>('/tarifas/calculator', 'POST', body) }
+export function calculateFare(body: { originLat: number; originLng: number; destLat: number; destLng: number; transport?: 'Moto' | 'Vehículo' | 'Camión'; originCoverage?: boolean; destCoverage?: boolean }) { return sendJson<FareResult>('/tarifas/calculator', 'POST', body) }
 export function getHistory() { return getJson<HistoryEvent[]>('/history') }
 export function getReportsSummary() { return getJson<ReportsSummary>('/reports/summary') }
 export function getFinanceSummary(start?: string, end?: string) {

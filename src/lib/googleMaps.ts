@@ -183,7 +183,7 @@ export function incoexPin(maps: any, fill: string, scale = 1.15) {
   return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, size: new maps.Size(24 * scale, 36 * scale), anchor: new maps.Point(12 * scale, 36 * scale) }
 }
 
-export function vehicleMarkerIcon(maps: any, vehicle = '', color = ROUTE_COLOR, online = true) {
+export function vehicleMarkerIcon(maps: any, vehicle = '', color = ROUTE_COLOR, online = true, selected = false) {
   const normalized = vehicle.toLowerCase()
   const glyph = normalized.includes('moto') || normalized.includes('scooter')
     ? '<path d="M10.4 28.6h3.2l2.8-6.1h3.2a4.2 4.2 0 0 1 4.2 4.2v1.9h-1.8a3.2 3.2 0 0 0-6.3.6H9.1a3.2 3.2 0 0 0-6.3-.6H1.1v-1.9a4.2 4.2 0 0 1 4.2-4.2h3.7l1.4 3.1Zm-5.1 1.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Zm13.9 0a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8ZM8.5 20.3h7.2l-2-4.3h-4l-1.2 4.3Z"/> '
@@ -191,7 +191,8 @@ export function vehicleMarkerIcon(maps: any, vehicle = '', color = ROUTE_COLOR, 
       ? '<path d="M3 13.2h13.4v11.1H3V13.2Zm13.4 4h4.4l3.1 3.2v3.9h-7.5v-7.1Zm-9.9 9.4a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Zm12.3 0a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM18 18.8v2.1h3.2L19.4 19H18Z"/> '
       : '<path d="M4.2 17.4 6 12.5h13.7l2.2 4.9h1.4a1.7 1.7 0 0 1 1.7 1.7v7.4h-2.7a3.1 3.1 0 0 0-6.2 0H10a3.1 3.1 0 0 0-6.2 0H1.2v-7.4a1.7 1.7 0 0 1 1.7-1.7h1.3Zm4-3.1-1.1 3.1h11.6l-1.4-3.1H8.2ZM6.9 27a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm11.7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/> '
   const muted = online ? color : '#8090aa'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56"><circle cx="28" cy="28" r="25" fill="#071b4f" fill-opacity=".82" stroke="#fff" stroke-opacity=".92" stroke-width="2.4"/><circle cx="28" cy="28" r="21" fill="${muted}"/><g fill="#fff" transform="translate(15 13) scale(.92)">${glyph}</g><circle cx="42" cy="12" r="4.2" fill="${online ? '#21c88a' : '#aab3c2'}" stroke="#071b4f" stroke-width="2"/></svg>`
+  const selectionRing = selected ? '<circle cx="28" cy="28" r="27" fill="none" stroke="#075cf5" stroke-width="3" stroke-opacity=".92"/><circle cx="28" cy="28" r="30" fill="none" stroke="#075cf5" stroke-width="2" stroke-opacity=".24"/>' : ''
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">${selectionRing}<circle cx="28" cy="28" r="25" fill="#071b4f" fill-opacity=".82" stroke="#fff" stroke-opacity=".92" stroke-width="2.4"/><circle cx="28" cy="28" r="21" fill="${muted}"/><g fill="#fff" transform="translate(15 13) scale(.92)">${glyph}</g><circle cx="42" cy="12" r="4.2" fill="${online ? '#21c88a' : '#aab3c2'}" stroke="#071b4f" stroke-width="2"/></svg>`
   return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`, scaledSize: new maps.Size(56, 56), anchor: new maps.Point(28, 28) }
 }
 

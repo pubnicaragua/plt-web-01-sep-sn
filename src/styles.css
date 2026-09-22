@@ -1016,6 +1016,12 @@ input, select, textarea, button, th, td, .filter-chip, .status-pill, .priority-p
 .tarifas-vehicle-head p { max-width: 760px; margin: 0; color: #697894; font-size: 11.5px; line-height: 1.55; }
 .tarifas-vehicle-rates { margin-top: 14px; }
 .tarifas-vehicle-note { margin-top: 12px; color: #77849b; font-size: 10.5px; line-height: 1.45; }
+.tarifas-rounding-block { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-top: 22px; padding: 16px 18px; border: 1px solid #D8E2F0; border-radius: 13px; background: linear-gradient(105deg, #F8FBFF 0%, #F1F6FC 100%); }
+.tarifas-rounding-block h3 { margin: 4px 0 3px; color: #15244a; font-size: 16px; }
+.tarifas-rounding-block p { margin: 0; color: #697894; font-size: 11px; }
+.tarifas-rounding-field { display: flex; align-items: center; gap: 8px; min-width: 205px; }
+.tarifas-rounding-field .param-input { max-width: 145px; }
+.tarifas-rounding-field small { color: #77849b; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
 .param-cell { min-width: 0; min-height: 126px; padding: 13px 14px; border: 1px solid #DED9E2; border-radius: 11px; background: #FBFAFD; display: flex; flex-direction: column; gap: 8px; }
 .param-cell > span, .param-cell > small { min-width: 0; overflow-wrap: anywhere; }
 .param-cell > span { color: #504b59; font-size: 11.5px; font-weight: 700; line-height: 1.25; }
@@ -1061,6 +1067,7 @@ select.param-input { height: 37px; }
 @media (max-width: 760px) { .calc-grid, .calc-selectors { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .param-grid, .param-grid.compact { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .tarifas-vehicle-head { align-items: stretch; flex-direction: column; gap: 12px; } .tarifas-vehicle-head .secondary-button { align-self: flex-start; } }
+@media (max-width: 700px) { .tarifas-rounding-block { align-items: stretch; flex-direction: column; gap: 12px; } .tarifas-rounding-field { min-width: 0; } }
 @media (max-width: 700px) { .tarifas-panel { padding: 17px 14px 18px; } .tarifas-catalog-panel { padding: 14px; } }
 
 /* === Evidencia de incidencias === */
@@ -1444,7 +1451,279 @@ select { color-scheme: light; }
 .analytics-tooltip strong { color: #172640; font-size: 12px; font-variant-numeric: tabular-nums; }
 .app-shell.sidebar-collapsed .main-area { margin-left: 0; }
 
+/* Ajuste final: todas las barras del mini-gráfico caben dentro de su marco. */
+.dashboard-kpi .mini-chart {
+  box-sizing: border-box;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.dashboard-kpi .mini-chart-bars {
+  align-items: flex-end;
+  height: 42px !important;
+  min-height: 0 !important;
+  gap: 2px !important;
+  overflow: hidden !important;
+  padding-right: 3px !important;
+  padding-left: 3px !important;
+  box-sizing: border-box;
+}
+
+.dashboard-kpi .mini-chart-bars i {
+  min-width: 0 !important;
+  max-height: 100% !important;
+}
+
 @media (max-width: 650px) { .analytics-line { grid-template-columns: 28px minmax(0,1fr); column-gap: 4px; }.analytics-y-scale, .analytics-axis-caption { font-size: 8px; }.map-overlay-stats button { min-height: 26px; padding: 0 7px; font-size: 9px; } }
+
+/* Los mini-gráficos de los KPI nunca deben pintar fuera de su tarjeta. */
+.dashboard-kpi .mini-chart {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dashboard-kpi .mini-chart-bars {
+  align-items: flex-end;
+  height: 42px;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
+  padding-right: 3px;
+  padding-left: 3px;
+  box-sizing: border-box;
+}
+
+.dashboard-kpi .mini-chart-bars i {
+  min-width: 0;
+  max-height: 100%;
+}
+
+/* Dashboard: responsividad basada en el ancho real de cada zona.
+   Esto evita que los KPI y sus vistas de detalle se compriman cuando el
+   navegador comparte espacio con DevTools o con un panel lateral. */
+.dashboard-kpi-top {
+  container: dashboard-kpis / inline-size;
+  min-width: 0;
+}
+
+.dashboard-workspace {
+  container: dashboard-workspace / inline-size;
+  min-width: 0;
+}
+
+.dashboard-map-stage {
+  container: dashboard-stage / inline-size;
+  min-width: 0;
+}
+
+.dashboard-kpi,
+.dashboard-kpi-copy,
+.dashboard-feature-card,
+.dashboard-feature-copy,
+.dashboard-focus-view,
+.dashboard-insight-view,
+.dashboard-focus-head,
+.dashboard-insight-head,
+.insight-summary,
+.insight-fuel-grid,
+.insight-list,
+.analytics-chart {
+  min-width: 0;
+}
+
+.dashboard-kpi {
+  overflow: hidden;
+}
+
+.dashboard-kpi-copy {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.dashboard-kpi-copy small,
+.dashboard-kpi-copy strong,
+.dashboard-kpi-copy em,
+.dashboard-feature-copy small,
+.dashboard-feature-copy strong,
+.dashboard-feature-copy em {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-kpi .mini-chart {
+  flex: 0 1 112px;
+  min-width: 0;
+  max-width: 112px;
+}
+
+.dashboard-kpi .dashboard-kpi-arrow {
+  flex: 0 0 27px;
+}
+
+.dashboard-focus-view,
+.dashboard-insight-view {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dashboard-focus-head > div,
+.dashboard-insight-head > div,
+.insight-summary > div:first-child,
+.insight-section-head > div {
+  min-width: 0;
+}
+
+.dashboard-focus-head h2,
+.dashboard-focus-head p,
+.dashboard-insight-head h2,
+.dashboard-insight-head p,
+.insight-summary span,
+.insight-section-head small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-focus-chart,
+.dashboard-focus-chart .analytics-chart,
+.insight-fuel-grid > .analytics-chart {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.insight-summary {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.insight-summary > button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+@container dashboard-kpis (max-width: 1200px) {
+  .dashboard-kpi-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container dashboard-kpis (max-width: 700px) {
+  .dashboard-kpi-top {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container dashboard-workspace (max-width: 900px) {
+  .dashboard-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-side-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-rail-heading,
+  .dashboard-activity {
+    grid-column: 1 / -1;
+  }
+}
+
+@container dashboard-stage (max-width: 760px) {
+  .dashboard-insight-head,
+  .dashboard-focus-head {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-insight-head > div,
+  .dashboard-focus-head > div {
+    flex: 1 1 260px;
+  }
+
+  .insight-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .insight-summary > button {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .insight-fuel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-focus-breakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container dashboard-stage (max-width: 560px) {
+  .dashboard-map-stage > .dashboard-insight-view,
+  .dashboard-map-stage > .dashboard-focus-view {
+    padding: 16px;
+  }
+
+  .dashboard-insight-head,
+  .dashboard-focus-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .insight-back {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-focus-icon {
+    align-self: flex-start;
+  }
+
+  .dashboard-focus-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-selection {
+    grid-template-columns: 1fr auto;
+  }
+
+  .analytics-selection > span {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Detalle contextual del conductor dentro del mapa de tracking. */
+.tracking-driver-panel { position: absolute; z-index: 9; top: 14px; right: 14px; width: min(318px, calc(100% - 28px)); padding: 14px; border: 1px solid rgba(213, 226, 241, .96); border-radius: 15px; color: #52627a; background: rgba(255, 255, 255, .96); box-shadow: 0 14px 30px rgba(22, 47, 88, .16); backdrop-filter: blur(12px); }
+.tracking-driver-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.tracking-driver-identity { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tracking-driver-avatar { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border: 2px solid #dceafe; border-radius: 12px; color: #fff; background: #1e439f; font-size: 12px; font-weight: 800; }
+.tracking-driver-identity strong, .tracking-driver-identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tracking-driver-identity strong { color: #14223c; font-size: 13px; }
+.tracking-driver-identity small { margin-top: 3px; color: #8795a9; font-size: 10px; }
+.tracking-driver-close { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid #dce5f0; border-radius: 7px; color: #75859b; background: #fff; font-size: 17px; line-height: 1; cursor: pointer; }
+.tracking-driver-close:hover { color: #075cf5; border-color: #9fc3f5; }
+.tracking-driver-state { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding: 7px 8px; border-radius: 8px; background: #f4f8fd; font-size: 11px; font-weight: 800; }
+.tracking-driver-state small { margin-left: auto; color: #8a98aa; font-size: 9.5px; font-weight: 600; }
+.tracking-driver-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #20bd83; box-shadow: 0 0 0 3px rgba(32, 189, 131, .12); }
+.tracking-driver-status-dot.en-viaje, .tracking-driver-status-dot.en-camino { background: #075cf5; box-shadow: 0 0 0 3px rgba(7, 92, 245, .12); }
+.tracking-driver-status-dot.en-entrega { background: #8067dc; box-shadow: 0 0 0 3px rgba(128, 103, 220, .14); }
+.tracking-driver-status-dot.fuera-de-servicio { background: #e45d67; box-shadow: 0 0 0 3px rgba(228, 93, 103, .14); }
+.tracking-driver-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.tracking-driver-grid > div { min-width: 0; padding: 7px 8px; border: 1px solid #e5edf6; border-radius: 8px; background: rgba(250, 252, 255, .86); }
+.tracking-driver-grid span, .tracking-driver-route span { display: block; color: #8b99ab; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
+.tracking-driver-grid strong { display: block; overflow: hidden; margin-top: 3px; color: #233858; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.tracking-driver-route { margin-top: 10px; padding: 8px 9px; border-radius: 9px; background: #edf5ff; }
+.tracking-driver-route strong { display: block; overflow: hidden; margin-top: 3px; color: #1752a5; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.tracking-driver-route b { padding: 0 3px; color: #6d8fca; }
+.tracking-driver-note { display: block; margin-top: 9px; color: #9aa6b7; font-size: 9px; line-height: 1.35; }
+
+@media (max-width: 760px) {
+  .tracking-driver-panel { top: 12px; right: 12px; left: 12px; width: auto; padding: 11px; }
+  .tracking-driver-grid { gap: 6px; }
+  .tracking-driver-grid > div { padding: 6px 7px; }
+  .tracking-cards { top: 206px; left: 12px; max-width: min(250px, calc(100% - 24px)); }
+  .tracking-cards .tracking-card.second { display: none; }
+  .large-map .map-legend.large { right: 12px; bottom: 12px; left: 12px; justify-content: center; max-width: calc(100% - 24px); }
+}
 
 /* Keep the desktop navigation width stable across viewport breakpoints. */
 .app-shell > .sidebar { width: 258px; min-width: 258px; flex: 0 0 258px; }

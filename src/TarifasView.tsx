@@ -36,9 +36,9 @@ const CATEGORIES = [
 const DISTRICTS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 
 const DEFAULT_VEHICLE_RATES: AppSettings['vehicleRates'] = {
-  Moto: { baseFeeCs: 60, farePerKmCs: 6.5 },
-  Vehículo: { baseFeeCs: 80, farePerKmCs: 8.5 },
-  Camión: { baseFeeCs: 130, farePerKmCs: 13.5 },
+  Moto: { baseFeeCs: 60, farePerKmCs: 6.5, includedKm: 4 },
+  Vehículo: { baseFeeCs: 80, farePerKmCs: 8.5, includedKm: 4 },
+  Camión: { baseFeeCs: 130, farePerKmCs: 13.5, includedKm: 4 },
 }
 
 interface TarifasData {
@@ -54,6 +54,7 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
   const [busy, setBusy] = useState('')
   const [originId, setOriginId] = useState('')
   const [destId, setDestId] = useState('')
+  const [calcVehicle, setCalcVehicle] = useState<keyof AppSettings['vehicleRates']>('Vehículo')
   const [result, setResult] = useState<FareResult | null>(null)
   const [search, setSearch] = useState('')
   const [catalogPage, setCatalogPage] = useState(1)
@@ -67,7 +68,7 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
     getTarifas()
       .then((loaded) => {
         setData(loaded)
-        setDraft({ ...loaded.settings, cartographicSource: loaded.settings.cartographicSource === 'OpenStreetMap' ? 'Google Maps' : loaded.settings.cartographicSource })
+        setDraft({ ...loaded.settings, cartographicSource: 'Google Maps' })
         setOriginId(loaded.destinations[0]?.id ?? '')
         setDestId(loaded.destinations[1]?.id ?? '')
       })
@@ -80,29 +81,18 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
 
 
 
-  async function saveParams() {
+  async function saveAll() {
     if (!draft) return
-    setBusy('params')
+    setBusy('all')
     try {
-      const updated = await updateTariffSettings(draft)
+      const updated = await updateTariffSettings({ ...draft, cartographicSource: 'Google Maps' })
+      const updatedSettings = await updateSettings({ vehicleRates })
       setData((current) => (current ? { ...current, settings: updated } : current))
       setDraft(updated)
-      onNotice('Parámetros del catálogo guardados')
+      onSettingsSaved(updatedSettings)
+      onNotice('Cambios de tarifas guardados y disponibles para la app móvil')
     } catch {
-      onNotice('No se pudieron guardar los parámetros')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function saveVehicleRates() {
-    setBusy('vehicle-rates')
-    try {
-      const updated = await updateSettings({ vehicleRates })
-      onSettingsSaved(updated)
-      onNotice('Tarifas por vehículo guardadas y disponibles para la app móvil')
-    } catch {
-      onNotice('No se pudieron guardar las tarifas por vehículo')
+      onNotice('No se pudieron guardar todos los cambios de tarifas')
     } finally {
       setBusy('')
     }
@@ -130,6 +120,7 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
         originLng: origin.longitude,
         destLat: destination.latitude,
         destLng: destination.longitude,
+        transport: calcVehicle,
         originCoverage: origin.inCoverage,
         destCoverage: destination.inCoverage,
       })
@@ -296,11 +287,6 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
                 </select>
                 <small>Estado sugerido antes de usar un destino en producción.</small>
               </div>
-              <div className="param-cell">
-                 <span>Fuente cartográfica principal</span>
-                 <select className="param-input" value={draft.cartographicSource} onChange={(e) => setParam('cartographicSource', e.target.value)}><option>Google Maps</option><option>OpenStreetMap</option></select>
-                 <small>Google Maps es la fuente principal de visualización y cálculo vial de INCOEX.</small>
-              </div>
             </div>
           </section>
 
@@ -309,48 +295,18 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
               <div>
                 <span className="eyebrow">MOTOR TARIFARIO</span>
                 <h2>Parámetros tarifarios</h2>
-                <p>Tarifa base, kilómetros incluidos, recargo, factor vial y redondeo comercial que usa la calculadora.</p>
+                <p>El precio base y los kilómetros incluidos se configuran por vehículo; el redondeo comercial se aplica de forma general.</p>
               </div>
-              <button className="primary-button" onClick={() => void saveParams()} disabled={busy === 'params'}>
-                {busy === 'params' ? 'Guardando…' : 'Guardar parámetros'}
+              <button className="primary-button" onClick={() => void saveAll()} disabled={busy === 'all'}>
+                {busy === 'all' ? 'Guardando…' : 'Guardar cambios'}
               </button>
-            </div>
-            <div className="param-grid compact">
-              <div className="param-cell">
-                <span>Tarifa base</span>
-                <div className="param-input-wrap"><span className="param-currency">C$</span><input type="number" min={0} className="param-input" value={draft.baseFareCs} onChange={(e) => setParam('baseFareCs', Number(e.target.value))} /></div>
-                <small>Precio mínimo del envío.</small>
-              </div>
-              <div className="param-cell">
-                <span>Kilómetros incluidos</span>
-                <div className="param-input-wrap"><input type="number" min={0} step={0.5} className="param-input" value={draft.includedKm} onChange={(e) => setParam('includedKm', Number(e.target.value))} /><span className="param-unit">km</span></div>
-                <small>Distancia estimada cubierta por la tarifa base.</small>
-              </div>
-              <div className="param-cell">
-                <span>Recargo por km adicional</span>
-                <div className="param-input-wrap"><span className="param-currency">C$</span><input type="number" min={0} className="param-input" value={draft.surchargePerKmCs} onChange={(e) => setParam('surchargePerKmCs', Number(e.target.value))} /><span className="param-unit">/km</span></div>
-                <small>Cargo aplicado sobre la distancia que exceda los km incluidos.</small>
-              </div>
-              <div className="param-cell">
-                <span>Factor vial</span>
-                <div className="param-input-wrap"><input type="number" min={1} step={0.05} className="param-input" value={draft.roadFactor} onChange={(e) => setParam('roadFactor', Number(e.target.value))} /></div>
-                <small>Convierte la distancia en línea recta en distancia vial estimada.</small>
-              </div>
-              <div className="param-cell">
-                <span>Redondeo comercial</span>
-                <div className="param-input-wrap"><span className="param-currency">C$</span><input type="number" min={1} className="param-input" value={draft.roundingCs} onChange={(e) => setParam('roundingCs', Number(e.target.value))} /></div>
-                <small>La tarifa final se redondea al múltiplo indicado más cercano.</small>
-              </div>
             </div>
             <div className="tarifas-vehicle-head">
               <div>
                 <span className="eyebrow">TARIFAS POR VEHÍCULO</span>
                 <h3>Valores que usa la operación</h3>
-                <p>Define una tarifa base y un valor por kilómetro para cada tipo de transporte. Estos valores se guardan en la configuración compartida con la app móvil.</p>
+                <p>Define por vehículo la tarifa base, los kilómetros incluidos y el recargo por cada kilómetro adicional. Estos valores se comparten con la app móvil.</p>
               </div>
-              <button className="secondary-button" onClick={() => void saveVehicleRates()} disabled={busy === 'vehicle-rates' || !settings}>
-                {busy === 'vehicle-rates' ? 'Guardando…' : 'Guardar tarifas por vehículo'}
-              </button>
             </div>
             <div className="vehicle-rates tarifas-vehicle-rates">
               {([['Moto', 'moto'], ['Vehículo', 'vehiculo'], ['Camión', 'camion']] as const).map(([vehicle, tone]) => (
@@ -360,14 +316,28 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
                     <strong>{vehicle}</strong>
                     <small>Tarifa base · C$</small>
                     <input aria-label={`Tarifa base para ${vehicle}`} type="number" min={0} step={0.01} value={vehicleRates[vehicle].baseFeeCs} onChange={(event) => setVehicleRate(vehicle, 'baseFeeCs', Number(event.target.value))} disabled={!settings} />
-                    <small>Por kilómetro · C$</small>
+                    <small>Kilómetros incluidos</small>
+                    <input aria-label={`Kilómetros incluidos para ${vehicle}`} type="number" min={0} step={0.5} value={vehicleRates[vehicle].includedKm ?? 4} onChange={(event) => setVehicleRate(vehicle, 'includedKm', Number(event.target.value))} disabled={!settings} />
+                    <small>Recargo por km adicional · C$</small>
                     <input aria-label={`Tarifa por kilómetro para ${vehicle}`} type="number" min={0} step={0.01} value={vehicleRates[vehicle].farePerKmCs} onChange={(event) => setVehicleRate(vehicle, 'farePerKmCs', Number(event.target.value))} disabled={!settings} />
-                    <em>10 km ≈ C$ {(vehicleRates[vehicle].baseFeeCs + vehicleRates[vehicle].farePerKmCs * 10).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
+                    <em>10 km ≈ C$ {(vehicleRates[vehicle].baseFeeCs + Math.max(0, 10 - (vehicleRates[vehicle].includedKm ?? 4)) * vehicleRates[vehicle].farePerKmCs).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</em>
                   </div>
                 </div>
               ))}
             </div>
             <div className="tarifas-vehicle-note">Última actualización compartida: {settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString('es-NI') : '—'} · La tarifa se aplica según el tipo de transporte seleccionado en la operación.</div>
+            <div className="tarifas-rounding-block">
+              <div>
+                <span className="eyebrow">AJUSTE GENERAL</span>
+                <h3>Redondeo comercial</h3>
+                <p>Se aplica al resultado final de todas las tarifas.</p>
+              </div>
+              <div className="tarifas-rounding-field">
+                <span className="param-currency">C$</span>
+                <input aria-label="Redondeo comercial" type="number" min={1} className="param-input" value={draft.roundingCs} onChange={(e) => setParam('roundingCs', Number(e.target.value))} />
+                <small>múltiplo</small>
+              </div>
+            </div>
           </section>
 
         </>
@@ -396,6 +366,12 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
               <span>Dato del destino</span>
               <select value={destId} onChange={(e) => setDestId(e.target.value)}>
                 {data.destinations.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.district}</option>)}
+              </select>
+            </label>
+            <label className="calc-select">
+              <span>Tipo de vehículo</span>
+              <select value={calcVehicle} onChange={(e) => setCalcVehicle(e.target.value as keyof AppSettings['vehicleRates'])}>
+                <option>Moto</option><option>Vehículo</option><option>Camión</option>
               </select>
             </label>
           </div>

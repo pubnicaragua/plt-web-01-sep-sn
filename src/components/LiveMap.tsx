@@ -7,13 +7,15 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character] ?? character))
 }
 
-export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone }: { tracking: TrackingOverview; onNavigate: (section: Section) => void; showDemo?: boolean; demandZone?: { lat: number; lng: number; label: string; count: number } }) {
+export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone, selectedDriverName, onDriverSelect }: { tracking: TrackingOverview; onNavigate: (section: Section) => void; showDemo?: boolean; demandZone?: { lat: number; lng: number; label: string; count: number }; selectedDriverName?: string | null; onDriverSelect?: (driverName: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const objectsRef = useRef<any[]>([])
   const navigateRef = useRef(onNavigate)
+  const selectDriverRef = useRef(onDriverSelect)
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
   navigateRef.current = onNavigate
+  selectDriverRef.current = onDriverSelect
 
   useEffect(() => {
     let cancelled = false
@@ -68,11 +70,15 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone }: 
     for (const position of [...driverMarkers, ...extraMarkers]) {
       const point = { lat: position.latitude, lng: position.longitude }
       const color = googleStatusColor(position.status)
-      const marker = add(new maps.Marker({ position: point, title: `${position.driver} · ${position.status}`, icon: vehicleMarkerIcon(maps, position.vehicle, color, position.online) }))
+      const isSelected = Boolean(selectedDriverName && position.driver.trim().toLowerCase() === selectedDriverName.trim().toLowerCase())
+      const marker = add(new maps.Marker({ position: point, title: `${isSelected ? 'Conductor seleccionado · ' : ''}${position.driver} · ${position.status}`, icon: vehicleMarkerIcon(maps, position.vehicle, color, position.online, isSelected), zIndex: isSelected ? 50 : undefined }))
       const positionLabel = position.hasLivePosition
         ? position.online ? (position.demo ? 'en línea · referencia' : 'GPS en vivo') : `desconectado · ${position.ageSeconds >= 300 ? 'sin señal' : `hace ${position.ageSeconds} s`}`
         : 'última posición registrada · sin GPS en vivo'
-      marker.addListener('click', () => info(point, `<div class="live-popup"><strong class="live-popup-driver">${escapeHtml(position.driver)}</strong><span class="live-popup-plate">${escapeHtml(position.plate || position.vehicle)}</span><span class="live-popup-row"><i style="background:${color}"></i>${escapeHtml(position.status)} · ${positionLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h</span><button type="button" class="live-popup-action" data-go="drivers">Ver conductores</button></div>`))
+      marker.addListener('click', () => {
+        selectDriverRef.current?.(position.driver)
+        info(point, `<div class="live-popup"><strong class="live-popup-driver">${escapeHtml(position.driver)}</strong><span class="live-popup-plate">${escapeHtml(position.plate || position.vehicle)}</span><span class="live-popup-row"><i style="background:${color}"></i>${escapeHtml(position.status)} · ${positionLabel}</span><span class="live-popup-row">velocidad ${Math.round(position.speedKmh)} km/h</span><button type="button" class="live-popup-action" data-go="drivers">Ver conductores</button></div>`)
+      })
       bounds.extend(point)
       hasBounds = true
     }
@@ -97,7 +103,8 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone }: 
       if (cancelled) return
       for (const { trip, origin, destination, path } of routes) {
         if (path.length >= 2) {
-          const route = add(new maps.Polyline({ path, strokeColor: '#075cf5', strokeOpacity: .94, strokeWeight: 5, icons: trip.status === 'Asignado' ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] : undefined }))
+           const isSelected = Boolean(selectedDriverName && trip.driver.trim().toLowerCase() === selectedDriverName.trim().toLowerCase())
+           const route = add(new maps.Polyline({ path, strokeColor: isSelected ? '#075cf5' : '#4f86df', strokeOpacity: isSelected ? .98 : .4, strokeWeight: isSelected ? 7 : 4, zIndex: isSelected ? 20 : 5, icons: trip.status === 'Asignado' ? [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }] : undefined }))
           route.addListener('click', () => info({ lat: (origin.lat + destination.lat) / 2, lng: (origin.lng + destination.lng) / 2 }, `<div class="live-popup"><strong class="live-popup-driver">${escapeHtml(trip.id)}</strong><span>${escapeHtml(trip.origin)} → ${escapeHtml(trip.destination)}</span><span class="live-popup-row">${escapeHtml(trip.client)} · ${escapeHtml(trip.status)}</span><button type="button" class="live-popup-action" data-go="trips">Ver viajes</button></div>`))
         }
         add(new maps.Marker({ position: origin, title: `Recogida · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#21c88a', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } }))
@@ -122,9 +129,12 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone }: 
       add(new maps.Marker({ position: demand, title: `Mayor demanda · ${demandZone.label}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#e9a52b', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }, zIndex: 25 }))
       bounds.extend(demand); hasBounds = true
     }
+    const operationsCenter = { lat: MANAGUA_CENTER.lat, lng: MANAGUA_CENTER.lng }
+    const operationsMarker = add(new maps.Marker({ position: operationsCenter, title: 'Centro de operaciones INCOEX', icon: { path: maps.SymbolPath.CIRCLE, scale: 9, fillColor: '#101f53', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 }, zIndex: 35 }))
+    operationsMarker.addListener('click', () => info(operationsCenter, '<div class="live-popup"><strong class="live-popup-driver">Centro de operaciones INCOEX</strong><span class="live-popup-row"><i style="background:#101f53"></i>Managua · centro operativo</span></div>'))
     void drawRoutes()
     return () => { cancelled = true }
-  }, [tracking, showDemo, demandZone, mapState])
+  }, [tracking, showDemo, demandZone, mapState, selectedDriverName])
 
   return <div className="live-map-container"> <div ref={containerRef} className="google-map-canvas" />{mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}{mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key y la conexión.</small></span></div>}</div>
 }

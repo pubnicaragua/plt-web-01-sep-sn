@@ -127,6 +127,13 @@ export interface Driver {
   notes?: string
   licenseCategories?: string
   bloodType?: string
+  residence?: string
+  emergencyContact1Name?: string
+  emergencyContact1Phone?: string
+  emergencyContact2Name?: string
+  emergencyContact2Phone?: string
+  emergencyContact3Name?: string
+  emergencyContact3Phone?: string
 }
 
 export interface Client {
@@ -415,6 +422,7 @@ export interface Vehicle {
 export interface VehicleRate {
   baseFeeCs: number
   farePerKmCs: number
+  includedKm?: number
 }
 
 export interface AppSettings {

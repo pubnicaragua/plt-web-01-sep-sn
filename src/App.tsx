@@ -27,6 +27,7 @@ import {
   getRoles,
   getSettings,
   getTrackingOverview,
+  getTrackingLive,
   getTrips,
   getUsers,
   getVehicles,
@@ -74,7 +75,7 @@ import { TarifasView } from './TarifasView'
 import { LiveMap } from './components/LiveMap'
 import { DashboardMap } from './components/DashboardMap'
 import { incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, requestRoadRoute, resetGoogleMapsLoader } from './lib/googleMaps'
-import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
+import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingLive, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs, formatFareCs, roundFareCs } from './types'
 
 interface NumInputProps {
@@ -1073,9 +1074,15 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
   const [licenseNo, setLicenseNo] = useState('')
   const [licenseExp, setLicenseExp] = useState('')
   const [docNo, setDocNo] = useState('')
-  const [driverNotes, setDriverNotes] = useState('')
   const [licenseCategories, setLicenseCategories] = useState('')
   const [bloodType, setBloodType] = useState('')
+  const [residence, setResidence] = useState('')
+  const [emergencyContact1Name, setEmergencyContact1Name] = useState('')
+  const [emergencyContact1Phone, setEmergencyContact1Phone] = useState('')
+  const [emergencyContact2Name, setEmergencyContact2Name] = useState('')
+  const [emergencyContact2Phone, setEmergencyContact2Phone] = useState('')
+  const [emergencyContact3Name, setEmergencyContact3Name] = useState('')
+  const [emergencyContact3Phone, setEmergencyContact3Phone] = useState('')
   const [email, setEmail] = useState('')
   const [external, setExternal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -1085,7 +1092,7 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
     setFormError('')
     setSubmitting(true)
     try {
-      const driver = await createDriver({ name: name.trim(), phone: phone.trim(), email: email.trim() || undefined, external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), notes: driverNotes.trim(), licenseCategories: licenseCategories.trim(), bloodType: bloodType.trim() })
+      const driver = await createDriver({ name: name.trim(), phone: phone.trim(), email: email.trim() || undefined, external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), licenseCategories: licenseCategories.trim(), bloodType: bloodType.trim(), residence: residence.trim(), emergencyContact1Name: emergencyContact1Name.trim(), emergencyContact1Phone: emergencyContact1Phone.trim(), emergencyContact2Name: emergencyContact2Name.trim(), emergencyContact2Phone: emergencyContact2Phone.trim(), emergencyContact3Name: emergencyContact3Name.trim(), emergencyContact3Phone: emergencyContact3Phone.trim() })
       onCreated(driver)
       if ((driver as Driver & { existed?: boolean }).existed) onError('Ese conductor ya existía: sus datos se actualizaron, no se duplicó')
     } catch (error) {
@@ -1104,10 +1111,16 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
           <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="conductor@empresa.com.ni" /></label>
           <label>No. Licencia (conducir)<input value={licenseNo} onChange={(event) => setLicenseNo(event.target.value)} placeholder="Ej: LN-0923-4567" /></label>
           <label>Vence licencia<input type="date" value={licenseExp} onChange={(event) => setLicenseExp(event.target.value)} /></label>
-          <label>Cédula / RUC<input value={docNo} onChange={(event) => setDocNo(event.target.value)} placeholder="Ej: 001-010789-0012" /></label>
-          <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} placeholder="Ej: A, B, C" /></label>
-          <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-          <label>Notas del conductor<input value={driverNotes} onChange={(event) => setDriverNotes(event.target.value)} placeholder="Disponibilidad, zonas, permisos…" /></label>
+           <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} placeholder="Ej: 001-010789-0012" /></label>
+           <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} placeholder="Ej: A, B, C" /></label>
+           <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
+           <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} placeholder="Barrio, municipio o dirección" /></label>
+           <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} placeholder="Nombre completo" /></label>
+           <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+           <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} placeholder="Nombre completo" /></label>
+           <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+           <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} placeholder="Nombre completo" /></label>
+           <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
           <label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Proveedor tercerizado (vehículo y conductor de tercero, se marca con 3P)</label>
          </div>
          {formError && <div className="form-error" role="alert"><Icon name="alert" size={14} /><span>{formError}</span></div>}
@@ -1126,7 +1139,13 @@ function DriverEditDialog({ driver, vehicles, onClose, onSaved, onVehicleChanged
   const [docNo, setDocNo] = useState(driver.docNo ?? '')
   const [licenseCategories, setLicenseCategories] = useState(driver.licenseCategories ?? '')
   const [bloodType, setBloodType] = useState(driver.bloodType ?? '')
-  const [notes, setNotes] = useState(driver.notes ?? '')
+  const [residence, setResidence] = useState(driver.residence ?? '')
+  const [emergencyContact1Name, setEmergencyContact1Name] = useState(driver.emergencyContact1Name ?? '')
+  const [emergencyContact1Phone, setEmergencyContact1Phone] = useState(driver.emergencyContact1Phone ?? '')
+  const [emergencyContact2Name, setEmergencyContact2Name] = useState(driver.emergencyContact2Name ?? '')
+  const [emergencyContact2Phone, setEmergencyContact2Phone] = useState(driver.emergencyContact2Phone ?? '')
+  const [emergencyContact3Name, setEmergencyContact3Name] = useState(driver.emergencyContact3Name ?? '')
+  const [emergencyContact3Phone, setEmergencyContact3Phone] = useState(driver.emergencyContact3Phone ?? '')
   const [external, setExternal] = useState(Boolean(driver.external))
   const [vehicleId, setVehicleId] = useState(vehicles.find((vehicle) => vehicle.plate === driver.plate)?.id ?? '')
   const [busy, setBusy] = useState(false)
@@ -1138,7 +1157,7 @@ function DriverEditDialog({ driver, vehicles, onClose, onSaved, onVehicleChanged
       const previous = vehicles.find((vehicle) => vehicle.driver === driver.name && vehicle.id !== selected?.id)
       if (previous) onVehicleChanged(await assignVehicleDriver(previous.id, 'Sin asignar'))
       if (selected) onVehicleChanged(await assignVehicleDriver(selected.id, driver.name))
-      const saved = await updateDriver(driver.id, { name: name.trim(), phone: phone.trim(), email: email.trim(), external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), notes: notes.trim(), licenseCategories: licenseCategories.trim(), bloodType, vehicle: selected?.model ?? 'Sin vehículo asignado', plate: selected?.plate ?? '—' })
+       const saved = await updateDriver(driver.id, { name: name.trim(), phone: phone.trim(), email: email.trim(), external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), licenseCategories: licenseCategories.trim(), bloodType, residence: residence.trim(), emergencyContact1Name: emergencyContact1Name.trim(), emergencyContact1Phone: emergencyContact1Phone.trim(), emergencyContact2Name: emergencyContact2Name.trim(), emergencyContact2Phone: emergencyContact2Phone.trim(), emergencyContact3Name: emergencyContact3Name.trim(), emergencyContact3Phone: emergencyContact3Phone.trim(), vehicle: selected?.model ?? 'Sin vehículo asignado', plate: selected?.plate ?? '—' })
       onSaved(saved)
       onNoticeSafe(onError, 'Conductor actualizado correctamente')
       onClose()
@@ -1159,10 +1178,16 @@ function DriverEditDialog({ driver, vehicles, onClose, onSaved, onVehicleChanged
         <label>Vehículo asignado<select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}><option value="">Sin vehículo asignado</option>{vehicles.map((vehicle) => <option value={vehicle.id} disabled={vehicle.driver !== 'Sin asignar' && vehicle.driver !== driver.name} key={vehicle.id}>{vehicle.plate} · {vehicle.model}{vehicle.driver !== 'Sin asignar' && vehicle.driver !== driver.name ? ' · en uso' : ''}</option>)}</select></label>
         <label>No. licencia<input value={licenseNo} onChange={(event) => setLicenseNo(event.target.value)} /></label>
         <label>Vence licencia<input type="date" value={licenseExp} onChange={(event) => setLicenseExp(event.target.value)} /></label>
-        <label>Cédula / RUC<input value={docNo} onChange={(event) => setDocNo(event.target.value)} /></label>
-        <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} /></label>
-        <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-        <label>Notas<input value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+         <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} /></label>
+         <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} /></label>
+         <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
+         <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} /></label>
+         <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} /></label>
+         <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} /></label>
+         <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} /></label>
+         <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} /></label>
+         <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} /></label>
+         <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} /></label>
         <label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Proveedor tercerizado (3P)</label>
       </div>
       <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</button></div>
@@ -1295,7 +1320,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
       ? settings?.scheduledSurchargePct ?? 0
       : 0
   const estimatedCost = selectedRate
-    ? roundFareCs((selectedRate.baseFeeCs + distanceKm * selectedRate.farePerKmCs + TRIP_SERVICE_FEE_CS) * (1 + surchargePct / 100), settings?.fareRoundingCs ?? 5)
+    ? roundFareCs((selectedRate.baseFeeCs + Math.max(0, distanceKm - (selectedRate.includedKm ?? 4)) * selectedRate.farePerKmCs + TRIP_SERVICE_FEE_CS) * (1 + surchargePct / 100), settings?.fareRoundingCs ?? 5)
     : 0
   const estimatedUsd = settings ? csToUsd(estimatedCost, settings.dollarRate) : 0
 
@@ -1361,7 +1386,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
                     const icon = vehicle === 'Moto' ? 'moto' : vehicle === 'Camión' ? 'truck' : 'car'
                     return <button key={vehicle} type="button" role="radio" aria-checked={selected} className={`vehicle-choice-card ${selected ? 'selected' : ''}`} onClick={() => setTransport(vehicle)}>
                       <span className="vehicle-choice-icon"><Icon name={icon} size={21} /></span>
-                      <span className="vehicle-choice-copy"><strong>{vehicle}</strong><small>{rate ? `${formatCs(rate.baseFeeCs)} base · ${formatCs(rate.farePerKmCs)}/km` : 'Tarifa según configuración'}</small></span>
+                      <span className="vehicle-choice-copy"><strong>{vehicle}</strong><small>{rate ? `${formatCs(rate.baseFeeCs)} base · ${rate.includedKm ?? 4} km incluidos · ${formatCs(rate.farePerKmCs)}/km adicional` : 'Tarifa según configuración'}</small></span>
                       <span className="vehicle-choice-check" aria-hidden="true">{selected ? '✓' : ''}</span>
                     </button>
                   })}
@@ -1411,7 +1436,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
               <div className="confirm-block"><span className="eyebrow">CLIENTE Y SERVICIO</span><h3>{client}</h3><p>{serviceType} · {transport}{contactName ? ` · Contacto: ${contactName}` : ''}{contactPhone ? ` · ${contactPhone}` : ''} · {packages} paquete(s){fragile ? ' · Frágil' : ''}</p>{description && <p className="confirm-note">{description}</p>}</div>
               <div className="confirm-block"><span className="eyebrow">RUTA EN EL MAPA</span><h3>{origin}</h3><p className="route-arrow">↓</p><h3>{destination}</h3><p>{distanceKm.toFixed(2)} km en línea recta sobre Managua{(originRefs || destinationRefs) ? ` · Ref. recogida: ${originRefs || '—'} · Ref. entrega: ${destinationRefs || '—'}` : ''}</p></div>
               <div className="confirm-block"><span className="eyebrow">DESTINATARIO</span><p>{recipientName || 'Sin destinatario registrado'}{recipientPhone ? ` · ${recipientPhone}` : ''}</p></div>
-              <div className="fare-box"><span>Tarifa estimada · {transport}</span><strong>{selectedRate ? formatFareCs(estimatedCost, settings?.fareRoundingCs ?? 5) : '—'}</strong><small>{selectedRate ? `Base ${formatCs(selectedRate.baseFeeCs)} + ${distanceKm.toFixed(2)} km × ${formatCs(selectedRate.farePerKmCs)} + ${formatCs(TRIP_SERVICE_FEE_CS)} de gestión${surchargePct ? ` · recargo ${surchargePct}%` : ''}` : 'Selecciona un vehículo para calcular la tarifa'} · ≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''}</small></div>
+              <div className="fare-box"><span>Tarifa estimada · {transport}</span><strong>{selectedRate ? formatFareCs(estimatedCost, settings?.fareRoundingCs ?? 5) : '—'}</strong><small>{selectedRate ? `Base ${formatCs(selectedRate.baseFeeCs)} + ${Math.max(0, distanceKm - (selectedRate.includedKm ?? 4)).toFixed(2)} km adicionales × ${formatCs(selectedRate.farePerKmCs)} + ${formatCs(TRIP_SERVICE_FEE_CS)} de gestión${surchargePct ? ` · recargo ${surchargePct}%` : ''}` : 'Selecciona un vehículo para calcular la tarifa'} · ≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''}</small></div>
             </div>
           )}
         </div>
@@ -2041,12 +2066,15 @@ function DriversView({ drivers, vehicles, onNavigate, onNotice, onDeleted, onDri
             <div className="trip-detail-field"><span>Placa</span><strong>{profileDriver.plate}</strong></div>
             <div className="trip-detail-field"><span>No. licencia</span><strong>{profileDriver.licenseNo || '—'}</strong></div>
             <div className="trip-detail-field"><span>Vence licencia</span><strong>{profileDriver.licenseExp || '—'}</strong></div>
-            <div className="trip-detail-field"><span>Cédula / RUC</span><strong>{profileDriver.docNo || '—'}</strong></div>
-            <div className="trip-detail-field"><span>Categorías autorizadas</span><strong>{profileDriver.licenseCategories || '—'}</strong></div>
-            <div className="trip-detail-field"><span>Tipo de sangre</span><strong>{profileDriver.bloodType || '—'}</strong></div>
-            <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
-            {profileDriver.notes && <div className="trip-detail-field full"><span>Notas</span><strong>{profileDriver.notes}</strong></div>}
-            <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
+             <div className="trip-detail-field"><span>Cédula</span><strong>{profileDriver.docNo || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Categorías autorizadas</span><strong>{profileDriver.licenseCategories || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Tipo de sangre</span><strong>{profileDriver.bloodType || '—'}</strong></div>
+             <div className="trip-detail-field full"><span>Lugar de residencia</span><strong>{profileDriver.residence || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Contacto de emergencia 1</span><strong>{[profileDriver.emergencyContact1Name, profileDriver.emergencyContact1Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Contacto de emergencia 2</span><strong>{[profileDriver.emergencyContact2Name, profileDriver.emergencyContact2Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Contacto de emergencia 3</span><strong>{[profileDriver.emergencyContact3Name, profileDriver.emergencyContact3Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+             <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
+             <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
             <div className="trip-detail-field"><span>Cobertura</span><strong>{profileDriver.external ? 'Proveedor tercerizado (3P)' : 'Flota propia'}</strong></div>
           </div>
           <div className="trip-detail-grid compact margin-strip">
@@ -3206,6 +3234,8 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
   const [refreshing, setRefreshing] = useState(false)
   const [hideDemo, setHideDemo] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [selectedDriverName, setSelectedDriverName] = useState<string | null>(null)
+  const [selectedTrackingLive, setSelectedTrackingLive] = useState<TrackingLive | null>(null)
   const mapShellRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const timer = window.setInterval(() => { setRefreshing(true); window.setTimeout(() => setRefreshing(false), 600) }, 8000)
@@ -3220,6 +3250,21 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
     document.addEventListener('fullscreenchange', handleFullscreen)
     return () => document.removeEventListener('fullscreenchange', handleFullscreen)
   }, [])
+  useEffect(() => {
+    let cancelled = false
+    const driverName = selectedDriverName?.trim().toLowerCase()
+    const trip = driverName ? tracking?.trips.find((item) => item.driver.trim().toLowerCase() === driverName && ['Asignado', 'En camino', 'En entrega'].includes(item.status)) : undefined
+    if (!trip) {
+      setSelectedTrackingLive(null)
+      return () => { cancelled = true }
+    }
+    void getTrackingLive(trip.id).then((next) => {
+      if (!cancelled) setSelectedTrackingLive(next)
+    }).catch(() => {
+      if (!cancelled) setSelectedTrackingLive(null)
+    })
+    return () => { cancelled = true }
+  }, [tracking, selectedDriverName])
   async function toggleFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen()
     else await mapShellRef.current?.requestFullscreen()
@@ -3231,12 +3276,21 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
   const demandZone = Object.entries(demandCounts).sort((a, b) => b[1] - a[1])[0]
   const demandTrip = demandZone ? activeTrips.find((trip) => trip.origin === demandZone[0] && Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng)) : undefined
   const demandPoint = demandTrip && demandZone ? { lat: demandTrip.originLat as number, lng: demandTrip.originLng as number, label: demandZone[0], count: demandZone[1] } : undefined
+  const selectedPosition = selectedDriverName ? (tracking.live ?? []).find((position) => position.driver.trim().toLowerCase() === selectedDriverName.trim().toLowerCase()) : undefined
+  const selectedDriver = selectedDriverName ? tracking.drivers.find((driver) => driver.name.trim().toLowerCase() === selectedDriverName.trim().toLowerCase()) : undefined
+  const selectedTrip = selectedDriverName ? activeTrips.find((trip) => trip.driver.trim().toLowerCase() === selectedDriverName.trim().toLowerCase()) : undefined
+  const selectedStatus = selectedPosition?.status ?? selectedDriver?.status ?? 'Fuera de servicio'
+  const selectedEtaSeconds = selectedTrackingLive?.routeDurationSeconds ?? 0
+  const selectedEta = selectedEtaSeconds > 0 ? `${Math.max(1, Math.round(selectedEtaSeconds / 60))} min` : 'No disponible'
+  const selectedRouteKm = selectedTrip?.distanceKm ?? selectedTrackingLive?.routeDistanceKm
+  const selectedAssignedAt = (selectedTrip as (Trip & { assignedAt?: string }) | undefined)?.assignedAt
+  const selectedAssignmentTime = selectedAssignedAt ? new Date(selectedAssignedAt).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : 'No registrada'
   const demoCount = (tracking.live ?? []).filter((position) => position.demo).length
   const visibleLive = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo)
   const realCount = visibleLive.filter((position) => position.online && !position.demo).length
   const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
   const liveList = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo).slice(0, 8)
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES RECIBIDAS</span><h2>Seguimiento operativo</h2><p className="panel-sub">El mapa combina posiciones de flota registradas con GPS en vivo; las referencias de demostración se ocultan por defecto.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {realCount} conductores con GPS real</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas activas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span>{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? `Mostrar referencias (${demoCount})` : 'Ocultar referencias'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} showDemo={!hideDemo} demandZone={demandPoint} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{withRoute[0]?.id ?? 'Sin viaje activo'}</strong><span>{withRoute[0]?.driver ?? 'Sin asignar'} · {withRoute[0]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[0]?.origin ?? '—'} → {withRoute[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{withRoute[1]?.id ?? 'Sin segundo viaje'}</strong><span>{withRoute[1]?.driver ?? 'Sin asignar'} · {withRoute[1]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[1]?.origin ?? '—'} → {withRoute[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta activa</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.length === 0 && <div className="empty-column">No hay posiciones GPS reales recibidas todavía.</div>}{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b><span className="financed-badge cash">GPS real</span><small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES RECIBIDAS</span><h2>Seguimiento operativo</h2><p className="panel-sub">El mapa combina posiciones de flota registradas con GPS en vivo; las referencias de demostración se ocultan por defecto.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {realCount} conductores con GPS real</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas activas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span>{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? `Mostrar referencias (${demoCount})` : 'Ocultar referencias'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} showDemo={!hideDemo} demandZone={demandPoint} selectedDriverName={selectedDriverName} onDriverSelect={(name) => setSelectedDriverName(name)} />{selectedDriverName && <aside className="tracking-driver-panel" aria-live="polite"><div className="tracking-driver-panel-head"><div className="tracking-driver-identity"><span className="tracking-driver-avatar">{initials(selectedDriverName)}</span><div><strong>{selectedDriverName}</strong><small>{selectedDriver?.vehicle ?? selectedPosition?.vehicle ?? 'Vehículo no registrado'} · {selectedDriver?.plate ?? selectedPosition?.plate ?? 'Placa pendiente'}</small></div></div><button type="button" className="tracking-driver-close" onClick={() => setSelectedDriverName(null)} aria-label="Cerrar detalle del conductor">×</button></div><div className="tracking-driver-state"><i className={`tracking-driver-status-dot ${statusClass(selectedStatus)}`} /><span>{selectedStatus}</span><small>{selectedPosition?.online ? 'GPS en línea' : 'Sin GPS en vivo'}</small></div><div className="tracking-driver-grid"><div><span>Pedido actual</span><strong>{selectedTrip?.id ?? 'Sin viaje activo'}</strong></div><div><span>Empresa solicitante</span><strong>{selectedTrip?.client ?? '—'}</strong></div><div><span>Asignación</span><strong>{selectedAssignmentTime}</strong></div><div><span>Entrega estimada</span><strong>{selectedEta}</strong></div><div><span>Km del servicio</span><strong>{selectedRouteKm !== undefined ? `${selectedRouteKm.toFixed(1)} km` : '—'}</strong></div><div><span>Velocidad</span><strong>{selectedPosition?.speedKmh !== undefined ? `${Math.round(selectedPosition.speedKmh)} km/h` : '—'}</strong></div></div>{selectedTrip && <div className="tracking-driver-route"><span>Ruta actual</span><strong>{selectedTrip.origin} <b>→</b> {selectedTrip.destination}</strong></div>}<small className="tracking-driver-note">La foto y la hora de asignación se mostrarán cuando esos datos estén disponibles en la API.</small></aside>}<div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{withRoute[0]?.id ?? 'Sin viaje activo'}</strong><span>{withRoute[0]?.driver ?? 'Sin asignar'} · {withRoute[0]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[0]?.origin ?? '—'} → {withRoute[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{withRoute[1]?.id ?? 'Sin segundo viaje'}</strong><span>{withRoute[1]?.driver ?? 'Sin asignar'} · {withRoute[1]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[1]?.origin ?? '—'} → {withRoute[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta activa</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.length === 0 && <div className="empty-column">No hay posiciones GPS reales recibidas todavía.</div>}{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b><span className="financed-badge cash">GPS real</span><small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {
@@ -3906,9 +3960,9 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
         baseFeeCs: Number(baseFee),
         farePerKmCs: Number(fareKm),
         vehicleRates: {
-          Moto: { baseFeeCs: Number(motoBase), farePerKmCs: Number(motoKm) },
-          'Vehículo': { baseFeeCs: Number(vehiculoBase), farePerKmCs: Number(vehiculoKm) },
-          'Camión': { baseFeeCs: Number(camionBase), farePerKmCs: Number(camionKm) },
+          Moto: { ...(settings?.vehicleRates?.Moto ?? { includedKm: 4 }), baseFeeCs: Number(motoBase), farePerKmCs: Number(motoKm) },
+          'Vehículo': { ...(settings?.vehicleRates?.Vehículo ?? { includedKm: 4 }), baseFeeCs: Number(vehiculoBase), farePerKmCs: Number(vehiculoKm) },
+          'Camión': { ...(settings?.vehicleRates?.Camión ?? { includedKm: 4 }), baseFeeCs: Number(camionBase), farePerKmCs: Number(camionKm) },
         },
         prioritySurchargePct: Number(prioritario),
         scheduledSurchargePct: Number(programado),
