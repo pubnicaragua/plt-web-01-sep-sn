@@ -57,7 +57,6 @@ import {
   getClientProfile,
   getTarifas,
   updateTariffSettings,
-  updateTariffDistrict,
   createTariffDestination,
   updateTariffDestination,
   deleteTariffDestination,
@@ -76,7 +75,7 @@ import { LiveMap } from './components/LiveMap'
 import { DashboardMap } from './components/DashboardMap'
 import { incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, requestRoadRoute, resetGoogleMapsLoader } from './lib/googleMaps'
 import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
-import { csToUsd, formatCs } from './types'
+import { csToUsd, formatCs, formatFareCs, roundFareCs } from './types'
 
 interface NumInputProps {
   value: number
@@ -441,6 +440,37 @@ function App() {
     return () => window.clearInterval(timer)
   }, [authed, section, dashboardPeriod, dashboardRangeStart, dashboardRangeEnd])
 
+  useEffect(() => {
+    if (!authed || section === 'tarifas' || section === 'settings') return
+    const refreshOperationalData = async () => {
+      try {
+        const [nextSummary, nextTrips, nextDrivers, nextClients, nextIncidents, nextHistory, nextTracking, nextSettings] = await Promise.all([
+          getDashboardSummary(),
+          getTrips(),
+          getDrivers(),
+          getClients(),
+          getIncidents(),
+          getHistory(),
+          getTrackingOverview(),
+          getSettings(),
+        ])
+        setSummary(nextSummary)
+        setTrips(nextTrips)
+        setDrivers(nextDrivers)
+        setClients(nextClients)
+        setIncidents(nextIncidents)
+        setHistory(nextHistory)
+        setTracking(nextTracking)
+        setSettings(nextSettings)
+        setConnection('connected')
+      } catch {
+        // Conserva el último dato válido; el siguiente ciclo intentará de nuevo.
+      }
+    }
+    const timer = window.setInterval(() => { void refreshOperationalData() }, 15000)
+    return () => window.clearInterval(timer)
+  }, [authed, section])
+
   function logout() {
     sessionStorage.removeItem('incoex-auth')
     sessionStorage.removeItem('incoex-user')
@@ -535,7 +565,7 @@ function App() {
                     {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onDriverChanged={(updated) => setDrivers((current) => current.map((item) => item.id === updated.id ? updated : item))} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
           {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
           {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
-          {section === 'incidents' && <IncidentsView incidents={incidents} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
+          {section === 'incidents' && <IncidentsView incidents={incidents} trips={trips} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
           {section === 'tarifas' && <TarifasView settings={settings} onSettingsSaved={setSettings} onNotice={setNotice} />}
           {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
           {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
@@ -630,7 +660,10 @@ function normalizeDashboardTrend(values: number[], size = 7) {
 function DashboardMiniChart({ values, kind = 'line', value = 0, label = 'Tendencia del indicador' }: { values: number[]; kind?: DashboardChartKind; value?: number; label?: string }) {
   const points = normalizeDashboardTrend(values)
   const max = Math.max(...points, 1)
-  if (kind === 'progress') return <span className="mini-chart mini-chart-progress" aria-label={`${label}: ${Math.round(value)}%`}><i><b style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></i><em>{Math.round(value)}%</em></span>
+  if (kind === 'progress') {
+    const progress = Math.max(0, Math.min(100, value))
+    return <span className="mini-chart mini-chart-progress mini-chart-target-ring" aria-label={`${label}: ${Math.round(progress)}%`}><i style={{ background: `conic-gradient(#0C1C53 ${progress}%, #b9c7da 0)` }}><b aria-hidden="true" /></i><span className="target-donut-legend"><small><i className="target-donut-dot complete" />Avance <b>{Math.round(progress)}%</b></small><small><i className="target-donut-dot remaining" />Restante <b>{Math.round(100 - progress)}%</b></small></span></span>
+  }
   if (kind === 'bars') return <span className="mini-chart mini-chart-bars" aria-label={label}>{points.map((point, index) => <i key={`${point}-${index}`} title={`${point}`} style={{ height: `${Math.max(12, (point / max) * 100)}%` }} />)}</span>
   const min = Math.min(...points)
   const spread = Math.max(...points) - min || 1
@@ -639,7 +672,11 @@ function DashboardMiniChart({ values, kind = 'line', value = 0, label = 'Tendenc
   const lastPoint = polyline.split(' ').at(-1) ?? firstPoint
   const [firstX] = firstPoint.split(',')
   const [lastX] = lastPoint.split(',')
-  return <span className="mini-chart mini-chart-line" aria-label={label}><svg viewBox="0 0 76 28" preserveAspectRatio="none"><path className="mini-chart-area" d={`M ${firstPoint} L ${polyline.replace(/ /g, ' L ')} L ${lastX},26 L ${firstX},26 Z`} /><polyline points={polyline} /><circle cx={lastX} cy={lastPoint.split(',')[1]} r="2.4" /></svg></span>
+  const direction = points[points.length - 1] > points[0] ? 'up' : points[points.length - 1] < points[0] ? 'down' : 'flat'
+  return <span className="mini-chart mini-chart-line" aria-label={label}>
+    <span className="mini-chart-caption"><span>Últimos 7 días</span><b className={direction}>{direction === 'up' ? '↗' : direction === 'down' ? '↘' : '→'}</b></span>
+    <svg viewBox="0 0 76 28" preserveAspectRatio="none"><path className="mini-chart-area" d={`M ${firstPoint} L ${polyline.replace(/ /g, ' L ')} L ${lastX},26 L ${firstX},26 Z`} /><polyline points={polyline} /><circle cx={lastX} cy={lastPoint.split(',')[1]} r="2.4" /></svg>
+  </span>
 }
 
 interface DashboardSeriesPoint { label: string; value: number }
@@ -748,9 +785,9 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
   const leasingVehicles = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').length
   const averageLeasing = leasingVehicles > 0 ? leasing / leasingVehicles : 0
   const cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; trend: number[]; chart: DashboardChartKind; chartValue?: number; section?: Section }> = [
-    { id: 'target', label: 'Meta total de viajes', value: monthlyTripTarget.toLocaleString('es-NI'), detail: monthlyTripTarget > 0 ? `${monthlyCompletedTrips.toLocaleString('es-NI')} completados · ${targetProgress}% de meta mensual` : 'Configura la meta mensual por vehículo', icon: 'trendingUp', tone: 'blue', trend: completedTripTrend, chart: 'line', chartValue: targetProgress, section: 'trips' },
+    { id: 'target', label: 'Meta total de viajes', value: monthlyTripTarget.toLocaleString('es-NI'), detail: monthlyTripTarget > 0 ? `${monthlyCompletedTrips.toLocaleString('es-NI')} completados · ${targetProgress}% de meta mensual` : 'Configura la meta mensual por vehículo', icon: 'trendingUp', tone: 'blue', trend: completedTripTrend, chart: 'progress', chartValue: targetProgress, section: 'trips' },
     { id: 'income', label: 'Total de ingresos', value: formatCs(selectedPeriod?.incomeCs ?? 0), detail: `${periodName} · ${selectedPeriod?.trips ?? 0} viajes · ${formatCs(selectedPeriod?.avgTripCs ?? 0)} promedio`, icon: 'wallet', tone: 'cyan', trend: incomeTrend, chart: 'line', section: 'reports' },
-    { id: 'pending', label: 'Solicitudes pendientes de viaje', value: summary.pendingTrips.toLocaleString('es-NI'), detail: `${summary.availableDrivers.toLocaleString('es-NI')} disponibles · ${pendingPressure}% de capacidad usada`, icon: 'clock', tone: 'slate', trend: pendingTripTrend, chart: 'line', chartValue: pendingPressure, section: 'requests' },
+    { id: 'pending', label: 'Solicitudes pendientes de viaje', value: summary.pendingTrips.toLocaleString('es-NI'), detail: `${summary.availableDrivers.toLocaleString('es-NI')} disponibles · ${pendingPressure}% de capacidad usada`, icon: 'clock', tone: 'slate', trend: pendingTripTrend, chart: 'bars', chartValue: pendingPressure, section: 'requests' },
     { id: 'incidents', label: 'Incidencias reportadas', value: incidents.length.toLocaleString('es-NI'), detail: `${summary.openIncidents} activas · ${resolvedIncidents} resueltas · ${activeIncidentRate}% abiertas`, icon: 'incidents', tone: 'red', trend: incidentTrend, chart: 'bars', section: 'incidents' },
     { id: 'fuel', label: 'Combustible', value: formatCs(selectedPeriod?.fuelCs ?? 0), detail: `${periodName} · ${formatCs(finance?.fleet.avgFuelPerKmCs ?? 0)}/km · ${selectedPeriod?.km?.toLocaleString('es-NI') ?? 0} km`, icon: 'fuel', tone: 'cyan', trend: fuelTrend, chart: 'line', section: 'vehicles' },
     { id: 'depreciation', label: 'Depreciación', value: formatCs(depreciation), detail: `${depreciationVehicles} vehículos · ${formatCs(averageDepreciation)} promedio mensual`, icon: 'trendingUp', tone: 'violet', trend: depreciationTrend, chart: 'bars', section: 'vehicles' },
@@ -839,7 +876,7 @@ function DashboardFeatureView({ feature, period, periodName, finance, incidents,
 }
 
 function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string; trend: number[]; chart: DashboardChartKind; chartValue?: number }; selected: boolean; compact?: boolean; onClick: () => void }) {
-  return <button className={`dashboard-kpi ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick}><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><DashboardMiniChart values={card.trend} kind={card.chart} value={card.chartValue} label={`${card.label}: ${card.detail}`} /><span className="dashboard-kpi-arrow">↗</span></button>
+  return <button className={`dashboard-kpi kpi-${card.id} ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick} type="button"><span className="dashboard-kpi-icon"><Icon name={card.icon} size={16} /></span><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><DashboardMiniChart values={card.trend} kind={card.chart} value={card.chartValue} label={`${card.label}: ${card.detail}`} /><span className="dashboard-kpi-arrow">↗</span></button>
 }
 
 function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicles, maintenance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; trips: Trip[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
@@ -1217,6 +1254,8 @@ function PlaceInput({ value, onChange, onPlace, placeholder, required }: { value
 }
 
 const TRIP_STEPS = ['Cliente y servicio', 'Ruta en el mapa', 'Destinatario y carga', 'Confirmar']
+const TRIP_TRANSPORTS: NonNullable<Trip['transport']>[] = ['Moto', 'Vehículo', 'Camión']
+const TRIP_SERVICE_FEE_CS = 15
 
 function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: AppSettings | null; onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
   const [step, setStep] = useState(0)
@@ -1224,6 +1263,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [serviceType, setServiceType] = useState<Trip['serviceType']>('Urbano')
+  const [transport, setTransport] = useState<NonNullable<Trip['transport']> | ''>('')
   const [packages, setPackages] = useState(1)
   const [description, setDescription] = useState('')
   const [fragile, setFragile] = useState(false)
@@ -1248,23 +1288,34 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
   }
 
   const distanceKm = useMemo(() => (originPoint && destinationPoint ? haversineKm(originPoint, destinationPoint) : 0), [originPoint, destinationPoint])
-  const estimatedCost = settings ? Number((settings.baseFeeCs + distanceKm * settings.farePerKmCs).toFixed(2)) : 0
+  const selectedRate = transport && settings ? settings.vehicleRates[transport] : undefined
+  const surchargePct = serviceType === 'Express'
+    ? settings?.prioritySurchargePct ?? 25
+    : serviceType === 'Programado'
+      ? settings?.scheduledSurchargePct ?? 0
+      : 0
+  const estimatedCost = selectedRate
+    ? roundFareCs((selectedRate.baseFeeCs + distanceKm * selectedRate.farePerKmCs + TRIP_SERVICE_FEE_CS) * (1 + surchargePct / 100), settings?.fareRoundingCs ?? 5)
+    : 0
   const estimatedUsd = settings ? csToUsd(estimatedCost, settings.dollarRate) : 0
 
   const canNext = step === 0
-    ? client.trim() !== ''
+    ? client.trim() !== '' && contactName.trim() !== '' && contactPhone.trim() !== '' && transport !== '' && packages >= 1
     : step === 1
       ? origin.trim() !== '' && destination.trim() !== '' && originPoint !== null && destinationPoint !== null
-      : true
+      : step === 2
+        ? recipientName.trim() !== '' && recipientPhone.trim() !== ''
+        : true
 
   async function submit() {
     setSubmitting(true)
     try {
       const trip = await createTrip({
-        client,
-        contactName,
-        contactPhone,
+        client: client.trim(),
+        contactName: contactName.trim(),
+        contactPhone: contactPhone.trim(),
         serviceType,
+        transport: transport as NonNullable<Trip['transport']>,
         packages,
         description,
         fragile,
@@ -1275,10 +1326,10 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
         destinationLat: destinationPoint?.lat,
         destinationLng: destinationPoint?.lng,
         distanceKm: Number(distanceKm.toFixed(2)),
-        recipientName,
-        recipientPhone,
-        originRefs,
-        destinationRefs,
+        recipientName: recipientName.trim(),
+        recipientPhone: recipientPhone.trim(),
+        originRefs: originRefs.trim() || undefined,
+        destinationRefs: destinationRefs.trim() || undefined,
       })
       onCreated(trip)
     } catch {
@@ -1290,17 +1341,32 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
 
   return (
     <div className="modal-backdrop wizard-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <form className="modal-card wizard-card" onSubmit={(event) => { event.preventDefault(); if (step < 3) setStep(step + 1); else void submit() }}>
+      <form className="modal-card wizard-card" onSubmit={(event) => { event.preventDefault(); if (!canNext) return; if (step < 3) setStep(step + 1); else void submit() }}>
         <div className="modal-header"><div><span className="eyebrow">Nueva solicitud · API</span><h2>Crear viaje</h2><p>Proceso completo: cliente, ruta sobre el mapa y tarifa estimada en córdobas.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="wizard-steps">{TRIP_STEPS.map((label, index) => <div className={`wizard-step ${index === step ? 'active' : ''} ${index < step ? 'done' : ''}`} key={label}><span>{index < step ? '✓' : index + 1}</span>{label}</div>)}</div>
         <div className="wizard-body">
           {step === 0 && (
             <div className="form-grid">
               <label className="full-field">Cliente *<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre o empresa" /></label>
-              <label>Contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Quién solicita" /></label>
-              <label>Teléfono de contacto<input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
-              <label>Tipo de servicio<select value={serviceType} onChange={(event) => setServiceType(event.target.value as Trip['serviceType'])}><option>Urbano</option><option>Express</option><option>Programado</option></select></label>
-              <label>Paquetes<NumInput required min={1} value={packages} onChange={(next) => setPackages(Math.max(1, next))} /></label>
+              <label>Contacto *<input required value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Quién solicita" /></label>
+              <label>Teléfono de contacto *<input required type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+              <label>Tipo de servicio *<select required value={serviceType} onChange={(event) => setServiceType(event.target.value as Trip['serviceType'])}><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></label>
+              <label>Paquetes *<NumInput required min={1} value={packages} onChange={(next) => setPackages(Math.max(1, next))} /></label>
+              <div className="full-field vehicle-picker-field">
+                <div className="vehicle-picker-heading"><span>Selecciona el vehículo *</span><small>La tarifa se ajusta al tipo de transporte.</small></div>
+                <div className="vehicle-picker-options" role="radiogroup" aria-label="Tipo de vehículo">
+                  {TRIP_TRANSPORTS.map((vehicle) => {
+                    const rate = settings?.vehicleRates[vehicle]
+                    const selected = transport === vehicle
+                    const icon = vehicle === 'Moto' ? 'moto' : vehicle === 'Camión' ? 'truck' : 'car'
+                    return <button key={vehicle} type="button" role="radio" aria-checked={selected} className={`vehicle-choice-card ${selected ? 'selected' : ''}`} onClick={() => setTransport(vehicle)}>
+                      <span className="vehicle-choice-icon"><Icon name={icon} size={21} /></span>
+                      <span className="vehicle-choice-copy"><strong>{vehicle}</strong><small>{rate ? `${formatCs(rate.baseFeeCs)} base · ${formatCs(rate.farePerKmCs)}/km` : 'Tarifa según configuración'}</small></span>
+                      <span className="vehicle-choice-check" aria-hidden="true">{selected ? '✓' : ''}</span>
+                    </button>
+                  })}
+                </div>
+              </div>
               <label className="full-field check-field"><input type="checkbox" checked={fragile} onChange={(event) => setFragile(event.target.checked)} /> Carga frágil (manejo cuidadoso)</label>
               <label className="full-field">Descripción<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Características o instrucciones de la carga" rows={3} /></label>
             </div>
@@ -1308,10 +1374,10 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
           {step === 1 && (
             <div className="route-step">
               <div className="form-grid route-fields">
-                <label>Recogida<PlaceInput value={origin} onChange={setOrigin} onPlace={(place) => placeOnMap(place, 'origin')} placeholder="Escribe una dirección o usa el mapa" required /></label>
-                <label>Destino<PlaceInput value={destination} onChange={setDestination} onPlace={(place) => placeOnMap(place, 'destination')} placeholder="Escribe una dirección o usa el mapa" required /></label>
-                <label className="full-field">Referencia de la recogida<input value={originRefs} onChange={(event) => setOriginRefs(event.target.value)} placeholder="Ej: portón azul después del semáforo, frente a la estación" /></label>
-                <label className="full-field">Referencia de la entrega<input value={destinationRefs} onChange={(event) => setDestinationRefs(event.target.value)} placeholder="Ej: recepción del tercer nivel, costado del edificio" /></label>
+                <label>Recogida *<PlaceInput value={origin} onChange={setOrigin} onPlace={(place) => placeOnMap(place, 'origin')} placeholder="Escribe una dirección o usa el mapa" required /></label>
+                <label>Destino *<PlaceInput value={destination} onChange={setDestination} onPlace={(place) => placeOnMap(place, 'destination')} placeholder="Escribe una dirección o usa el mapa" required /></label>
+                <label className="full-field">Referencia de la recogida (opcional)<input value={originRefs} onChange={(event) => setOriginRefs(event.target.value)} placeholder="Ej: portón azul después del semáforo, frente a la estación" /></label>
+                <label className="full-field">Referencia de la entrega (opcional)<input value={destinationRefs} onChange={(event) => setDestinationRefs(event.target.value)} placeholder="Ej: recepción del tercer nivel, costado del edificio" /></label>
               </div>
               {originPoint === null && destinationPoint === null && <p className="wizard-hint">Escribe una dirección (aparecen las sugerencias al escribir) o haz clic directamente sobre el mapa.</p>}
               <MapErrorBoundary>
@@ -1327,24 +1393,25 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
               </MapErrorBoundary>
               <div className="route-summary">
                 <span>Distancia <b>{distanceKm.toFixed(2)} km</b></span>
-                <span>Tarifa estimada <b>{formatCs(estimatedCost)}</b></span>
+                <span>Vehículo <b>{transport || 'Selecciona un vehículo'}</b></span>
+                <span>Tarifa estimada <b>{selectedRate ? formatFareCs(estimatedCost, settings?.fareRoundingCs ?? 5) : '—'}</b></span>
                 {settings && <span>≈ US$ {estimatedUsd.toFixed(2)} · tasa {settings.dollarRate}</span>}
               </div>
             </div>
           )}
           {step === 2 && (
             <div className="form-grid">
-              <label>Destinatario<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Nombre de quien recibe" /></label>
-              <label>Teléfono del destinatario<input value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+              <label>Destinatario *<input required value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Nombre de quien recibe" /></label>
+              <label>Teléfono del destinatario *<input required type="tel" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
               <p className="wizard-hint">El destinatario recibirá la notificación de entrega desde la app móvil cuando el viaje esté en curso.</p>
             </div>
           )}
           {step === 3 && (
             <div className="confirm-step">
-              <div className="confirm-block"><span className="eyebrow">CLIENTE Y SERVICIO</span><h3>{client}</h3><p>{serviceType}{contactName ? ` · Contacto: ${contactName}` : ''}{contactPhone ? ` · ${contactPhone}` : ''} · {packages} paquete(s){fragile ? ' · Frágil' : ''}</p>{description && <p className="confirm-note">{description}</p>}</div>
+              <div className="confirm-block"><span className="eyebrow">CLIENTE Y SERVICIO</span><h3>{client}</h3><p>{serviceType} · {transport}{contactName ? ` · Contacto: ${contactName}` : ''}{contactPhone ? ` · ${contactPhone}` : ''} · {packages} paquete(s){fragile ? ' · Frágil' : ''}</p>{description && <p className="confirm-note">{description}</p>}</div>
               <div className="confirm-block"><span className="eyebrow">RUTA EN EL MAPA</span><h3>{origin}</h3><p className="route-arrow">↓</p><h3>{destination}</h3><p>{distanceKm.toFixed(2)} km en línea recta sobre Managua{(originRefs || destinationRefs) ? ` · Ref. recogida: ${originRefs || '—'} · Ref. entrega: ${destinationRefs || '—'}` : ''}</p></div>
               <div className="confirm-block"><span className="eyebrow">DESTINATARIO</span><p>{recipientName || 'Sin destinatario registrado'}{recipientPhone ? ` · ${recipientPhone}` : ''}</p></div>
-              <div className="fare-box"><span>Tarifa estimada</span><strong>{formatCs(estimatedCost)}</strong><small>≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''} · tarifa base {settings ? formatCs(settings.baseFeeCs) : ''} + {distanceKm.toFixed(2)} km × {settings?.farePerKmCs ?? 0}</small></div>
+              <div className="fare-box"><span>Tarifa estimada · {transport}</span><strong>{selectedRate ? formatFareCs(estimatedCost, settings?.fareRoundingCs ?? 5) : '—'}</strong><small>{selectedRate ? `Base ${formatCs(selectedRate.baseFeeCs)} + ${distanceKm.toFixed(2)} km × ${formatCs(selectedRate.farePerKmCs)} + ${formatCs(TRIP_SERVICE_FEE_CS)} de gestión${surchargePct ? ` · recargo ${surchargePct}%` : ''}` : 'Selecciona un vehículo para calcular la tarifa'} · ≈ US$ {estimatedUsd.toFixed(2)} {settings ? `· tasa ${settings.dollarRate}` : ''}</small></div>
             </div>
           )}
         </div>
@@ -2791,7 +2858,7 @@ function ClientsView({ clients, search, onDeleted, onUpdated, onNotice }: { clie
   </>
 }
 
-function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incidents: Incident[]; onNotice: (message: string) => void; onChanged: (incident: Incident) => void; onCreated: (incident: Incident) => void }) {
+function IncidentsView({ incidents, trips, onNotice, onChanged, onCreated }: { incidents: Incident[]; trips: Trip[]; onNotice: (message: string) => void; onChanged: (incident: Incident) => void; onCreated: (incident: Incident) => void }) {
   const [statusFilter, setStatusFilter] = useState<'all' | Incident['status']>('all')
   const [acting, setActing] = useState('')
   const [page, setPage] = useState(1)
@@ -2844,6 +2911,20 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
       setActing('')
     }
   }
+  async function removeEvidence(incident: Incident) {
+    if (!incident.evidence || !window.confirm(`¿Quitar la fotografía de la incidencia ${incident.id}?`)) return
+    setActing(incident.id)
+    try {
+      const updated = await updateIncidentEvidence(incident.id, '')
+      onChanged(updated)
+      if (detailIncident?.id === incident.id) setDetailIncident(updated)
+      onNotice(`Fotografía quitada de ${incident.id}`)
+    } catch {
+      onNotice(`No se pudo quitar la fotografía de ${incident.id}`)
+    } finally {
+      setActing('')
+    }
+  }
   function resolveEvidenceSrc(evidence: string | undefined) {
     if (!evidence) return ''
     if (evidence.startsWith('http') || evidence.startsWith('data:')) return evidence
@@ -2858,18 +2939,18 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
     onNotice('Reporte de incidencias preparado para guardar como PDF')
   }
   return <><section className="panel table-panel"><div className="table-toolbar"><div className="filter-row"><button className={`filter-chip ${statusFilter === 'all' ? 'active' : ''}`} onClick={() => { setStatusFilter('all'); setPage(1) }}>Todas <b>{incidents.length}</b></button><button className={`filter-chip ${statusFilter === 'Abierta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Abierta'); setPage(1) }}>Abiertas <b>{incidents.filter((incident) => incident.status === 'Abierta').length}</b></button><button className={`filter-chip ${statusFilter === 'En proceso' ? 'active' : ''}`} onClick={() => { setStatusFilter('En proceso'); setPage(1) }}>En proceso <b>{incidents.filter((incident) => incident.status === 'En proceso').length}</b></button><button className={`filter-chip ${statusFilter === 'Resuelta' ? 'active' : ''}`} onClick={() => { setStatusFilter('Resuelta'); setPage(1) }}>Resueltas <b>{incidents.filter((incident) => incident.status === 'Resuelta').length}</b></button></div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={12} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={12} /> PDF</button><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={12} /> Reportar incidencia</button></div></div><DataTable className="incidents-table" columns={['ID incidencia', 'Viaje', 'Conductor', 'Cliente', 'Tipo', 'Prioridad', 'Estado', 'Acciones']} rows={visible.map((incident) => [<strong className="linkish" key={`${incident.id}-id`} onClick={() => setDetailIncident(incident)}>{incident.id}</strong>, incident.trip, incident.driver, incident.client, incident.type, <PriorityPill key={`${incident.id}-priority`} priority={incident.priority} />, <StatusPill key={`${incident.id}-status`} status={incident.status} />, <div className="action-group" key={`${incident.id}-actions`}><button className="mini-btn" title="Ver detalle y notas" onClick={() => setDetailIncident(incident)}>Ver</button><button className="mini-btn proceso-mini" title="Poner en proceso" disabled={acting === incident.id || incident.status === 'En proceso' || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'En proceso')}>{acting === incident.id ? '…' : 'Proceso'}</button><button className="mini-btn resuelta-mini" title="Marcar resuelta" disabled={acting === incident.id || incident.status === 'Resuelta'} onClick={() => void changeStatus(incident, 'Resuelta')}>{acting === incident.id ? '…' : 'Resuelta'}</button></div>])} /><div className="table-footer"><span>Mostrando {visible.length} de {filtered.length} incidencias · ◉ pone en proceso · ✓ resuelve</span><TablePagination page={page} pageSize={pageSize} total={filtered.length} onChange={setPage} /></div></section>
-    {formOpen && <IncidentFormDialog onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
+    {formOpen && <IncidentFormDialog trips={trips} onClose={() => setFormOpen(false)} onCreated={(incident) => { onCreated(incident); setFormOpen(false); onNotice(`Incidencia ${incident.id} reportada y abierta`) }} onError={onNotice} />}
     {detailIncident && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailIncident(null) }}>
         <div className="modal-card trip-detail-modal">
-          <div className="modal-header"><div><span className="eyebrow">Detalle de incidencia · {detailIncident.id}</span><h2>{detailIncident.type}</h2><p>Reportada para el viaje {detailIncident.trip}</p></div><button type="button" className="icon-button" onClick={() => setDetailIncident(null)} aria-label="Cerrar">×</button></div>
+          <div className="modal-header"><div><span className="eyebrow">Detalle de incidencia · {detailIncident.id}</span><h2>{detailIncident.type}</h2><p>{detailIncident.scope === 'general' ? 'Incidencia general de operación' : `Reportada para el viaje ${detailIncident.trip}`}</p></div><button type="button" className="icon-button" onClick={() => setDetailIncident(null)} aria-label="Cerrar">×</button></div>
           <div className="trip-detail-grid">
             <div className="trip-detail-field"><span>Cliente</span><strong>{detailIncident.client}</strong></div>
             <div className="trip-detail-field"><span>Conductor</span><strong>{detailIncident.driver}</strong></div>
             <div className="trip-detail-field"><span>Prioridad</span><PriorityPill priority={detailIncident.priority} /></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailIncident.status} /></div>
             <div className="trip-detail-field"><span>Ubicación GPS</span><strong>{detailIncident.latitude !== undefined && detailIncident.longitude !== undefined ? `${detailIncident.latitude.toFixed(5)}, ${detailIncident.longitude.toFixed(5)}` : 'No reportada'}</strong></div>
-            <div className="trip-detail-field full"><span>Evidencia</span>{detailIncident.evidence ? <img src={resolveEvidenceSrc(detailIncident.evidence)} alt="Evidencia de la incidencia" className="evidence-image" title="Clic para ampliar" onClick={() => window.open(resolveEvidenceSrc(detailIncident.evidence), '_blank')} /> : <strong>Sin fotografía aún</strong>}<label className="attach-evidence-btn"><input ref={evidenceInputRef} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void attachEvidence(detailIncident, file); event.target.value = '' }} />Adjuntar fotografía</label></div>
+            <div className="trip-detail-field full"><span>Evidencia</span>{detailIncident.evidence ? <img src={resolveEvidenceSrc(detailIncident.evidence)} alt="Evidencia de la incidencia" className="evidence-image" title="Clic para ampliar" onClick={() => window.open(resolveEvidenceSrc(detailIncident.evidence), '_blank')} /> : <strong>Sin fotografía aún</strong>}<div className="incident-evidence-actions"><label className="attach-evidence-btn"><input ref={evidenceInputRef} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void attachEvidence(detailIncident, file); event.target.value = '' }} />{detailIncident.evidence ? 'Reemplazar fotografía' : 'Adjuntar fotografía'}</label>{detailIncident.evidence && <button type="button" className="mini-btn danger-mini" disabled={acting === detailIncident.id} onClick={() => void removeEvidence(detailIncident)}>{acting === detailIncident.id ? 'Quitando…' : 'Quitar fotografía'}</button>}</div></div>
           </div>
           {detailIncident.description && <div className="incident-description"><span>Descripción del problema</span><p>{detailIncident.description}</p></div>}
           <div className="modal-actions trip-actions">
@@ -2883,18 +2964,32 @@ function IncidentsView({ incidents, onNotice, onChanged, onCreated }: { incident
   </>
 }
 
-function IncidentFormDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: (incident: Incident) => void; onError: (message: string) => void }) {
+function IncidentFormDialog({ trips, onClose, onCreated, onError }: { trips: Trip[]; onClose: () => void; onCreated: (incident: Incident) => void; onError: (message: string) => void }) {
+  const [scope, setScope] = useState<'general' | 'trip'>('general')
   const [type, setType] = useState('Retraso')
-  const [client, setClient] = useState('')
   const [trip, setTrip] = useState('')
-  const [driver, setDriver] = useState('')
   const [priority, setPriority] = useState<Incident['priority']>('Media')
+  const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const activeTrips = trips.filter((item) => ['Asignado', 'En camino', 'En entrega'].includes(item.status) && item.driver.trim() !== '' && item.driver !== '—')
+  const selectedTrip = activeTrips.find((item) => item.id === trip)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (scope === 'trip' && !selectedTrip) {
+      onError('Selecciona un viaje activo con conductor asignado')
+      return
+    }
     setSubmitting(true)
     try {
-      onCreated(await createIncident({ type, client, trip, driver, priority }))
+      onCreated(await createIncident({
+        scope,
+        type: scope === 'general' ? 'Aviso operativo' : type,
+        client: scope === 'general' ? 'Operación general' : selectedTrip?.client ?? '',
+        trip: scope === 'general' ? 'General' : selectedTrip?.id,
+        driver: scope === 'general' ? 'Todos los conductores' : selectedTrip?.driver,
+        priority: scope === 'general' ? 'Media' : priority,
+        description: description.trim(),
+      }))
     } catch {
       onError('No se pudo reportar la incidencia; revisa los datos')
     } finally {
@@ -2904,15 +2999,35 @@ function IncidentFormDialog({ onClose, onCreated, onError }: { onClose: () => vo
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <form className="modal-card" onSubmit={submit}>
-        <div className="modal-header"><div><span className="eyebrow">Operaciones · Incidencias</span><h2>Reportar incidencia</h2><p>La incidencia queda Abierta y alimenta el panel «Requiere atención».</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
+        <div className="modal-header"><div><span className="eyebrow">Operaciones · Incidencias</span><h2>Reportar incidencia</h2><p>Los conductores correspondientes recibirán el aviso en la app mientras estén conectados.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">×</button></div>
         <div className="form-grid">
-          <label>Tipo de incidencia<select value={type} onChange={(event) => setType(event.target.value)}><option>Retraso</option><option>Cliente ausente</option><option>Problema con paquete</option><option>Problema con dirección</option><option>Accidente</option><option>Otro</option></select></label>
-          <label>Prioridad<select value={priority} onChange={(event) => setPriority(event.target.value as Incident['priority'])}><option>Baja</option><option>Media</option><option>Alta</option><option>Crítica</option></select></label>
-          <label className="full-field">Cliente afectado<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre del cliente o empresa" /></label>
-          <label>Viaje<input value={trip} onChange={(event) => setTrip(event.target.value)} placeholder="Ej: #4791" /></label>
-          <label>Conductor<input value={driver} onChange={(event) => setDriver(event.target.value)} placeholder="Nombre del conductor" /></label>
+          <div className="incident-scope-picker full-field">
+            <span className="incident-scope-label">¿A quién afecta?</span>
+            <div className="incident-scope-options">
+              <button type="button" className={`incident-scope-option ${scope === 'general' ? 'selected' : ''}`} onClick={() => { setScope('general'); setTrip('') }}>
+                <span className="incident-scope-icon"><Icon name="globe" size={17} /></span>
+                <span><strong>Incidencia general</strong><small>Afecta a toda la operación</small></span>
+                <span className="incident-scope-radio" aria-hidden="true" />
+              </button>
+              <button type="button" className={`incident-scope-option ${scope === 'trip' ? 'selected' : ''}`} onClick={() => setScope('trip')}>
+                <span className="incident-scope-icon"><Icon name="trips" size={17} /></span>
+                <span><strong>Viaje específico</strong><small>Afecta a un viaje activo</small></span>
+                <span className="incident-scope-radio" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          {scope === 'trip' && <>
+            <label>Tipo de incidencia<select value={type} onChange={(event) => setType(event.target.value)}><option>Retraso</option><option>Cliente ausente</option><option>Problema con paquete</option><option>Problema con dirección</option><option>Accidente</option><option>Otro</option></select></label>
+            <label>Prioridad<select value={priority} onChange={(event) => setPriority(event.target.value as Incident['priority'])}><option>Baja</option><option>Media</option><option>Alta</option><option>Crítica</option></select></label>
+          </>}
+          {scope === 'trip' && <>
+            <label className="full-field">Viaje activo<select required value={trip} onChange={(event) => setTrip(event.target.value)}><option value="">Selecciona un viaje con conductor asignado</option>{activeTrips.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.client} · {item.driver}</option>)}</select>{activeTrips.length === 0 && <small>No hay viajes activos con conductor asignado.</small>}</label>
+            {selectedTrip && <div className="full-field summary-inline">Aviso para {selectedTrip.driver} · cliente {selectedTrip.client}</div>}
+          </>}
+          {scope === 'general' && <div className="full-field incident-general-note"><Icon name="info" size={16} /><span>El aviso se enviará a todos los conductores y clientes móviles. Solo necesitas describir lo que está ocurriendo.</span></div>}
+          <label className="full-field">Descripción de la incidencia<textarea required value={description} onChange={(event) => setDescription(event.target.value)} placeholder={scope === 'general' ? 'Ej.: Por lluvia intensa se detienen temporalmente los viajes.' : 'Describe qué está pasando para que el equipo reciba el contexto…'} rows={4} /></label>
         </div>
-        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Reportar incidencia'}</button></div>
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting || (scope === 'trip' && !selectedTrip) || !description.trim()}>{submitting ? 'Guardando…' : 'Reportar incidencia'}</button></div>
       </form>
     </div>
   )
@@ -3111,12 +3226,17 @@ function TrackingView({ tracking, onNavigate, onRefresh }: { tracking: TrackingO
   }
   if (!tracking) return <EmptyState title="Tracking pendiente" detail="La API aún no entregó posiciones operativas." />
   const withRoute = tracking.trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status) && Number.isFinite(trip.originLat) && Number.isFinite(trip.destinationLat)).slice(0, 6)
+  const activeTrips = tracking.trips.filter((trip) => ['Asignado', 'En camino', 'En entrega'].includes(trip.status))
+  const demandCounts = activeTrips.reduce<Record<string, number>>((counts, trip) => { counts[trip.origin] = (counts[trip.origin] ?? 0) + 1; return counts }, {})
+  const demandZone = Object.entries(demandCounts).sort((a, b) => b[1] - a[1])[0]
+  const demandTrip = demandZone ? activeTrips.find((trip) => trip.origin === demandZone[0] && Number.isFinite(trip.originLat) && Number.isFinite(trip.originLng)) : undefined
+  const demandPoint = demandTrip && demandZone ? { lat: demandTrip.originLat as number, lng: demandTrip.originLng as number, label: demandZone[0], count: demandZone[1] } : undefined
   const demoCount = (tracking.live ?? []).filter((position) => position.demo).length
   const visibleLive = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo)
   const realCount = visibleLive.filter((position) => position.online && !position.demo).length
   const lastUpdate = tracking.trackingAt ? new Date(tracking.trackingAt).toLocaleTimeString('es-NI') : '—'
   const liveList = (tracking.live ?? []).filter((position) => !hideDemo || !position.demo).slice(0, 8)
-  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES RECIBIDAS</span><h2>Seguimiento operativo</h2><p className="panel-sub">Se muestran únicamente posiciones GPS reales por defecto; las referencias de demostración quedan ocultas.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {realCount} conductores con GPS real</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas activas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span>{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? `Mostrar referencias (${demoCount})` : 'Ocultar referencias'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} showDemo={!hideDemo} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{withRoute[0]?.id ?? 'Sin viaje activo'}</strong><span>{withRoute[0]?.driver ?? 'Sin asignar'} · {withRoute[0]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[0]?.origin ?? '—'} → {withRoute[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{withRoute[1]?.id ?? 'Sin segundo viaje'}</strong><span>{withRoute[1]?.driver ?? 'Sin asignar'} · {withRoute[1]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[1]?.origin ?? '—'} → {withRoute[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta activa</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.length === 0 && <div className="empty-column">No hay posiciones GPS reales recibidas todavía.</div>}{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b><span className="financed-badge cash">GPS real</span><small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
+  return <section className="panel full-map-panel"><div className="tracking-head"><div><span className="eyebrow">LIVE OPERATIONS · POSICIONES RECIBIDAS</span><h2>Seguimiento operativo</h2><p className="panel-sub">El mapa combina posiciones de flota registradas con GPS en vivo; las referencias de demostración se ocultan por defecto.</p></div><div className="tracking-stats"><button className="secondary-button fullscreen-map-button" onClick={() => void toggleFullscreen()}><Icon name="tracking" size={13} /> {isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button><span className="tracking-stat"><span className="pulse-dot" /> {tracking.activeOperations} operaciones activas</span><span className="tracking-stat"><i className="legend mint" /> {realCount} conductores con GPS real</span><span className="tracking-stat"><i className="legend cyan" /> {withRoute.length} rutas activas</span><span className="tracking-stat">actualizado {lastUpdate}{refreshing ? ' · refrescando…' : ''}</span>{demoCount > 0 && <button className={`live-chip toggle ${hideDemo ? 'on' : ''}`} onClick={() => setHideDemo((value) => !value)}>{hideDemo ? `Mostrar referencias (${demoCount})` : 'Ocultar referencias'}</button>}</div></div><div ref={mapShellRef} className="large-map fullscreen-map-shell"><LiveMap tracking={tracking} onNavigate={onNavigate} showDemo={!hideDemo} demandZone={demandPoint} /><div className="tracking-cards"><button className="tracking-card" onClick={() => onNavigate('trips')}><strong>{withRoute[0]?.id ?? 'Sin viaje activo'}</strong><span>{withRoute[0]?.driver ?? 'Sin asignar'} · {withRoute[0]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[0]?.origin ?? '—'} → {withRoute[0]?.destination ?? '—'}</span></button><button className="tracking-card second" onClick={() => onNavigate('trips')}><strong>{withRoute[1]?.id ?? 'Sin segundo viaje'}</strong><span>{withRoute[1]?.driver ?? 'Sin asignar'} · {withRoute[1]?.status ?? 'Sin ruta activa'}</span><span>{withRoute[1]?.origin ?? '—'} → {withRoute[1]?.destination ?? '—'}</span></button></div><div className="map-legend large"><span><i className="legend blue" />En ruta</span><span><i className="legend mint" />Disponible</span><span><i className="legend violet" />Entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span><span><i className="legend cyan" />Ruta activa</span><span><i className="legend gray" />Fuera de línea</span></div></div><div className="driver-position-list" style={{ margin: '12px 18px 16px', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>{liveList.length === 0 && <div className="empty-column">No hay posiciones GPS reales recibidas todavía.</div>}{liveList.map((position) => <div className="driver-position-row" key={position.driver}><div><b>{position.driver}</b><span className="financed-badge cash">GPS real</span><small>{position.plate} · {position.status} · {position.speedKmh ?? 0} km/h · actualizado hace {position.ageSeconds}s</small></div><span className="tracking-stat" style={{ alignSelf: 'center' }}>{position.online ? 'En línea' : 'Desconectado'}</span></div>)}</div></section>
 }
 
 function HistoryView({ history }: { history: HistoryEvent[] }) {

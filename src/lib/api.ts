@@ -62,7 +62,7 @@ export function getClientProfile(id: string) { return getJson<ClientProfile>(`/c
 export function createClient(body: { name: string; phone?: string; email?: string; type?: string; address?: string; contact?: string; taxId?: string; notes?: string; billingPeriod?: string; billingCustomDays?: number; billingCutDay?: number; billingCutTime?: string; billingActive?: boolean; whatsapp?: string }) { return sendJson<Client>('/clients', 'POST', body) }
 export function deleteClient(id: string) { return sendJson<{ deleted: string }>(`/clients/${encodeURIComponent(id)}`, 'DELETE') }
 export function getIncidents() { return getJson<Incident[]>('/incidents') }
-export function createIncident(body: { type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority'] }) { return sendJson<Incident>('/incidents', 'POST', body) }
+export function createIncident(body: { scope?: 'general' | 'trip'; type: string; client: string; trip?: string; driver?: string; priority?: Incident['priority']; description?: string }) { return sendJson<Incident>('/incidents', 'POST', body) }
 export function updateIncidentStatus(id: string, status: Incident['status']) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function updateIncidentEvidence(id: string, evidence: string) { return sendJson<Incident>(`/incidents/${encodeURIComponent(id)}/evidence`, 'PATCH', { evidence }) }
 export type AuthUser = { id: string; email: string; displayName: string; role: string; roleName?: string; phone?: string; vehicle?: string; plate?: string; permissions?: string[] }
@@ -94,6 +94,7 @@ export function getDeliverables() { return getJson<Deliverable[]>('/deliverables
 export function getDeliverablesSummary() { return getJson<DeliverableSummary>('/deliverables/summary') }
 export function updateDeliverableStatus(id: string, status: DeliverableStatus) { return sendJson<Deliverable>(`/deliverables/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function createTrip(body: Pick<Trip, 'client' | 'origin' | 'destination' | 'packages'> & {
+  transport: NonNullable<Trip['transport']>
   description?: string
   recipientName?: string
   recipientPhone?: string

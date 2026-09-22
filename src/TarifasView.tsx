@@ -4,12 +4,11 @@ import {
   createTariffDestination,
   deleteTariffDestination,
   getTarifas,
-  updateTariffDistrict,
   updateTariffDestination,
   updateTariffSettings,
   updateSettings,
 } from './lib/api'
-import type { AppSettings, FareResult, TariffDestination, TariffDistrict, TariffSettings, VehicleRate } from './types'
+import type { AppSettings, FareResult, TariffDestination, TariffSettings, VehicleRate } from './types'
 import { Icon } from './lib/icons'
 
 const DISTRICT_STATUSES = [
@@ -44,7 +43,6 @@ const DEFAULT_VEHICLE_RATES: AppSettings['vehicleRates'] = {
 
 interface TarifasData {
   settings: TariffSettings
-  districts: TariffDistrict[]
   destinations: TariffDestination[]
 }
 
@@ -116,24 +114,6 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
 
   function setVehicleRate(vehicle: keyof AppSettings['vehicleRates'], key: keyof VehicleRate, value: number) {
     setVehicleRates((current) => ({ ...current, [vehicle]: { ...current[vehicle], [key]: value } }))
-  }
-
-  async function toggleDistrict(id: string, inCoverage: boolean) {
-    try {
-      const updated = await updateTariffDistrict(id, { inCoverage })
-      setData((current) => (current ? { ...current, districts: current.districts.map((d) => (d.id === id ? updated : d)) } : current))
-    } catch {
-      onNotice('No se pudo actualizar el distrito')
-    }
-  }
-
-  async function setDistrictStatus(id: string, status: string) {
-    try {
-      const updated = await updateTariffDistrict(id, { status })
-      setData((current) => (current ? { ...current, districts: current.districts.map((d) => (d.id === id ? updated : d)) } : current))
-    } catch {
-      onNotice('No se pudo actualizar el estado del distrito')
-    }
   }
 
   async function calculate() {
@@ -310,11 +290,6 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
                 <small>Mercados, aeropuerto, hospitales, centros comerciales y otros.</small>
               </div>
               <div className="param-cell">
-                <span>Distancia máxima para posible duplicado</span>
-                <input type="number" min={10} className="param-input" value={draft.duplicateDistanceM} onChange={(e) => setParam('duplicateDistanceM', Number(e.target.value))} />
-                <small>Umbral orientativo para revisar registros con el mismo nombre.</small>
-              </div>
-              <div className="param-cell">
                 <span>Estado mínimo recomendado</span>
                 <select className="param-input" value={draft.minRecommendedStatus} onChange={(e) => setParam('minRecommendedStatus', e.target.value)}>
                   {DISTRICT_STATUSES.map((status) => <option key={status}>{status}</option>)}
@@ -364,7 +339,7 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
               <div className="param-cell">
                 <span>Redondeo comercial</span>
                 <div className="param-input-wrap"><span className="param-currency">C$</span><input type="number" min={1} className="param-input" value={draft.roundingCs} onChange={(e) => setParam('roundingCs', Number(e.target.value))} /></div>
-                <small>La tarifa final se redondea hacia arriba al múltiplo indicado.</small>
+                <small>La tarifa final se redondea al múltiplo indicado más cercano.</small>
               </div>
             </div>
             <div className="tarifas-vehicle-head">
@@ -395,43 +370,6 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
             <div className="tarifas-vehicle-note">Última actualización compartida: {settings?.updatedAt ? new Date(settings.updatedAt).toLocaleString('es-NI') : '—'} · La tarifa se aplica según el tipo de transporte seleccionado en la operación.</div>
           </section>
 
-          <section className="panel tarifas-panel">
-            <div className="export-panel-head">
-              <div>
-                <span className="eyebrow">COBERTURA MUNICIPAL</span>
-                <h2>Distritos · valores Sí/No y estados permitidos</h2>
-                <p>La cobertura determina si un destino del distrito produce TARIFA REFERENCIAL o FUERA DE COBERTURA.</p>
-              </div>
-            </div>
-            <table className="data-table districts-table">
-              <thead>
-                <tr>
-                  <th>Distrito</th>
-                  <th>Valores Sí/No</th>
-                  <th>Estados permitidos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.districts.map((district) => (
-                  <tr key={district.id}>
-                    <td><b>{district.name}</b></td>
-                    <td>
-                      <label className="yesno-toggle">
-                        <input type="checkbox" checked={district.inCoverage} onChange={(e) => void toggleDistrict(district.id, e.target.checked)} />
-                        <b>{district.inCoverage ? 'Sí' : 'No'}</b>
-                      </label>
-                    </td>
-                    <td>
-                      <select className="param-input status-select" value={district.status} onChange={(e) => void setDistrictStatus(district.id, e.target.value)}>
-                        {DISTRICT_STATUSES.map((status) => <option key={status}>{status}</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="table-footer"><span>Última actualización de parámetros: {draft.updatedAt ? new Date(draft.updatedAt).toLocaleString('es-NI') : '—'}</span></div>
-          </section>
         </>
       )}
 

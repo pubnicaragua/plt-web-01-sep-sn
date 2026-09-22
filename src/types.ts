@@ -93,6 +93,7 @@ export interface Trip {
   costCs?: number
   profitCs?: number
   serviceType?: 'Urbano' | 'Express' | 'Programado'
+  transport?: 'Moto' | 'Vehículo' | 'Camión'
   contactName?: string
   contactPhone?: string
   originRefs?: string
@@ -233,6 +234,7 @@ export interface Corte {
 
 export interface Incident {
   id: string
+  scope?: 'general' | 'trip'
   trip: string
   driver: string
   client: string
@@ -243,6 +245,7 @@ export interface Incident {
   latitude?: number
   longitude?: number
   evidence?: string
+  createdAt?: number
 }
 
 export interface HistoryEvent {
@@ -415,6 +418,7 @@ export interface VehicleRate {
 }
 
 export interface AppSettings {
+  fareRoundingCs?: number
   dollarRate: number
   fuelPriceGasolineCs: number
   fuelPriceDieselCs: number
@@ -432,6 +436,18 @@ export interface AppSettings {
   companyEmail: string
   companyAddress: string
   updatedAt: string
+}
+
+export function roundFareCs(value: number, multiple = 5) {
+  const whole = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+  const step = Number.isFinite(multiple) ? Math.max(1, Math.round(multiple)) : 5
+  if (whole <= 0) return 0
+  if (step === 5 && whole % 10 === 7) return (Math.floor(whole / 10) + 1) * 10
+  return Math.round(whole / step) * step
+}
+
+export function formatFareCs(value: number, multiple = 5) {
+  return `C$ ${roundFareCs(value, multiple).toLocaleString('es-NI')}`
 }
 
 export function formatCs(value: number) {
