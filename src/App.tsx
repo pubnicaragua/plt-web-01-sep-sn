@@ -186,7 +186,7 @@ function exportPdf(title: string, subtitle: string, columns: string[], rows: Exp
     windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>
       @page { size: A4 landscape; margin: 12mm 12mm 20mm; }
       * { box-sizing: border-box; }
-      body { min-width: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #243554; padding: 0; margin: 0; font-size: 11px; }
+      body { min-width: 0; font-family: 'Figtree', sans-serif; color: #243554; padding: 0; margin: 0; font-size: 11px; }
       .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; width: 100%; min-width: 0; border-bottom: 3px solid #32AAF0; padding-bottom: 12px; margin-bottom: 18px; }
       .brand { display: flex; align-items: center; gap: 12px; flex: 1 1 48%; min-width: 0; }
       .brand > img { width: auto; max-width: 58px; height: 48px !important; object-fit: contain; flex: 0 0 auto; }
@@ -1764,7 +1764,7 @@ async function openInvoicePrint(trip: Trip, client: Client | undefined, settings
   windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Factura ${invoiceNumber}</title><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { size: A4; margin: 16mm 14mm 20mm; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #20304f; padding: 0 0 28px; background: #ffffff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: 'Figtree', sans-serif; color: #20304f; padding: 0 0 28px; background: #ffffff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .header { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 3px solid #32AAF0; padding-bottom: 14px; }
     .brand { display: flex; align-items: center; gap: 14px; font-size: 24px; font-weight: 800; letter-spacing: .16em; color: #0d75b3; } .brand img { width: auto; height: 46px; object-fit: contain; } .brand span { display: block; color: #6e6a78; font-size: 11px; letter-spacing: .04em; }
     .meta { text-align: right; } .meta h1 { font-size: 20px; color: #0d75b3; } .meta p { color: #6e6a78; font-size: 12px; margin-top: 3px; }
@@ -2958,6 +2958,9 @@ function IncidentsView({ incidents, trips, onNotice, onChanged, onCreated }: { i
     if (evidence.startsWith('http') || evidence.startsWith('data:')) return evidence
     return `${getApiBase()}/uploads/evidence/${evidence}`
   }
+  function resolveEvidenceSources(evidence: string | undefined) {
+    return (evidence ?? '').split('|').map((item) => item.trim()).filter(Boolean).map(resolveEvidenceSrc)
+  }
   function exportExcelFile() {
     exportExcel(`incoex-incidencias-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Incidencias', incidents.map((incident) => ({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })))
     onNotice('Reporte de incidencias en Excel descargado')
@@ -2978,7 +2981,7 @@ function IncidentsView({ incidents, trips, onNotice, onChanged, onCreated }: { i
             <div className="trip-detail-field"><span>Prioridad</span><PriorityPill priority={detailIncident.priority} /></div>
             <div className="trip-detail-field"><span>Estado actual</span><StatusPill status={detailIncident.status} /></div>
             <div className="trip-detail-field"><span>Ubicación GPS</span><strong>{detailIncident.latitude !== undefined && detailIncident.longitude !== undefined ? `${detailIncident.latitude.toFixed(5)}, ${detailIncident.longitude.toFixed(5)}` : 'No reportada'}</strong></div>
-            <div className="trip-detail-field full"><span>Evidencia</span>{detailIncident.evidence ? <img src={resolveEvidenceSrc(detailIncident.evidence)} alt="Evidencia de la incidencia" className="evidence-image" title="Clic para ampliar" onClick={() => window.open(resolveEvidenceSrc(detailIncident.evidence), '_blank')} /> : <strong>Sin fotografía aún</strong>}<div className="incident-evidence-actions"><label className="attach-evidence-btn"><input ref={evidenceInputRef} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void attachEvidence(detailIncident, file); event.target.value = '' }} />{detailIncident.evidence ? 'Reemplazar fotografía' : 'Adjuntar fotografía'}</label>{detailIncident.evidence && <button type="button" className="mini-btn danger-mini" disabled={acting === detailIncident.id} onClick={() => void removeEvidence(detailIncident)}>{acting === detailIncident.id ? 'Quitando…' : 'Quitar fotografía'}</button>}</div></div>
+            <div className="trip-detail-field full"><span>Evidencia fotográfica</span>{detailIncident.evidence ? <div className="evidence-gallery">{resolveEvidenceSources(detailIncident.evidence).map((src, index) => <img key={`${detailIncident.id}-evidence-${index}`} src={src} alt={`Evidencia ${index + 1} de la incidencia`} className="evidence-image" title="Clic para ampliar" onClick={() => window.open(src, '_blank')} />)}</div> : <strong>Sin fotografía aún</strong>}<div className="incident-evidence-actions"><label className="attach-evidence-btn"><input ref={evidenceInputRef} type="file" accept="image/*" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void attachEvidence(detailIncident, file); event.target.value = '' }} />{detailIncident.evidence ? 'Reemplazar fotografía' : 'Adjuntar fotografía'}</label>{detailIncident.evidence && <button type="button" className="mini-btn danger-mini" disabled={acting === detailIncident.id} onClick={() => void removeEvidence(detailIncident)}>{acting === detailIncident.id ? 'Quitando…' : 'Quitar fotografías'}</button>}</div></div>
           </div>
           {detailIncident.description && <div className="incident-description"><span>Descripción del problema</span><p>{detailIncident.description}</p></div>}
           <div className="modal-actions trip-actions">
@@ -3745,7 +3748,7 @@ function printCorteReceipt(corte: Corte, client?: Client) {
   const rowHtml = corte.items.map((item) => '<tr><td>' + item.id + '</td><td>' + item.date + '</td><td>' + item.origin + ' &rarr; ' + item.destination + '</td><td style="text-align:right">C$ ' + item.priceCs.toFixed(2) + '</td></tr>').join('')
   const doc = [
     '<!doctype html><html><head><meta charset="utf-8"><title>Recibo de corte - ' + (client?.name ?? corte.client) + '</title>',
-    '<style>@page{margin:14mm} body{font:13px "Acumin Pro",Arial,sans-serif;color:#101230} .head{display:flex;justify-content:space-between;border-bottom:3px solid #32AAF0;padding-bottom:12px} .brand{font-size:23px;font-weight:800;letter-spacing:.16em;color:#0d75b3} .brand span{display:block;color:#6e6a78;font-size:11px;letter-spacing:.06em} h1{font-size:19px;margin:16px 0 2px} .meta{font-size:12px;color:#6e6a78} table{width:100%;border-collapse:collapse;margin-top:12px} th{padding:8px;border-top:1px solid #DED9E2;border-bottom:2px solid #DED9E2;color:#6e6a78;font-size:10px;letter-spacing:.08em;text-align:left} td{padding:7px 8px;border-bottom:1px solid #ECE8F0;font-size:12px} .totals{margin:14px 0 0 auto;width:300px} .totals div{display:flex;justify-content:space-between;padding:6px 4px;color:#504b59;font-size:12.5px} .totals .grand{border-top:2px solid #32AAF0;color:#101230;font-weight:800} .stamp{margin-top:8px;font-size:10px;color:#6e6a78}</style></head><body>',
+    '<style>@page{margin:14mm} body{font:13px "Figtree",Arial,sans-serif;color:#101230} .head{display:flex;justify-content:space-between;border-bottom:3px solid #32AAF0;padding-bottom:12px} .brand{font-size:23px;font-weight:800;letter-spacing:.16em;color:#0d75b3} .brand span{display:block;color:#6e6a78;font-size:11px;letter-spacing:.06em} h1{font-size:19px;margin:16px 0 2px} .meta{font-size:12px;color:#6e6a78} table{width:100%;border-collapse:collapse;margin-top:12px} th{padding:8px;border-top:1px solid #DED9E2;border-bottom:2px solid #DED9E2;color:#6e6a78;font-size:10px;letter-spacing:.08em;text-align:left} td{padding:7px 8px;border-bottom:1px solid #ECE8F0;font-size:12px} .totals{margin:14px 0 0 auto;width:300px} .totals div{display:flex;justify-content:space-between;padding:6px 4px;color:#504b59;font-size:12.5px} .totals .grand{border-top:2px solid #32AAF0;color:#101230;font-weight:800} .stamp{margin-top:8px;font-size:10px;color:#6e6a78}</style></head><body>',
     '<div class="head"><div class="brand">INCOEX<span>LOGISTICS &middot; MANAGUA</span></div><div><h1>Recibo de corte</h1><div class="meta">Periodo ' + formatCorteDate(corte.periodStart) + ' al ' + formatCorteDate(corte.periodEnd) + ' &middot; ' + (corte.periodLabel || periodLabelOf(client)) + '</div></div></div>',
     '<p><b>' + (client?.name ?? corte.client) + '</b> <span class="meta">(' + (client?.type ?? '') + ')</span><br><span class="meta">' + (client?.address ?? '') + '</span></p>',
     '<table><thead><tr><th>Viaje</th><th>Fecha</th><th>Ruta</th><th>Monto</th></tr></thead><tbody>' + rowHtml + '</tbody></table>',

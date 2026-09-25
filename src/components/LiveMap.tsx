@@ -118,7 +118,8 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone, se
       if (!Number.isFinite(incident.latitude) || !Number.isFinite(incident.longitude)) continue
       const point = { lat: incident.latitude as number, lng: incident.longitude as number }
       const marker = add(new maps.Marker({ position: point, title: `Incidencia ${incident.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#e45d67', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 } }))
-      const evidenceSrc = incident.evidence ? (incident.evidence.startsWith('http') || incident.evidence.startsWith('data:') ? incident.evidence : `${getApiBase()}/uploads/evidence/${incident.evidence}`) : ''
+      const firstEvidence = incident.evidence?.split('|')[0]?.trim()
+      const evidenceSrc = firstEvidence ? (firstEvidence.startsWith('http') || firstEvidence.startsWith('data:') ? firstEvidence : `${getApiBase()}/uploads/evidence/${firstEvidence}`) : ''
       marker.addListener('click', () => info(point, `<div class="live-popup"><strong class="live-popup-driver">Incidencia ${escapeHtml(incident.priority)} · ${escapeHtml(incident.id)}</strong><span>${escapeHtml(incident.type)}</span><span class="live-popup-row"><i style="background:#e45d67"></i>${escapeHtml(incident.driver)} · ${escapeHtml(incident.status)}</span>${evidenceSrc ? `<img class="live-popup-evidence" src="${escapeHtml(evidenceSrc)}" alt="evidencia" loading="lazy" />` : ''}<button type="button" class="live-popup-action" data-go="incidents">Ver incidencias</button></div>`))
       bounds.extend(point); hasBounds = true
     }
