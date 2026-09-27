@@ -93,7 +93,15 @@ export interface Trip {
   costCs?: number
   profitCs?: number
   serviceType?: 'Urbano' | 'Express' | 'Programado'
+  serviceMode?: 'Envíos' | 'Taxi Privado'
   transport?: 'Moto' | 'Vehículo' | 'Camión'
+  vehicleVariant?: string
+  truckType?: string
+  passengerCount?: number
+  returnTrip?: boolean
+  stops?: Array<{ id?: string; label: string; address: string; latitude?: number; longitude?: number; refs?: string; order: number }>
+  options?: Array<{ code: string; title: string; description?: string; priceCs: number; currency?: 'NIO' | 'USD'; quantity?: number }>
+  optionsTotalCs?: number
   contactName?: string
   contactPhone?: string
   originRefs?: string
@@ -444,6 +452,7 @@ export interface AppSettings {
   companyEmail: string
   companyAddress: string
   updatedAt: string
+  serviceCatalog?: ServiceCatalogItem[]
 }
 
 export function roundFareCs(value: number, multiple = 5) {
@@ -558,6 +567,24 @@ export interface TariffDestination {
   longitude: number
   inCoverage: boolean
   status: string
+}
+
+export interface ServiceCatalogItem {
+  id: string
+  code: string
+  kind: 'option' | 'vehicle'
+  service: 'delivery' | 'taxi' | 'cargo'
+  transport: 'Moto' | 'Vehículo' | 'Camión'
+  title: string
+  description: string
+  priceCs: number
+  currency: 'NIO' | 'USD'
+  pricingMode: 'flat' | 'per_km' | 'per_hour'
+  maxWeightKg?: number
+  maxPassengers?: number
+  enabled: boolean
+  sortOrder: number
+  updatedAt: string
 }
 
 export interface FareResult {

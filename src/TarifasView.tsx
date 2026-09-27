@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react'
 import {
   calculateFare,
   createTariffDestination,
+  createServiceCatalog,
+  deleteServiceCatalog,
   deleteTariffDestination,
   getTarifas,
+  updateServiceCatalog,
   updateTariffDestination,
   updateTariffSettings,
   updateSettings,
 } from './lib/api'
-import type { AppSettings, FareResult, TariffDestination, TariffSettings, VehicleRate } from './types'
+import type { AppSettings, FareResult, ServiceCatalogItem, TariffDestination, TariffSettings, VehicleRate } from './types'
 import { Icon } from './lib/icons'
 
 const DISTRICT_STATUSES = [
@@ -44,10 +47,11 @@ const DEFAULT_VEHICLE_RATES: AppSettings['vehicleRates'] = {
 interface TarifasData {
   settings: TariffSettings
   destinations: TariffDestination[]
+  serviceCatalog: ServiceCatalogItem[]
 }
 
 export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice: (message: string) => void; settings: AppSettings | null; onSettingsSaved: (settings: AppSettings) => void }) {
-  const [tab, setTab] = useState<'params' | 'calc' | 'catalog'>('params')
+  const [tab, setTab] = useState<'params' | 'calc' | 'catalog' | 'services'>('params')
   const [data, setData] = useState<TarifasData | null>(null)
   const [draft, setDraft] = useState<TariffSettings | null>(null)
   const [vehicleRates, setVehicleRates] = useState<AppSettings['vehicleRates']>(settings?.vehicleRates ?? DEFAULT_VEHICLE_RATES)
@@ -78,6 +82,9 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
   const [formOpen, setFormOpen] = useState(false)
   const [editingDest, setEditingDest] = useState<TariffDestination | null>(null)
   const [destForm, setDestForm] = useState<{ name: string; district: string; category: string; latitude: string; longitude: string; inCoverage: boolean; status: string }>({ name: '', district: 'I', category: 'Barrio / sector', latitude: '', longitude: '', inCoverage: true, status: 'Por verificar' })
+  const [serviceFormOpen, setServiceFormOpen] = useState(false)
+  const [editingService, setEditingService] = useState<ServiceCatalogItem | null>(null)
+  const [serviceForm, setServiceForm] = useState<Omit<ServiceCatalogItem, 'id' | 'updatedAt'>>({ code: '', kind: 'option', service: 'delivery', transport: 'Moto', title: '', description: '', priceCs: 0, currency: 'USD', pricingMode: 'flat', enabled: true, sortOrder: 100 })
 
 
 
@@ -187,6 +194,40 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
     }
   }
 
+  function openServiceForm(item?: ServiceCatalogItem) {
+    setEditingService(item ?? null)
+    setServiceForm(item ? { ...item } : { code: '', kind: 'option', service: 'delivery', transport: 'Moto', title: '', description: '', priceCs: 0, currency: 'USD', pricingMode: 'flat', enabled: true, sortOrder: 100 })
+    setServiceFormOpen(true)
+  }
+
+  async function saveService() {
+    if (!serviceForm.code.trim() || !serviceForm.title.trim()) {
+      onNotice('Completa el código y el título de la opción')
+      return
+    }
+    setBusy('service')
+    try {
+      const saved = editingService ? await updateServiceCatalog(editingService.id, serviceForm) : await createServiceCatalog(serviceForm)
+      setData((current) => current ? { ...current, serviceCatalog: editingService ? current.serviceCatalog.map((item) => item.id === saved.id ? saved : item) : [...current.serviceCatalog, saved] } : current)
+      setServiceFormOpen(false)
+      onNotice(editingService ? 'Opción actualizada' : 'Opción agregada al catálogo')
+    } catch {
+      onNotice('No se pudo guardar la opción del servicio')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function removeService(id: string) {
+    try {
+      await deleteServiceCatalog(id)
+      setData((current) => current ? { ...current, serviceCatalog: current.serviceCatalog.filter((item) => item.id !== id) } : current)
+      onNotice('Opción eliminada del catálogo')
+    } catch {
+      onNotice('No se pudo eliminar la opción')
+    }
+  }
+
   if (!data || !draft) {
     if (loadError) {
       return (
@@ -238,7 +279,7 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
         </div>
       </div>
       <div className="report-tabs">
-        {([['params', 'Parámetros'], ['calc', 'Calculadora'], ['catalog', 'Catálogo de destinos']] as const).map(([id, label]) => (
+        {([['params', 'Parámetros'], ['calc', 'Calculadora'], ['catalog', 'Catálogo de destinos'], ['services', 'Servicios y extras']] as const).map(([id, label]) => (
           <button key={id} className={`filter-chip ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -341,6 +382,38 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
           </section>
 
         </>
+      )}
+
+      {tab === 'services' && (
+        <section className="panel tarifas-panel">
+          <div className="export-panel-head">
+            <div>
+              <span className="eyebrow">CATÁLOGO OPERATIVO · APP MÓVIL</span>
+              <h2>Servicios, variantes y extras</h2>
+              <p>Estas opciones alimentan las tarjetas de Moto, Auto, Taxi Privado y Camiones. La app las recibe desde GET /api/settings.</p>
+            </div>
+            <button className="primary-button" onClick={() => openServiceForm()}><Icon name="plus" size={14} /> Agregar opción</button>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Tipo</th><th>Servicio</th><th>Opción</th><th>Descripción</th><th>Precio</th><th>Restricción</th><th>Estado</th><th /></tr></thead>
+              <tbody>
+                {data.serviceCatalog.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.kind === 'vehicle' ? 'Variante' : 'Extra'}</td>
+                    <td>{item.service === 'taxi' ? 'Taxi privado' : item.service === 'cargo' ? 'Carga' : 'Delivery'}</td>
+                    <td><strong>{item.title}</strong><small className="table-muted">{item.code}</small></td>
+                    <td>{item.description || '—'}</td>
+                    <td>{item.currency === 'USD' ? 'US$' : 'C$'} {item.priceCs.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{item.maxPassengers ? `${item.maxPassengers} pasajeros` : item.maxWeightKg ? `${item.maxWeightKg} kg` : item.pricingMode === 'per_hour' ? 'Por hora' : '—'}</td>
+                    <td><span className={`status-pill ${item.enabled ? 'status-active' : 'status-cancelled'}`}>{item.enabled ? 'Activo' : 'Inactivo'}</span></td>
+                    <td><div className="table-actions"><button className="text-button" onClick={() => openServiceForm(item)}>Editar</button><button className="text-button danger" onClick={() => void removeService(item.id)}>Eliminar</button></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {tab === 'calc' && (
@@ -482,6 +555,33 @@ export function TarifasView({ onNotice, settings, onSettingsSaved }: { onNotice:
               <button className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button>
               <button className="primary-button" onClick={() => void saveDestination()} disabled={busy === 'dest'}>{busy === 'dest' ? 'Guardando…' : 'Guardar destino'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {serviceFormOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setServiceFormOpen(false) }}>
+          <div className="modal-card modal-card wide">
+            <div className="modal-header">
+              <div><span className="eyebrow">CATÁLOGO OPERATIVO</span><h2>{editingService ? `Editar ${editingService.title}` : 'Agregar servicio o extra'}</h2></div>
+              <button type="button" className="icon-button" onClick={() => setServiceFormOpen(false)} aria-label="Cerrar">✕</button>
+            </div>
+            <div className="form-grid three">
+              <label>Código<input value={serviceForm.code} disabled={Boolean(editingService)} onChange={(e) => setServiceForm({ ...serviceForm, code: e.target.value })} placeholder="taxi-waiting" /></label>
+              <label>Tipo<select value={serviceForm.kind} onChange={(e) => setServiceForm({ ...serviceForm, kind: e.target.value as ServiceCatalogItem['kind'] })}><option value="option">Extra</option><option value="vehicle">Variante de vehículo</option></select></label>
+              <label>Servicio<select value={serviceForm.service} onChange={(e) => setServiceForm({ ...serviceForm, service: e.target.value as ServiceCatalogItem['service'] })}><option value="delivery">Delivery</option><option value="taxi">Taxi privado</option><option value="cargo">Carga</option></select></label>
+              <label>Transporte<select value={serviceForm.transport} onChange={(e) => setServiceForm({ ...serviceForm, transport: e.target.value as ServiceCatalogItem['transport'] })}><option>Moto</option><option>Vehículo</option><option>Camión</option></select></label>
+              <label>Título<input value={serviceForm.title} onChange={(e) => setServiceForm({ ...serviceForm, title: e.target.value })} placeholder="Ida y vuelta" /></label>
+              <label>Precio<input type="number" min={0} step={0.01} value={serviceForm.priceCs} onChange={(e) => setServiceForm({ ...serviceForm, priceCs: Number(e.target.value) })} /></label>
+              <label>Moneda<select value={serviceForm.currency} onChange={(e) => setServiceForm({ ...serviceForm, currency: e.target.value as ServiceCatalogItem['currency'] })}><option value="USD">USD</option><option value="NIO">NIO / C$</option></select></label>
+              <label>Regla de precio<select value={serviceForm.pricingMode} onChange={(e) => setServiceForm({ ...serviceForm, pricingMode: e.target.value as ServiceCatalogItem['pricingMode'] })}><option value="flat">Fijo</option><option value="per_km">Por km</option><option value="per_hour">Por hora</option></select></label>
+              <label>Orden<input type="number" min={0} value={serviceForm.sortOrder} onChange={(e) => setServiceForm({ ...serviceForm, sortOrder: Number(e.target.value) })} /></label>
+              <label>Máximo de peso (kg)<input type="number" min={0} value={serviceForm.maxWeightKg ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, maxWeightKg: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
+              <label>Máximo de pasajeros<input type="number" min={1} value={serviceForm.maxPassengers ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, maxPassengers: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>
+              <label className="check-line"><input type="checkbox" checked={serviceForm.enabled} onChange={(e) => setServiceForm({ ...serviceForm, enabled: e.target.checked })} /> Disponible en la app</label>
+            </div>
+            <label className="form-textarea">Descripción<textarea rows={3} value={serviceForm.description} onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })} /></label>
+            <div className="modal-actions"><button className="secondary-button" onClick={() => setServiceFormOpen(false)}>Cancelar</button><button className="primary-button" onClick={() => void saveService()} disabled={busy === 'service'}>{busy === 'service' ? 'Guardando…' : 'Guardar opción'}</button></div>
           </div>
         </div>
       )}

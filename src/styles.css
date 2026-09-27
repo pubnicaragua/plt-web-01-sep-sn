@@ -1479,6 +1479,16 @@ select { color-scheme: light; }
 
 @media (max-width: 650px) { .analytics-line { grid-template-columns: 28px minmax(0,1fr); column-gap: 4px; }.analytics-y-scale, .analytics-axis-caption { font-size: 8px; }.map-overlay-stats button { min-height: 26px; padding: 0 7px; font-size: 9px; } }
 
+.table-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid #E3DFE8; border-radius: 10px; }
+.table-muted { display: block; margin-top: 3px; color: #95a0b1; font-size: 10px; }
+.table-actions { display: flex; gap: 8px; }
+.text-button { border: 0; color: #1273b0; background: transparent; font-size: 11px; cursor: pointer; }
+.text-button.danger { color: #da5f66; }
+.status-pill.status-active { color: #16855a; background: #eaf9f2; }
+.status-pill.status-cancelled { color: #da5f66; background: #ffeded; }
+.form-textarea { display: block; margin-top: 12px; color: #6e6a78; font-size: 12px; }
+.form-textarea textarea { display: block; width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid #ded9e2; border-radius: 8px; resize: vertical; }
+
 /* INCOEX visual contract: Figtree, rounded controls and one decisive action blue. */
 :root {
   --brand-action: #0052FF;
