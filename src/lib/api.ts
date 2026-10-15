@@ -1,4 +1,4 @@
-import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, TrackingLive, TrackingOverview, TariffDestination, TariffDistrict, TariffSettings, Trip, TripStatus, UserRole, Vehicle, VehicleStatus, FareResult } from '../types'
+import type { AppSettings, AppUser, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, ServiceCatalogItem, TrackingLive, TrackingOverview, TariffDestination, TariffDistrict, TariffSettings, Trip, TripStatus, UserRole, Vehicle, VehicleStatus, FareResult } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? 'https://plt-api-01-sep-sn.onrender.com/api').replace(/\/$/, '')
 
@@ -76,7 +76,11 @@ export async function uploadEvidenceFile(file: File) {
   if (!response.ok) throw await apiError(response)
   return response.json() as Promise<{ evidence: string; url: string }>
 }
-export function getTarifas() { return getJson<{ settings: TariffSettings; districts: TariffDistrict[]; destinations: TariffDestination[] }>('/tarifas') }
+export function getTarifas() { return getJson<{ settings: TariffSettings; districts: TariffDistrict[]; destinations: TariffDestination[]; serviceCatalog: ServiceCatalogItem[] }>('/tarifas') }
+export function getServiceCatalog() { return getJson<ServiceCatalogItem[]>('/tarifas/service-options') }
+export function createServiceCatalog(body: Omit<ServiceCatalogItem, 'id' | 'updatedAt'>) { return sendJson<ServiceCatalogItem>('/tarifas/service-options', 'POST', body) }
+export function updateServiceCatalog(id: string, body: Partial<Omit<ServiceCatalogItem, 'id' | 'updatedAt'>>) { return sendJson<ServiceCatalogItem>(`/tarifas/service-options/${encodeURIComponent(id)}`, 'PATCH', body) }
+export function deleteServiceCatalog(id: string) { return sendJson<{ deleted: boolean }>(`/tarifas/service-options/${encodeURIComponent(id)}`, 'DELETE') }
 export function updateTariffSettings(body: Partial<TariffSettings>) { return sendJson<TariffSettings>('/tarifas/settings', 'PATCH', body) }
 export function updateTariffDistrict(id: string, body: { inCoverage?: boolean; status?: string }) { return sendJson<TariffDistrict>(`/tarifas/districts/${encodeURIComponent(id)}`, 'PATCH', body) }
 export function createTariffDestination(body: { name: string; district: string; category?: string; latitude: number; longitude: number; inCoverage?: boolean; status?: string }) { return sendJson<TariffDestination>('/tarifas/destinations', 'POST', body) }
@@ -95,6 +99,13 @@ export function getDeliverablesSummary() { return getJson<DeliverableSummary>('/
 export function updateDeliverableStatus(id: string, status: DeliverableStatus) { return sendJson<Deliverable>(`/deliverables/${encodeURIComponent(id)}/status`, 'PATCH', { status }) }
 export function createTrip(body: Pick<Trip, 'client' | 'origin' | 'destination' | 'packages'> & {
   transport: NonNullable<Trip['transport']>
+  serviceMode?: Trip['serviceMode']
+  vehicleVariant?: string
+  truckType?: string
+  passengerCount?: number
+  returnTrip?: boolean
+  stops?: Trip['stops']
+  options?: Trip['options']
   description?: string
   recipientName?: string
   recipientPhone?: string

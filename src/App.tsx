@@ -189,7 +189,7 @@ function exportPdf(title: string, subtitle: string, columns: string[], rows: Exp
     windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>
       @page { size: A4 landscape; margin: 12mm 12mm 20mm; }
       * { box-sizing: border-box; }
-      body { min-width: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #243554; padding: 0; margin: 0; font-size: 11px; }
+      body { min-width: 0; font-family: 'Figtree', sans-serif; color: #243554; padding: 0; margin: 0; font-size: 11px; }
       .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; width: 100%; min-width: 0; border-bottom: 3px solid #32AAF0; padding-bottom: 12px; margin-bottom: 18px; }
       .brand { display: flex; align-items: center; gap: 12px; flex: 1 1 48%; min-width: 0; }
       .brand > img { width: auto; max-width: 58px; height: 48px !important; object-fit: contain; flex: 0 0 auto; }
@@ -231,7 +231,7 @@ const navItems: Array<{ id: Section; label: string; icon: IconName; group?: stri
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'trips', label: 'Viajes', icon: 'trips', group: 'Operaciones' },
   { id: 'requests', label: 'Solicitudes y asignación', icon: 'requests', group: 'Operaciones' },
-  
+
   { id: 'drivers', label: 'Conductores', icon: 'drivers', group: 'Operaciones' },
   { id: 'vehicles', label: 'Vehículos y flota', icon: 'vehicles', group: 'Operaciones' },
   { id: 'clients', label: 'Clientes', icon: 'clients', group: 'Operaciones' },
@@ -493,105 +493,105 @@ function App() {
     <>
       <a className="skip-link" href="#main-content">Saltar al contenido</a>
       <div className={`app-shell ${themeMode === 'dark' ? 'theme-dark' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}>
-      <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} />
-      <aside className="sidebar">
-        <div className="brand-lockup">
-          <BrandMark />
-        </div>
-
-        <div className="sidebar-section-label">Centro de operaciones</div>
-        <nav className="nav-list" aria-label="Navegación principal">
-          {navItems.filter((item) => hasSectionAccess(sessionUser, item.id)).map((item) => (
-            <button className={`nav-item ${section === item.id ? 'active' : ''}`} key={item.id} onClick={() => navigate(item.id)}>
-              <span className="nav-icon"><Icon name={item.icon} size={17} /></span>
-              <span>{item.label}</span>
-              {item.id === 'incidents' && summary.openIncidents > 0 && <span className="nav-badge">{summary.openIncidents}</span>}
-              {item.id === 'billing' && <span className="nav-lock"><Icon name="lock" size={11} /></span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="user-card">
-            <div className="avatar"><Icon name="drivers" size={17} /></div>
-            <div className="user-info">
-              <strong>{roleLabel(sessionUser)}</strong>
-              <small>{sessionUser.displayName}</small>
-            </div>
-            <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><Icon name="logout" size={16} /></button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main-area" id="main-content">
-        <header className={`topbar ${section === 'dashboard' ? 'dashboard-topbar' : ''}`}>
-          <div className="topbar-leading">
-            <button className="icon-button sidebar-toggle" aria-label="Mostrar u ocultar menú" title="Mostrar u ocultar menú" onClick={() => { if (window.innerWidth <= 900) setSidebarOpen((open) => !open); else setSidebarCollapsed((collapsed) => !collapsed) }}><Icon name="menu" size={17} /></button>
-            <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
-          </div>
-          <div className="topbar-actions">
-            <div className="search-box">
-              <span className="search-icon"><Icon name="search" size={15} /></span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes…" />
-              <kbd>⌘ K</kbd>
-            </div>
-            <button className="live-pill" onClick={() => navigate('tracking')} title="Ver el mapa de operaciones"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</button>
-            <button className="theme-toggle" type="button" aria-label={themeMode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} aria-pressed={themeMode === 'dark'} title={themeMode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} onClick={() => setThemeMode((current) => current === 'dark' ? 'light' : 'dark')}><span aria-hidden="true">{themeMode === 'dark' ? '☼' : '☾'}</span></button>
-            <NotificationBell openIncidents={summary.openIncidents} pendingTrips={summary.pendingTrips} history={history} onNavigate={(target) => { setNotificationsOpen(false); navigate(target) }} open={notificationsOpen} onToggle={() => setNotificationsOpen((current) => !current)} />
-            <button className="round-button" aria-label="Configuración" title="Configuración" onClick={() => navigate('settings')}><img src="/settings.png" alt="" className="topbar-asset-icon" /></button>
-            <div className="profile-menu" onClick={() => setProfileMenuOpen((current) => !current)} title={`Cuenta de ${roleLabel(sessionUser)}`}>
-              <div className="avatar small"><Icon name="profile" size={16} /></div><span>{roleLabel(sessionUser)}</span><span className="chevron"><Icon name="chevronDown" size={13} /></span>
-              {profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>{sessionUser.displayName}</strong><small>{roleLabel(sessionUser)}</small></div><button onClick={() => navigate('users')}>Usuarios y roles</button><button onClick={() => navigate('settings')}>Configuración</button><button className="danger-item" onClick={logout}><Icon name="logout" size={13} /> Cerrar sesión</button></div>}
-            </div>
-          </div>
-        </header>
-
-        <div className={`content ${section === 'dashboard' ? 'dashboard-page-content' : ''}`}>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">{new Intl.DateTimeFormat('es-NI', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div>
-              <h1>{currentPage?.label ?? 'Dashboard'}</h1>
-              {section !== 'dashboard' && <p>{sectionDescription(section)}</p>}
-            </div>
-            <div className="heading-actions">
-              {section === 'dashboard' && <div className="dashboard-heading-controls">
-                <label className="dashboard-period-select"><span className="sr-only">Periodo del dashboard</span><select aria-label="Periodo del dashboard" value={dashboardPeriod} onChange={(event) => changeDashboardPeriod(event.target.value as DashboardPeriod)}><option value="today">Hoy</option><option value="week">Esta semana</option><option value="range">Rango personalizado</option></select></label>
-                {dashboardPeriod === 'range' && <div className="dashboard-heading-range"><input name="dashboard-range-start" autoComplete="off" type="date" value={dashboardRangeStart} onChange={(event) => setDashboardRangeStart(event.target.value)} aria-label="Inicio del rango" /><span aria-hidden="true">→</span><input name="dashboard-range-end" autoComplete="off" type="date" value={dashboardRangeEnd} onChange={(event) => setDashboardRangeEnd(event.target.value)} aria-label="Fin del rango" /></div>}
-              </div>}
-              {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
-              {section === 'dashboard' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo delivery</button>}
-              {section === 'drivers' && <button className="primary-button" onClick={() => setDriverFormOpen(true)}><Icon name="plus" size={13} /> Agregar conductor</button>}
-              {section === 'clients' && <button className="primary-button" onClick={() => setClientFormOpen(true)}><Icon name="plus" size={13} /> Nuevo cliente</button>}
-              {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}><Icon name="download" size={13} /> Exportar PDF</button>}
-            </div>
+        <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setSidebarOpen(false)} />
+        <aside className="sidebar">
+          <div className="brand-lockup">
+            <BrandMark />
           </div>
 
-          {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
+          <div className="sidebar-section-label">Centro de operaciones</div>
+          <nav className="nav-list" aria-label="Navegación principal">
+            {navItems.filter((item) => hasSectionAccess(sessionUser, item.id)).map((item) => (
+              <button className={`nav-item ${section === item.id ? 'active' : ''}`} key={item.id} onClick={() => navigate(item.id)}>
+                <span className="nav-icon"><Icon name={item.icon} size={17} /></span>
+                <span>{item.label}</span>
+                {item.id === 'incidents' && summary.openIncidents > 0 && <span className="nav-badge">{summary.openIncidents}</span>}
+                {item.id === 'billing' && <span className="nav-lock"><Icon name="lock" size={11} /></span>}
+              </button>
+            ))}
+          </nav>
 
-          {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} incidents={incidents} vehicles={vehicles} maintenance={maintenance} tracking={tracking} finance={finance} period={dashboardPeriod} rangeStart={dashboardRangeStart} rangeEnd={dashboardRangeEnd} onNavigate={navigate} />}
-          {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
-          {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
-    {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
-                    {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onDriverChanged={(updated) => setDrivers((current) => current.map((item) => item.id === updated.id ? updated : item))} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
-          {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
-          {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
-          {section === 'incidents' && <IncidentsView incidents={incidents} trips={trips} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
-          {section === 'tarifas' && <TarifasView settings={settings} onSettingsSaved={setSettings} onNotice={setNotice} />}
-          {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
-          {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
-          {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} onRefresh={refreshTracking} />}
-          {section === 'history' && <HistoryView history={history} />}
-          {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onRolesChanged={(updated) => setRoles((current) => current.map((item) => item.code === updated.code ? updated : item))} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
-          {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
-          {section === 'billing' && <BillingView trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
-          {section === 'settings' && <SettingsView connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
-        </div>
-      </main>
-      {notice && <div className="toast" role="status" aria-live="polite"><span className="toast-check">✓</span>{notice}</div>}
-      {newTripOpen && <NewTripDialog settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
-      {driverFormOpen && <DriverFormDialog onClose={() => setDriverFormOpen(false)} onCreated={(driver) => { setDrivers((current) => [...current, driver]); setDriverFormOpen(false); setNotice(`Conductor ${driver.name} registrado y disponible`) }} onError={setNotice} />}
-      {clientFormOpen && <ClientFormDialog onClose={() => setClientFormOpen(false)} onCreated={(client) => { setClients((current) => [...current, client]); setClientFormOpen(false); setNotice(`Cliente ${client.name} registrado y activo`) }} onError={setNotice} />}
-      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onNavigate={(target) => { setHelpOpen(false); navigate(target) }} />}
+          <div className="sidebar-footer">
+            <div className="user-card">
+              <div className="avatar"><Icon name="drivers" size={17} /></div>
+              <div className="user-info">
+                <strong>{roleLabel(sessionUser)}</strong>
+                <small>{sessionUser.displayName}</small>
+              </div>
+              <button className="icon-button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={logout}><Icon name="logout" size={16} /></button>
+            </div>
+          </div>
+        </aside>
+
+        <main className="main-area" id="main-content">
+          <header className={`topbar ${section === 'dashboard' ? 'dashboard-topbar' : ''}`}>
+            <div className="topbar-leading">
+              <button className="icon-button sidebar-toggle" aria-label="Mostrar u ocultar menú" title="Mostrar u ocultar menú" onClick={() => { if (window.innerWidth <= 900) setSidebarOpen((open) => !open); else setSidebarCollapsed((collapsed) => !collapsed) }}><Icon name="menu" size={17} /></button>
+              <div className="breadcrumb"><span>INCOEX</span><b>/</b><strong>{currentPage?.label ?? 'Dashboard'}</strong></div>
+            </div>
+            <div className="topbar-actions">
+              <div className="search-box">
+                <span className="search-icon"><Icon name="search" size={15} /></span>
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar viajes, conductores, clientes…" />
+                <kbd>⌘ K</kbd>
+              </div>
+              <button className="live-pill" onClick={() => navigate('tracking')} title="Ver el mapa de operaciones"><span className="pulse-dot" /> {summary.activeTrips} operaciones activas</button>
+              <button className="theme-toggle" type="button" aria-label={themeMode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} aria-pressed={themeMode === 'dark'} title={themeMode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'} onClick={() => setThemeMode((current) => current === 'dark' ? 'light' : 'dark')}><span aria-hidden="true">{themeMode === 'dark' ? '☼' : '☾'}</span></button>
+              <NotificationBell openIncidents={summary.openIncidents} pendingTrips={summary.pendingTrips} history={history} onNavigate={(target) => { setNotificationsOpen(false); navigate(target) }} open={notificationsOpen} onToggle={() => setNotificationsOpen((current) => !current)} />
+              <button className="round-button" aria-label="Configuración" title="Configuración" onClick={() => navigate('settings')}><img src="/settings.png" alt="" className="topbar-asset-icon" /></button>
+              <div className="profile-menu" onClick={() => setProfileMenuOpen((current) => !current)} title={`Cuenta de ${roleLabel(sessionUser)}`}>
+                <div className="avatar small"><Icon name="profile" size={16} /></div><span>{roleLabel(sessionUser)}</span><span className="chevron"><Icon name="chevronDown" size={13} /></span>
+                {profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>{sessionUser.displayName}</strong><small>{roleLabel(sessionUser)}</small></div><button onClick={() => navigate('users')}>Usuarios y roles</button><button onClick={() => navigate('settings')}>Configuración</button><button className="danger-item" onClick={logout}><Icon name="logout" size={13} /> Cerrar sesión</button></div>}
+              </div>
+            </div>
+          </header>
+
+          <div className={`content ${section === 'dashboard' ? 'dashboard-page-content' : ''}`}>
+            <div className="page-heading">
+              <div>
+                <div className="eyebrow">{new Intl.DateTimeFormat('es-NI', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</div>
+                <h1>{currentPage?.label ?? 'Dashboard'}</h1>
+                {section !== 'dashboard' && <p>{sectionDescription(section)}</p>}
+              </div>
+              <div className="heading-actions">
+                {section === 'dashboard' && <div className="dashboard-heading-controls">
+                  <label className="dashboard-period-select"><span className="sr-only">Periodo del dashboard</span><select aria-label="Periodo del dashboard" value={dashboardPeriod} onChange={(event) => changeDashboardPeriod(event.target.value as DashboardPeriod)}><option value="today">Hoy</option><option value="week">Esta semana</option><option value="range">Rango personalizado</option></select></label>
+                  {dashboardPeriod === 'range' && <div className="dashboard-heading-range"><input name="dashboard-range-start" autoComplete="off" type="date" value={dashboardRangeStart} onChange={(event) => setDashboardRangeStart(event.target.value)} aria-label="Inicio del rango" /><span aria-hidden="true">→</span><input name="dashboard-range-end" autoComplete="off" type="date" value={dashboardRangeEnd} onChange={(event) => setDashboardRangeEnd(event.target.value)} aria-label="Fin del rango" /></div>}
+                </div>}
+                {section === 'trips' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo viaje</button>}
+                {section === 'dashboard' && <button className="primary-button" onClick={() => setNewTripOpen(true)}><Icon name="plus" size={13} /> Nuevo delivery</button>}
+                {section === 'drivers' && <button className="primary-button" onClick={() => setDriverFormOpen(true)}><Icon name="plus" size={13} /> Agregar conductor</button>}
+                {section === 'clients' && <button className="primary-button" onClick={() => setClientFormOpen(true)}><Icon name="plus" size={13} /> Nuevo cliente</button>}
+                {section === 'deliverables' && <button className="secondary-button" onClick={() => { setNotice('Selecciona “Guardar como PDF” en la ventana de impresión'); window.print() }}><Icon name="download" size={13} /> Exportar PDF</button>}
+              </div>
+            </div>
+
+            {connection === 'error' && <div className="connection-banner error"><strong>Sin conexión con el backend.</strong> Verifica que la API esté disponible en <code>{getApiBase()}</code>.</div>}
+
+            {section === 'dashboard' && <Dashboard summary={summary} trips={trips} drivers={drivers} incidents={incidents} vehicles={vehicles} maintenance={maintenance} tracking={tracking} finance={finance} period={dashboardPeriod} rangeStart={dashboardRangeStart} rangeEnd={dashboardRangeEnd} onNavigate={navigate} />}
+            {section === 'trips' && <TripsView trips={trips} clients={clients} search={search} settings={settings} finance={finance} onNavigate={navigate} onNotice={setNotice} onChanged={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshSummary(setSummary, setNotice); void refreshFinance(setFinance, setNotice) }} onDeleted={(id) => { setTrips((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice); void refreshDrivers(setDrivers, setNotice); void refreshFinance(setFinance, setNotice) }} />}
+            {section === 'requests' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'solicitudes'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
+            {section === 'assignment' && <RequestsAssignmentView trips={trips} drivers={drivers} initialTab={'asignacion'} onNavigate={navigate} onAssigned={(trip) => { setTrips((current) => current.map((item) => item.id === trip.id ? trip : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onNotice={setNotice} />}
+            {section === 'drivers' && <DriversView drivers={drivers} vehicles={vehicles} onNavigate={navigate} onNotice={setNotice} onDeleted={(id) => { setDrivers((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} onDriverChanged={(updated) => setDrivers((current) => current.map((item) => item.id === updated.id ? updated : item))} onVehicleChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice) }} />}
+            {section === 'vehicles' && <VehiclesView vehicles={vehicles} drivers={drivers} maintenance={maintenance} settings={settings} onNotice={setNotice} onChanged={(updated) => { setVehicles((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshDrivers(setDrivers, setNotice); void refreshSummary(setSummary, setNotice) }} onCreated={(vehicle) => { setVehicles((current) => [vehicle, ...current]); setNotice(`Vehículo ${vehicle.plate} registrado en la flota`) }} onDeleted={(id) => { setVehicles((current) => current.filter((item) => item.id !== id)); setNotice('Vehículo eliminado de la flota') }} />}
+            {section === 'clients' && <ClientsView clients={clients} search={search} onUpdated={(updated) => { setClients((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshFinance(setFinance, setNotice) }} onNotice={setNotice} onDeleted={(id) => { setClients((current) => current.filter((item) => item.id !== id)); void refreshSummary(setSummary, setNotice) }} />}
+            {section === 'incidents' && <IncidentsView incidents={incidents} trips={trips} onNotice={setNotice} onChanged={(updated) => { setIncidents((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshSummary(setSummary, setNotice) }} onCreated={(incident) => { setIncidents((current) => [incident, ...current]); void refreshSummary(setSummary, setNotice) }} />}
+            {section === 'tarifas' && <TarifasView settings={settings} onSettingsSaved={setSettings} onNotice={setNotice} />}
+            {section === 'reports' && <ReportsView reports={reports} trips={trips} drivers={drivers} clients={clients} incidents={incidents} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
+            {section === 'packages' && <PackagesView trips={trips} onNavigate={navigate} />}
+            {section === 'tracking' && <TrackingView tracking={tracking} onNavigate={navigate} onRefresh={refreshTracking} />}
+            {section === 'history' && <HistoryView history={history} />}
+            {section === 'users' && <UsersView users={users} roles={roles} onNotice={setNotice} onRolesChanged={(updated) => setRoles((current) => current.map((item) => item.code === updated.code ? updated : item))} onChanged={(updated) => { setUsers((current) => current.map((item) => item.id === updated.id ? updated : item)) }} onCreated={(user) => { setUsers((current) => [...current, user]); setNotice(`Usuario ${user.name} creado con rol asignado`) }} onDeleted={(id) => { setUsers((current) => current.filter((item) => item.id !== id)); setNotice('Usuario eliminado') }} />}
+            {section === 'deliverables' && <DeliverablesView deliverables={deliverables} summary={deliverableSummary} onStatusChange={async (id, status) => { try { const updated = await updateDeliverableStatus(id, status); setDeliverables((current) => current.map((item) => item.id === id ? updated : item)); setDeliverableSummary(await getDeliverablesSummary()); setNotice('Entregable actualizado en SQLite local') } catch { setNotice('No se pudo guardar el estado del entregable') } }} onNotice={setNotice} />}
+            {section === 'billing' && <BillingView trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={setNotice} />}
+            {section === 'settings' && <SettingsView connection={connection} settings={settings} onSaved={setSettings} onNotice={setNotice} />}
+          </div>
+        </main>
+        {notice && <div className="toast" role="status" aria-live="polite"><span className="toast-check">✓</span>{notice}</div>}
+        {newTripOpen && <NewTripDialog settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
+        {driverFormOpen && <DriverFormDialog onClose={() => setDriverFormOpen(false)} onCreated={(driver) => { setDrivers((current) => [...current, driver]); setDriverFormOpen(false); setNotice(`Conductor ${driver.name} registrado y disponible`) }} onError={setNotice} />}
+        {clientFormOpen && <ClientFormDialog onClose={() => setClientFormOpen(false)} onCreated={(client) => { setClients((current) => [...current, client]); setClientFormOpen(false); setNotice(`Cliente ${client.name} registrado y activo`) }} onError={setNotice} />}
+        {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onNavigate={(target) => { setHelpOpen(false); navigate(target) }} />}
       </div>
     </>
   )
@@ -833,16 +833,16 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
           {workspaceView === 'fleet' && <DashboardFleetView vehicles={vehicles} trips={trips} onNavigate={onNavigate} />}
           {workspaceView === 'operations' && <section className="dashboard-empty-workspace" aria-label="Mapa de operaciones vacío" />}
           {workspaceView === 'incoex' && <section className="panel dashboard-map-stage">
-          {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
-            <div className="operations-map dashboard-map">
-              <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} />
-              <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); statusFilterRef.current?.showPicker?.() } }}><span>Estado</span><select ref={statusFilterRef} aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
-              <div className="map-overlay-stats"><button type="button" className={mapMode === 'all' ? 'active' : ''} onClick={() => setMapMode('all')}><i className="legend mint" />{visibleDrivers.length} conductores</button><button type="button" className={mapMode === 'routes' ? 'active' : ''} onClick={() => setMapMode('routes')}><i className="legend cyan" />{visibleTrips.length} rutas activas</button><button type="button" disabled={!demandPoint} className={mapMode === 'demand' ? 'active' : ''} onClick={() => setMapMode('demand')}><i className="legend gold" />Mayor demanda: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</button></div>
-              <div className="dashboard-driver-selector map-driver-selector"><span>Ruta por conductor</span><button type="button" className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button type="button" className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
-              <div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div>
-              {focusedDriver && <div className="selected-route-note map-selected-route"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span></div>}
-            </div>
-          </>}
+            {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
+              <div className="operations-map dashboard-map">
+                <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} />
+                <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); statusFilterRef.current?.showPicker?.() } }}><span>Estado</span><select ref={statusFilterRef} aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
+                <div className="map-overlay-stats"><button type="button" className={mapMode === 'all' ? 'active' : ''} onClick={() => setMapMode('all')}><i className="legend mint" />{visibleDrivers.length} conductores</button><button type="button" className={mapMode === 'routes' ? 'active' : ''} onClick={() => setMapMode('routes')}><i className="legend cyan" />{visibleTrips.length} rutas activas</button><button type="button" disabled={!demandPoint} className={mapMode === 'demand' ? 'active' : ''} onClick={() => setMapMode('demand')}><i className="legend gold" />Mayor demanda: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</button></div>
+                <div className="dashboard-driver-selector map-driver-selector"><span>Ruta por conductor</span><button type="button" className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button type="button" className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
+                <div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div>
+                {focusedDriver && <div className="selected-route-note map-selected-route"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span></div>}
+              </div>
+            </>}
           </section>}
         </main>
         {sideKpis}
@@ -1246,20 +1246,20 @@ function DriverFormDialog({ onClose, onCreated, onError }: { onClose: () => void
           <label>Correo<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="conductor@empresa.com.ni" /></label>
           <label>No. Licencia (conducir)<input value={licenseNo} onChange={(event) => setLicenseNo(event.target.value)} placeholder="Ej: LN-0923-4567" /></label>
           <label>Vence licencia<input type="date" value={licenseExp} onChange={(event) => setLicenseExp(event.target.value)} /></label>
-           <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} placeholder="Ej: 001-010789-0012" /></label>
-           <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} placeholder="Ej: A, B, C" /></label>
-           <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-           <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} placeholder="Barrio, municipio o dirección" /></label>
-           <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} placeholder="Nombre completo" /></label>
-           <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
-           <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} placeholder="Nombre completo" /></label>
-           <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
-           <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} placeholder="Nombre completo" /></label>
-           <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} placeholder="Ej: 001-010789-0012" /></label>
+          <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} placeholder="Ej: A, B, C" /></label>
+          <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
+          <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} placeholder="Barrio, municipio o dirección" /></label>
+          <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} placeholder="Nombre completo" /></label>
+          <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} placeholder="Nombre completo" /></label>
+          <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
+          <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} placeholder="Nombre completo" /></label>
+          <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} placeholder="8XXX-XXXX" /></label>
           <label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Proveedor tercerizado (vehículo y conductor de tercero, se marca con 3P)</label>
-         </div>
-         {formError && <div className="form-error" role="alert"><Icon name="alert" size={14} /><span>{formError}</span></div>}
-         <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar conductor'}</button></div>
+        </div>
+        {formError && <div className="form-error" role="alert"><Icon name="alert" size={14} /><span>{formError}</span></div>}
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={submitting}>{submitting ? 'Guardando…' : 'Registrar conductor'}</button></div>
       </form>
     </div>
   )
@@ -1292,7 +1292,7 @@ function DriverEditDialog({ driver, vehicles, onClose, onSaved, onVehicleChanged
       const previous = vehicles.find((vehicle) => vehicle.driver === driver.name && vehicle.id !== selected?.id)
       if (previous) onVehicleChanged(await assignVehicleDriver(previous.id, 'Sin asignar'))
       if (selected) onVehicleChanged(await assignVehicleDriver(selected.id, driver.name))
-       const saved = await updateDriver(driver.id, { name: name.trim(), phone: phone.trim(), email: email.trim(), external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), licenseCategories: licenseCategories.trim(), bloodType, residence: residence.trim(), emergencyContact1Name: emergencyContact1Name.trim(), emergencyContact1Phone: emergencyContact1Phone.trim(), emergencyContact2Name: emergencyContact2Name.trim(), emergencyContact2Phone: emergencyContact2Phone.trim(), emergencyContact3Name: emergencyContact3Name.trim(), emergencyContact3Phone: emergencyContact3Phone.trim(), vehicle: selected?.model ?? 'Sin vehículo asignado', plate: selected?.plate ?? '—' })
+      const saved = await updateDriver(driver.id, { name: name.trim(), phone: phone.trim(), email: email.trim(), external, licenseNo: licenseNo.trim(), licenseExp, docNo: docNo.trim(), licenseCategories: licenseCategories.trim(), bloodType, residence: residence.trim(), emergencyContact1Name: emergencyContact1Name.trim(), emergencyContact1Phone: emergencyContact1Phone.trim(), emergencyContact2Name: emergencyContact2Name.trim(), emergencyContact2Phone: emergencyContact2Phone.trim(), emergencyContact3Name: emergencyContact3Name.trim(), emergencyContact3Phone: emergencyContact3Phone.trim(), vehicle: selected?.model ?? 'Sin vehículo asignado', plate: selected?.plate ?? '—' })
       onSaved(saved)
       onNoticeSafe(onError, 'Conductor actualizado correctamente')
       onClose()
@@ -1313,16 +1313,16 @@ function DriverEditDialog({ driver, vehicles, onClose, onSaved, onVehicleChanged
         <label>Vehículo asignado<select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}><option value="">Sin vehículo asignado</option>{vehicles.map((vehicle) => <option value={vehicle.id} disabled={vehicle.driver !== 'Sin asignar' && vehicle.driver !== driver.name} key={vehicle.id}>{vehicle.plate} · {vehicle.model}{vehicle.driver !== 'Sin asignar' && vehicle.driver !== driver.name ? ' · en uso' : ''}</option>)}</select></label>
         <label>No. licencia<input value={licenseNo} onChange={(event) => setLicenseNo(event.target.value)} /></label>
         <label>Vence licencia<input type="date" value={licenseExp} onChange={(event) => setLicenseExp(event.target.value)} /></label>
-         <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} /></label>
-         <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} /></label>
-         <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
-         <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} /></label>
-         <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} /></label>
-         <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} /></label>
-         <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} /></label>
-         <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} /></label>
-         <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} /></label>
-         <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} /></label>
+        <label>Cédula<input value={docNo} onChange={(event) => setDocNo(event.target.value)} /></label>
+        <label>Categorías autorizadas<input value={licenseCategories} onChange={(event) => setLicenseCategories(event.target.value)} /></label>
+        <label>Tipo de sangre<select value={bloodType} onChange={(event) => setBloodType(event.target.value)}><option value="">No registrado</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></label>
+        <label className="full-field">Lugar de residencia<input value={residence} onChange={(event) => setResidence(event.target.value)} /></label>
+        <label>Contacto de emergencia 1 · Nombre<input value={emergencyContact1Name} onChange={(event) => setEmergencyContact1Name(event.target.value)} /></label>
+        <label>Contacto de emergencia 1 · Teléfono<input value={emergencyContact1Phone} onChange={(event) => setEmergencyContact1Phone(event.target.value)} /></label>
+        <label>Contacto de emergencia 2 · Nombre<input value={emergencyContact2Name} onChange={(event) => setEmergencyContact2Name(event.target.value)} /></label>
+        <label>Contacto de emergencia 2 · Teléfono<input value={emergencyContact2Phone} onChange={(event) => setEmergencyContact2Phone(event.target.value)} /></label>
+        <label>Contacto de emergencia 3 · Nombre<input value={emergencyContact3Name} onChange={(event) => setEmergencyContact3Name(event.target.value)} /></label>
+        <label>Contacto de emergencia 3 · Teléfono<input value={emergencyContact3Phone} onChange={(event) => setEmergencyContact3Phone(event.target.value)} /></label>
         <label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Proveedor tercerizado (3P)</label>
       </div>
       <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</button></div>
@@ -1899,7 +1899,7 @@ async function openInvoicePrint(trip: Trip, client: Client | undefined, settings
   windowRef.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Factura ${invoiceNumber}</title><style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { size: A4; margin: 16mm 14mm 20mm; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #20304f; padding: 0 0 28px; background: #ffffff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: 'Figtree', sans-serif; color: #20304f; padding: 0 0 28px; background: #ffffff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .header { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 3px solid #32AAF0; padding-bottom: 14px; }
     .brand { display: flex; align-items: center; gap: 14px; font-size: 24px; font-weight: 800; letter-spacing: .16em; color: #0d75b3; } .brand img { width: auto; height: 46px; object-fit: contain; } .brand span { display: block; color: #6e6a78; font-size: 11px; letter-spacing: .04em; }
     .meta { text-align: right; } .meta h1 { font-size: 20px; color: #0d75b3; } .meta p { color: #6e6a78; font-size: 12px; margin-top: 3px; }
@@ -1952,7 +1952,7 @@ function ClientDetailModal({ clientName, client, trips, onClose, onInvoice, onWh
   useEffect(() => {
     let active = true
     if (client?.id) {
-      getClientProfile(client.id).then((data) => { if (active) setProfile(data) }).catch(() => {})
+      getClientProfile(client.id).then((data) => { if (active) setProfile(data) }).catch(() => { })
     }
     return () => { active = false }
   }, [client?.id])
@@ -2192,39 +2192,39 @@ function DriversView({ drivers, vehicles, onNavigate, onNotice, onDeleted, onDri
     }
   }
   return <><div className="driver-summary"><SummaryValue label="Total conductores" value={String(drivers.length)} /><SummaryValue label="Disponibles" value={String(drivers.filter((driver) => driver.status === 'Disponible').length)} tone="mint" /><SummaryValue label="Tercerizados" value={String(drivers.filter((driver) => driver.external).length)} tone="gold" /><SummaryValue label="Fuera de servicio" value={String(drivers.filter((driver) => driver.status === 'Fuera de servicio').length)} tone="slate" /></div><div className="scope-row"><span className="scope-label">PROVEEDORES</span><button className={`filter-chip ${scopeFilter === 'all' ? 'active' : ''}`} onClick={() => setScopeFilter('all')}>Todos <b>{drivers.length}</b></button><button className={`filter-chip ${scopeFilter === 'own' ? 'active' : ''}`} onClick={() => setScopeFilter('own')}>Flota propia <b>{drivers.filter((driver) => !driver.external).length}</b></button><button className={`filter-chip ${scopeFilter === 'external' ? 'active' : ''}`} onClick={() => setScopeFilter('external')}>Tercerizados <b>{drivers.filter((driver) => driver.external).length}</b></button></div><div className="drivers-grid">{visibleDrivers.map((driver, index) => <article className="driver-card" key={driver.id}><div className="driver-card-top"><div className={`driver-avatar ${['blue', 'cyan', 'violet', 'mint', 'gold', 'slate'][index % 6]}`}>{initials(driver.name)}</div><div><h3>{driver.name}</h3><p>{driver.phone}</p></div><div className="driver-badges">{driver.external && <span className="badge-external">3P</span>}<StatusPill status={driver.status} /></div></div><div className="vehicle-line"><span>VEHÍCULO</span><strong>{driver.vehicle} <em>— {driver.plate}</em></strong></div><div className="route-line"><span>RUTA / ACTIVIDAD ACTUAL</span><strong>{driver.route}</strong></div><div className="driver-actions"><button onClick={() => setProfileDriver(driver)}>Ver perfil</button><button className="primary-mini" onClick={() => onNavigate('assignment')}>Asignar viaje</button><button className="secondary-mini" onClick={() => setEditDriver(driver)}>Editar conductor</button></div></article>)}</div>{profileDriver && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProfileDriver(null) }}>
-        <div className="modal-card trip-detail-modal driver-profile-modal">
-          <div className="modal-header"><div><span className="eyebrow">Perfil del conductor · {profileDriver.id}</span><h2>{profileDriver.name}</h2><p>{profileDriver.phone}</p></div><button type="button" className="icon-button" onClick={() => setProfileDriver(null)} aria-label="Cerrar">×</button></div>
-          <div className="trip-detail-grid">
-            <div className="trip-detail-field"><span>Estado</span><StatusPill status={profileDriver.status} /></div>
-            <div className="trip-detail-field"><span>Vehículo</span><strong>{profileDriver.vehicle}</strong></div>
-            <div className="trip-detail-field"><span>Placa</span><strong>{profileDriver.plate}</strong></div>
-            <div className="trip-detail-field"><span>No. licencia</span><strong>{profileDriver.licenseNo || '—'}</strong></div>
-            <div className="trip-detail-field"><span>Vence licencia</span><strong>{profileDriver.licenseExp || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Cédula</span><strong>{profileDriver.docNo || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Categorías autorizadas</span><strong>{profileDriver.licenseCategories || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Tipo de sangre</span><strong>{profileDriver.bloodType || '—'}</strong></div>
-             <div className="trip-detail-field full"><span>Lugar de residencia</span><strong>{profileDriver.residence || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Contacto de emergencia 1</span><strong>{[profileDriver.emergencyContact1Name, profileDriver.emergencyContact1Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Contacto de emergencia 2</span><strong>{[profileDriver.emergencyContact2Name, profileDriver.emergencyContact2Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Contacto de emergencia 3</span><strong>{[profileDriver.emergencyContact3Name, profileDriver.emergencyContact3Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
-             <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
-             <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
-            <div className="trip-detail-field"><span>Cobertura</span><strong>{profileDriver.external ? 'Proveedor tercerizado (3P)' : 'Flota propia'}</strong></div>
-          </div>
-          <div className="trip-detail-grid compact margin-strip">
-            <div className="trip-detail-field full"><span>Vehículo del conductor</span>
-              <select className="mini-select" value={vehicles.find((vehicle) => vehicle.plate === profileDriver.plate)?.id ?? ''} disabled={busy.startsWith('veh-')} onChange={(event) => event.target.value && void assignVehicle(profileDriver, event.target.value)} title="Elige el vehículo que usará este conductor">
-                <option value="">Seleccionar vehículo…</option>
-                {vehicles.map((vehicle) => <option value={vehicle.id} disabled={vehicle.driver !== 'Sin asignar' && vehicle.driver !== profileDriver.name} key={vehicle.id}>{vehicle.plate} · {vehicle.model}{vehicle.driver !== 'Sin asignar' && vehicle.driver !== profileDriver.name ? ' · en uso' : ''}</option>)}
-              </select>
-            </div>
-            <div className="trip-detail-field full check-inline"><label><input type="checkbox" checked={Boolean(profileDriver.external)} disabled={busy.startsWith('ext-')} onChange={() => void toggleExternal(profileDriver)} /> Proveedor tercerizado (vehículo y conductor de tercero)</label></div>
-          </div>
-          <div className="modal-actions trip-actions"><button className="secondary-button" onClick={() => setEditDriver(profileDriver)}><Icon name="edit" size={13} /> Editar conductor</button><button className="secondary-button danger" disabled={busy === profileDriver.id} onClick={() => void removeDriver(profileDriver)}><Icon name="trash" size={13} /> Eliminar conductor</button><button className="secondary-button" onClick={() => { setProfileDriver(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver en el mapa</button><button className="primary-button" onClick={() => { setProfileDriver(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar viaje</button></div>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProfileDriver(null) }}>
+      <div className="modal-card trip-detail-modal driver-profile-modal">
+        <div className="modal-header"><div><span className="eyebrow">Perfil del conductor · {profileDriver.id}</span><h2>{profileDriver.name}</h2><p>{profileDriver.phone}</p></div><button type="button" className="icon-button" onClick={() => setProfileDriver(null)} aria-label="Cerrar">×</button></div>
+        <div className="trip-detail-grid">
+          <div className="trip-detail-field"><span>Estado</span><StatusPill status={profileDriver.status} /></div>
+          <div className="trip-detail-field"><span>Vehículo</span><strong>{profileDriver.vehicle}</strong></div>
+          <div className="trip-detail-field"><span>Placa</span><strong>{profileDriver.plate}</strong></div>
+          <div className="trip-detail-field"><span>No. licencia</span><strong>{profileDriver.licenseNo || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Vence licencia</span><strong>{profileDriver.licenseExp || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Cédula</span><strong>{profileDriver.docNo || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Categorías autorizadas</span><strong>{profileDriver.licenseCategories || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Tipo de sangre</span><strong>{profileDriver.bloodType || '—'}</strong></div>
+          <div className="trip-detail-field full"><span>Lugar de residencia</span><strong>{profileDriver.residence || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Contacto de emergencia 1</span><strong>{[profileDriver.emergencyContact1Name, profileDriver.emergencyContact1Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Contacto de emergencia 2</span><strong>{[profileDriver.emergencyContact2Name, profileDriver.emergencyContact2Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Contacto de emergencia 3</span><strong>{[profileDriver.emergencyContact3Name, profileDriver.emergencyContact3Phone].filter(Boolean).join(' · ') || '—'}</strong></div>
+          <div className="trip-detail-field"><span>Actividad actual</span><strong>{profileDriver.route}</strong></div>
+          <div className="trip-detail-field"><span>Última posición</span><strong>{profileDriver.latitude.toFixed(4)}, {profileDriver.longitude.toFixed(4)}</strong></div>
+          <div className="trip-detail-field"><span>Cobertura</span><strong>{profileDriver.external ? 'Proveedor tercerizado (3P)' : 'Flota propia'}</strong></div>
         </div>
+        <div className="trip-detail-grid compact margin-strip">
+          <div className="trip-detail-field full"><span>Vehículo del conductor</span>
+            <select className="mini-select" value={vehicles.find((vehicle) => vehicle.plate === profileDriver.plate)?.id ?? ''} disabled={busy.startsWith('veh-')} onChange={(event) => event.target.value && void assignVehicle(profileDriver, event.target.value)} title="Elige el vehículo que usará este conductor">
+              <option value="">Seleccionar vehículo…</option>
+              {vehicles.map((vehicle) => <option value={vehicle.id} disabled={vehicle.driver !== 'Sin asignar' && vehicle.driver !== profileDriver.name} key={vehicle.id}>{vehicle.plate} · {vehicle.model}{vehicle.driver !== 'Sin asignar' && vehicle.driver !== profileDriver.name ? ' · en uso' : ''}</option>)}
+            </select>
+          </div>
+          <div className="trip-detail-field full check-inline"><label><input type="checkbox" checked={Boolean(profileDriver.external)} disabled={busy.startsWith('ext-')} onChange={() => void toggleExternal(profileDriver)} /> Proveedor tercerizado (vehículo y conductor de tercero)</label></div>
+        </div>
+        <div className="modal-actions trip-actions"><button className="secondary-button" onClick={() => setEditDriver(profileDriver)}><Icon name="edit" size={13} /> Editar conductor</button><button className="secondary-button danger" disabled={busy === profileDriver.id} onClick={() => void removeDriver(profileDriver)}><Icon name="trash" size={13} /> Eliminar conductor</button><button className="secondary-button" onClick={() => { setProfileDriver(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver en el mapa</button><button className="primary-button" onClick={() => { setProfileDriver(null); onNavigate('assignment') }}><Icon name="assignment" size={13} /> Asignar viaje</button></div>
       </div>
-    )}{editDriver && <DriverEditDialog driver={editDriver} vehicles={vehicles} onClose={() => setEditDriver(null)} onSaved={(updated) => { onDriverChanged(updated); setProfileDriver(updated); setEditDriver(null) }} onVehicleChanged={onVehicleChanged} onError={onNotice} />}</>
+    </div>
+  )}{editDriver && <DriverEditDialog driver={editDriver} vehicles={vehicles} onClose={() => setEditDriver(null)} onSaved={(updated) => { onDriverChanged(updated); setProfileDriver(updated); setEditDriver(null) }} onVehicleChanged={onVehicleChanged} onError={onNotice} />}</>
 }
 
 function FuelPanel({ vehicles, onNotice }: { vehicles: Vehicle[]; onNotice: (message: string) => void }) {
@@ -2466,7 +2466,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     event.preventDefault()
     setBusy('create')
     try {
-       onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, fuelPriceCs, tankCapacityL, brand, motorNo, chassisNo, color }))
+      onCreated(await createVehicle({ plate, model, type: type === 'Otro' ? typeOther || type : type, capacityKg, year, fuelType, consumptionLPerKm, priceCs, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, fuelPriceCs, tankCapacityL, brand, motorNo, chassisNo, color }))
       setFormOpen(false)
       setPlate('')
       setModel('')
@@ -2475,7 +2475,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
       setConsumptionLPerKm(0.1)
       setPriceCs(0)
       setOdometerKm(0)
-       setMinTripsMonth(0)
+      setMinTripsMonth(0)
       setFinanced(false)
       setAcquisitionMode('cash')
       setDownPaymentCs(0)
@@ -2519,7 +2519,7 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     if (!editVehicle) return
     setBusy(`edit-${editVehicle.id}`)
     try {
-       const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, brand, motorNo, chassisNo, color })
+      const updated = await updateVehicle(editVehicle.id, { fuelType, consumptionLPerKm, priceCs, fuelPriceCs: fuelPriceCs || undefined, tankCapacityL: tankCapacityL || undefined, odometerKm, external, vehicleFunction, minTripsMonth, financed: acquisitionMode !== 'cash', acquisitionMode, downPaymentCs, leaseStart, leaseTermMonths, leaseMonthlyPaymentCs, residualValueCs, depreciationPct, brand, motorNo, chassisNo, color })
       onChanged(updated)
       if (detailVehicle?.id === updated.id) setDetailVehicle(updated)
       onNotice(`Datos económicos de ${updated.plate} actualizados`)
@@ -2581,157 +2581,157 @@ function VehiclesView({ vehicles, drivers, maintenance, settings, onNotice, onCh
     </div>
     {fleetTab === 'combustible' && <FuelPanel vehicles={vehicles} onNotice={onNotice} />}
     {fleetTab === 'flota' && <>
-    <div className="driver-summary">
-      <SummaryValue label="Total de vehículos" value={String(vehicles.length)} />
-      <SummaryValue label="Disponibles" value={String(byStatus('Disponible').length)} tone="mint" />
-      <SummaryValue label="En servicio" value={String(byStatus('En servicio').length)} tone="blue" />
-      <SummaryValue label="Con compromiso financiero" value={String(vehicles.filter((vehicle) => vehicle.financing.financed).length)} tone="gold" />
-      <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="red" />
-    </div>
-    <section className="panel table-panel">
-      <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
-      <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Función', 'Consumo', 'Precio', 'Kilometraje inicial (km)', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
-        <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
-        <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong><small className="cell-sub" key={`${vehicle.id}-brand`}>{vehicle.brand} · {vehicle.color}</small>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Compromiso financiero">{vehicle.acquisitionMode === 'leasing' ? 'Leasing' : 'Financiado'}</span>}</span>,
-        vehicle.model,
-        vehicle.type,
-        <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b></span>,
-        <span key={`${vehicle.id}-cons`}><b>{vehicle.fuelType}</b><small className="cell-sub">{vehicle.consumptionLPerKm} L/km</small></span>,
-        <span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>,<span key={`${vehicle.id}-odo`}>{vehicle.odometerKm.toLocaleString('es-NI')}</span>,
-        <span key={`${vehicle.id}-costkm`}><b>{formatCs(vehicle.fuelCostPerKmC$)}</b><small className="cell-sub">solo combustible</small></span>,
-        <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>,
-        <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />,
-        <div className="action-group" key={`${vehicle.id}-actions`}>
-          <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
-          <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => { const usedElsewhere = vehicles.some((other) => other.id !== vehicle.id && other.driver === driver.name); const isMine = vehicle.driver === driver.name; return <option value={driver.name} disabled={usedElsewhere && !isMine} key={driver.id}>{driver.name}{usedElsewhere && !isMine ? ' · en otro vehículo' : ''}</option> })}</select>
-          <button title="Ver detalle" onClick={() => setDetailVehicle(vehicle)}><Icon name="eye" size={14} /></button>
-          <button title="Datos económicos (consumo, precio C$, odómetro)" onClick={() => openEconomicEditor(vehicle)}><Icon name="fuel" size={14} /></button>
-          <button title="Subir foto" disabled={busy === `photo-${vehicle.id}`} onClick={() => { setPhotoTargetId(vehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={14} /></button>
-          <button title="Registrar mantenimiento" onClick={() => setMaintenanceVehicle(vehicle)}><Icon name="wrench" size={14} /></button>
-          <button title="Eliminar vehículo" disabled={busy === `delete-${vehicle.id}`} onClick={() => void removeVehicle(vehicle)}><Icon name="trash" size={14} /></button>
-        </div>,
-      ])} />
-      <div className="table-footer"><span>Los cambios de estado, conductor, consumo y precio se persisten en la API · Costo por km = consumo × precio de combustible en C$ · Mantenimientos: {maintenance.length}</span></div>
-    </section>
-    <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.target.value = '' }} />
-    {formOpen && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
-        <form className="modal-card wide vehicle-form-modal" onSubmit={submitVehicle}>
-          <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible. Precios en córdobas (C$).</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
-          <div className="form-grid">
-            <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
-            <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
-            <label>Tipo<select value={type} onChange={(event) => { const nextType = event.target.value; setType(nextType); if (nextType === 'Moto') setVehicleFunction('delivery'); else if (vehicleFunction === 'delivery') setVehicleFunction('privado'); if (nextType !== 'Otro') setTypeOther('') }}><option>Moto</option><option>Panel</option><option>Van</option><option>Pickup</option><option>Camion</option><option>Sedan</option><option>SUV</option><option>Furgon</option><option>Microbus</option><option>Chasis camion</option><option>Otro</option></select>{type === 'Otro' && <input value={typeOther} onChange={(event) => setTypeOther(event.target.value)} placeholder="Escribe el tipo" />}</label>
-            <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Ej: Toyota" /></label>
-            <label>N° Motor<input value={motorNo} onChange={(event) => setMotorNo(event.target.value)} placeholder="Ej: TM-48392011" /></label>
-            <label>N° Chasis (VIN)<input value={chassisNo} onChange={(event) => setChassisNo(event.target.value)} placeholder="Ej: 9HV-2A-1122-89" /></label>
-            <label>Color<input value={color} onChange={(event) => setColor(event.target.value)} placeholder="Ej: Blanco" /></label>
-            
-            <label>Capacidad (kg)<NumInput required min={100} max={20000} value={capacityKg} onChange={setCapacityKg} /></label>
-            
-            <label>Año<NumInput required min={2000} max={2030} value={year} onChange={setYear} /></label>
-            <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
-            <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
-            <label>Precio de compra (C$)<NumInput min={0} step={1000} value={priceCs} onChange={setPriceCs} placeholder="Ej: 1850000" /></label>
-            <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
-             <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-             <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
-             <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
-            {acquisitionMode !== 'cash' && <>
-              <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
-              <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
-              <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
-              <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
-              <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
-              <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
-            </>}
-          </div>
-          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
-        </form>
+      <div className="driver-summary">
+        <SummaryValue label="Total de vehículos" value={String(vehicles.length)} />
+        <SummaryValue label="Disponibles" value={String(byStatus('Disponible').length)} tone="mint" />
+        <SummaryValue label="En servicio" value={String(byStatus('En servicio').length)} tone="blue" />
+        <SummaryValue label="Con compromiso financiero" value={String(vehicles.filter((vehicle) => vehicle.financing.financed).length)} tone="gold" />
+        <SummaryValue label="Mantenimiento / fuera" value={String(byStatus('Mantenimiento').length + byStatus('Fuera de servicio').length)} tone="red" />
       </div>
-    )}
-    {editVehicle && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
-        <form className="modal-card wide vehicle-form-modal" onSubmit={submitEconomicData}>
-           <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), kilometraje inicial, función, meta opcional y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
-          <div className="form-grid">
-            <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
-            <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
-            <label>Capacidad del tanque (L)<NumInput min={0} step={5} value={tankCapacityL} onChange={setTankCapacityL} /></label>
-            <label>Precio combustible propio (C$/L)<NumInput min={0} step={0.5} value={fuelPriceCs} onChange={setFuelPriceCs} /></label>
-            <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
-            <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
-             <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-             <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
-             <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
-            {acquisitionMode !== 'cash' && <>
-              <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
-              <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
-              <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
-              <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
-              <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
-              <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
-            </>}
-            <div className="full-field conversion-note"><span>Equivalente en dólares:</span><strong>US$ {csToUsd(priceCs, dollarRate).toLocaleString('es-NI')} · tasa {dollarRate}</strong></div>
-          </div>
-          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editVehicle.id}`}>{busy === `edit-${editVehicle.id}` ? 'Guardando…' : 'Guardar datos'}</button></div>
-        </form>
-      </div>
-    )}
-    {maintenanceVehicle && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMaintenanceVehicle(null) }}>
-        <form className="modal-card" onSubmit={submitMaintenance}>
-          <div className="modal-header"><div><span className="eyebrow">Mantenimiento · {maintenanceVehicle.plate}</span><h2>{maintenanceVehicle.model}</h2><p>Al registrar el mantenimiento, el vehículo pasa a estado Mantenimiento.</p></div><button type="button" className="icon-button" onClick={() => setMaintenanceVehicle(null)} aria-label="Cerrar">×</button></div>
-          <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label><label>Proveedor<input value={maintenanceProvider} onChange={(event) => setMaintenanceProvider(event.target.value)} placeholder="Taller o proveedor" /></label><label>Duración (días)<NumInput min={0} value={maintenanceDurationDays} onChange={setMaintenanceDurationDays} /></label><label>Costo (C$)<NumInput min={0} value={maintenanceCost} onChange={setMaintenanceCost} placeholder="Ej: 7420" /></label><span className="full-field conversion-note">Costo en córdobas: {formatCs(maintenanceCost)} · US$ {csToUsd(maintenanceCost, dollarRate).toFixed(2)}</span></div>
-          <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setMaintenanceVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `mt-${maintenanceVehicle.id}`}>{busy === `mt-${maintenanceVehicle.id}` ? 'Guardando…' : 'Registrar mantenimiento'}</button></div>
-        </form>
-      </div>
-    )}
-    {detailVehicle && (
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailVehicle(null) }}>
-        <div className="modal-card vehicle-detail-modal">
-          <div className="modal-header"><div><span className="eyebrow">Detalle de flota · {detailVehicle.plate}</span><h2>{detailVehicle.model}</h2><p>{detailVehicle.type} · capacidad {detailVehicle.capacityKg.toLocaleString('es-NI')} kg · {detailVehicle.year}</p></div><button type="button" className="icon-button" onClick={() => setDetailVehicle(null)} aria-label="Cerrar">×</button></div>
-          <div className="vehicle-detail-body">
-            <div className="vehicle-photo">{detailVehicle.imageUrl ? <img src={resolveImageUrl(detailVehicle.imageUrl)} alt={detailVehicle.model} /> : <div className="vehicle-photo-empty"><Icon name="vehicles" size={28} />Sin foto registrada</div>}<button className="secondary-button photo-change" onClick={() => { setPhotoTargetId(detailVehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={12} /> {detailVehicle.imageUrl ? 'Cambiar foto' : 'Subir foto'}</button></div>
-            <div className="vehicle-detail-info">
-              <div className="trip-detail-grid">
-                <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailVehicle.status} /></div>
-                <div className="trip-detail-field"><span>Conductor</span><strong>{detailVehicle.driver}</strong></div>
-                <div className="trip-detail-field"><span>Combustible</span><strong>{detailVehicle.fuelType}</strong></div>
-                <div className="trip-detail-field"><span>Consumo</span><strong>{detailVehicle.consumptionLPerKm} L/km</strong></div>
-                <div className="trip-detail-field"><span>Precio de compra</span><strong>{formatCs(detailVehicle.priceCs)}<small className="cell-sub">US$ {detailVehicle.priceUsd.toLocaleString('es-NI')}</small></strong></div>
-                <div className="trip-detail-field"><span>Costo por km</span><strong>{formatCs(detailVehicle.fuelCostPerKmC$)}<small className="cell-sub">solo combustible</small></strong></div>
-                <div className="trip-detail-field"><span>Autonomía del tanque</span><strong>{detailVehicle.tankCapacityL && detailVehicle.consumptionLPerKm > 0 ? Math.round(detailVehicle.tankCapacityL / detailVehicle.consumptionLPerKm).toLocaleString('es-NI') + ' km' : '—'}</strong></div>
-                <div className="trip-detail-field"><span>Kilometraje inicial</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
-                <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}<small className="cell-sub">meta {detailVehicle.minTripsMonth || '—'} / mes</small></strong></div>
-                <div className="trip-detail-field"><span>Función</span><strong>{FUNCTION_LABELS[detailVehicle.vehicleFunction] ?? '—'}</strong></div>
-                <div className="trip-detail-field"><span>Marca / Color</span><strong>{detailVehicle.brand || '—'}{detailVehicle.color ? ' · ' + detailVehicle.color : ''}</strong></div>
-                <div className="trip-detail-field"><span>N° Motor</span><strong>{detailVehicle.motorNo || '—'}</strong></div>
-                <div className="trip-detail-field"><span>N° Chasis (VIN)</span><strong>{detailVehicle.chassisNo || '—'}</strong></div>
-                <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
-                <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
-              </div>
-              <div className="finance-card">
-                <div className="finance-card-head"><span className="eyebrow">ADQUISICIÓN Y RENTABILIDAD</span>{detailVehicle.acquisitionMode === 'leasing' ? <span className="financed-badge">Leasing</span> : detailVehicle.acquisitionMode === 'financed' ? <span className="financed-badge">Financiado</span> : <span className="financed-badge cash">Al contado</span>}</div>
-                <div className="finance-grid">
-                  <div className="finance-cell"><span>Pago mensual</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.leaseMonthlyPaymentCs) : '—'}</strong></div>
-                  <div className="finance-cell"><span>Deuda restante</span><strong className={detailVehicle.financing.remainingDebtCs > 0 ? 'text-danger' : ''}>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.remainingDebtCs) : '—'}</strong></div>
-                  <div className="finance-cell"><span>Meses restantes</span><strong>{detailVehicle.financing.financed ? `${detailVehicle.financing.monthsRemaining} de ${detailVehicle.financing.leaseTermMonths}` : '—'}</strong></div>
-                  <div className="finance-cell"><span>Total pagado</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.totalPaidCs) : '—'}</strong></div>
-                  <div className="finance-cell"><span>Depreciación / mes</span><strong>{formatCs(detailVehicle.financing.monthlyDepreciationCs)}</strong></div>
-                  <div className="finance-cell"><span>Depreciación anual</span><strong>{formatCs(detailVehicle.financing.annualDepreciationCs)}<small className="cell-sub">{detailVehicle.financing.depreciationPct}% / año</small></strong></div>
-                  <div className="finance-cell"><span>Costo fijo mensual</span><strong>{formatCs(detailVehicle.financing.monthlyCostCs)}<small className="cell-sub">cuota + depreciación</small></strong></div>
-                  <div className="finance-cell"><span>Punto de equilibrio</span><strong>{detailVehicle.minTripsMonth ? `~${detailVehicle.minTripsMonth} viajes/mes` : 'sin meta'}<small className="cell-sub">cubre cuota y depreciación</small></strong></div>
-                </div>
-                <p className="chart-note">Con el leasing, cada viaje del mes debe cubrir su parte de la cuota, el combustible y la depreciación. El módulo de Reportes → Flota y financiamiento proyecta mes a mes si cada vehículo es rentable.</p>
-              </div>
-              <div className="maintenance-mini"><span className="eyebrow">HISTORIAL DE MANTENIMIENTO</span>{maintenance.filter((record) => record.vehicleId === detailVehicle.id).length === 0 && <p className="muted">Sin registros para este vehículo.</p>}{maintenance.filter((record) => record.vehicleId === detailVehicle.id).map((record) => <div className="maintenance-row" key={record.id}><span>{record.date}</span><p><b>{record.description}</b><small className="cell-sub">{record.provider || 'Proveedor no indicado'}{record.durationDays ? ` · ${record.durationDays} días` : ''}</small></p><b>{formatCs(record.cost)}</b></div>)}</div>
+      <section className="panel table-panel">
+        <div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Flota de Managua · consumos y precios en córdobas {settings ? `· tasa US$ 1 = C$ ${settings.dollarRate}` : ''}</div><button className="primary-button" onClick={() => setFormOpen(true)}><Icon name="plus" size={13} /> Registrar vehículo</button></div>
+        <DataTable className="vehicles-table" columns={['Foto', 'Placa', 'Modelo', 'Tipo', 'Función', 'Consumo', 'Precio', 'Kilometraje inicial (km)', 'Costo / km', 'Conductor', 'Estado', 'Acciones']} rows={vehicles.map((vehicle) => [
+          <button className="vehicle-thumb" key={`${vehicle.id}-thumb`} onClick={() => setDetailVehicle(vehicle)} title="Ver detalle">{vehicle.imageUrl ? <img src={resolveImageUrl(vehicle.imageUrl)} alt={vehicle.model} loading="lazy" /> : <Icon name="vehicles" size={16} />}</button>,
+          <span className="plate-cell"><strong className="linkish" key={`${vehicle.id}-plate`} onClick={() => setDetailVehicle(vehicle)}>{vehicle.plate}</strong><small className="cell-sub" key={`${vehicle.id}-brand`}>{vehicle.brand} · {vehicle.color}</small>{vehicle.external && <span className="badge-external">3P</span>}{vehicle.financing.financed && <span className="financed-badge" title="Compromiso financiero">{vehicle.acquisitionMode === 'leasing' ? 'Leasing' : 'Financiado'}</span>}</span>,
+          vehicle.model,
+          vehicle.type,
+          <span key={`${vehicle.id}-fn`}><b className="function-label">{FUNCTION_LABELS[vehicle.vehicleFunction]}</b></span>,
+          <span key={`${vehicle.id}-cons`}><b>{vehicle.fuelType}</b><small className="cell-sub">{vehicle.consumptionLPerKm} L/km</small></span>,
+          <span key={`${vehicle.id}-price`}><b>{formatCs(vehicle.priceCs)}</b><small className="cell-sub">US$ {vehicle.priceUsd.toLocaleString('es-NI')}</small></span>, <span key={`${vehicle.id}-odo`}>{vehicle.odometerKm.toLocaleString('es-NI')}</span>,
+          <span key={`${vehicle.id}-costkm`}><b>{formatCs(vehicle.fuelCostPerKmC$)}</b><small className="cell-sub">solo combustible</small></span>,
+          <span className={vehicle.driver === 'Sin asignar' ? 'muted' : ''} key={`${vehicle.id}-driver`}>{vehicle.driver}</span>,
+          <StatusPill key={`${vehicle.id}-status`} status={vehicle.status} />,
+          <div className="action-group" key={`${vehicle.id}-actions`}>
+            <select className="mini-select" value={vehicle.status} disabled={busy === `status-${vehicle.id}`} onChange={(event) => void changeStatus(vehicle, event.target.value as VehicleStatus)} title="Cambiar estado"><option value="Disponible">Disponible</option><option value="En servicio">En servicio</option><option value="Mantenimiento">Mantenimiento</option><option value="Fuera de servicio">Fuera de servicio</option></select>
+            <select className="mini-select" value={vehicle.driver === 'Sin asignar' ? '' : vehicle.driver} disabled={busy === `driver-${vehicle.id}` || vehicle.status === 'Mantenimiento' || vehicle.status === 'Fuera de servicio'} onChange={(event) => void assignDriver(vehicle, event.target.value)} title="Asignar conductor"><option value="">Sin asignar</option>{drivers.map((driver) => { const usedElsewhere = vehicles.some((other) => other.id !== vehicle.id && other.driver === driver.name); const isMine = vehicle.driver === driver.name; return <option value={driver.name} disabled={usedElsewhere && !isMine} key={driver.id}>{driver.name}{usedElsewhere && !isMine ? ' · en otro vehículo' : ''}</option> })}</select>
+            <button title="Ver detalle" onClick={() => setDetailVehicle(vehicle)}><Icon name="eye" size={14} /></button>
+            <button title="Datos económicos (consumo, precio C$, odómetro)" onClick={() => openEconomicEditor(vehicle)}><Icon name="fuel" size={14} /></button>
+            <button title="Subir foto" disabled={busy === `photo-${vehicle.id}`} onClick={() => { setPhotoTargetId(vehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={14} /></button>
+            <button title="Registrar mantenimiento" onClick={() => setMaintenanceVehicle(vehicle)}><Icon name="wrench" size={14} /></button>
+            <button title="Eliminar vehículo" disabled={busy === `delete-${vehicle.id}`} onClick={() => void removeVehicle(vehicle)}><Icon name="trash" size={14} /></button>
+          </div>,
+        ])} />
+        <div className="table-footer"><span>Los cambios de estado, conductor, consumo y precio se persisten en la API · Costo por km = consumo × precio de combustible en C$ · Mantenimientos: {maintenance.length}</span></div>
+      </section>
+      <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.target.value = '' }} />
+      {formOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFormOpen(false) }}>
+          <form className="modal-card wide vehicle-form-modal" onSubmit={submitVehicle}>
+            <div className="modal-header"><div><span className="eyebrow">Flota · Registro</span><h2>Registrar vehículo</h2><p>Se agrega a la flota en estado Disponible. Precios en córdobas (C$).</p></div><button type="button" className="icon-button" onClick={() => setFormOpen(false)} aria-label="Cerrar">×</button></div>
+            <div className="form-grid">
+              <label>Placa<input required value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="M 000-000" /></label>
+              <label>Modelo<input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="Toyota Hilux 2024" /></label>
+              <label>Tipo<select value={type} onChange={(event) => { const nextType = event.target.value; setType(nextType); if (nextType === 'Moto') setVehicleFunction('delivery'); else if (vehicleFunction === 'delivery') setVehicleFunction('privado'); if (nextType !== 'Otro') setTypeOther('') }}><option>Moto</option><option>Panel</option><option>Van</option><option>Pickup</option><option>Camion</option><option>Sedan</option><option>SUV</option><option>Furgon</option><option>Microbus</option><option>Chasis camion</option><option>Otro</option></select>{type === 'Otro' && <input value={typeOther} onChange={(event) => setTypeOther(event.target.value)} placeholder="Escribe el tipo" />}</label>
+              <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Ej: Toyota" /></label>
+              <label>N° Motor<input value={motorNo} onChange={(event) => setMotorNo(event.target.value)} placeholder="Ej: TM-48392011" /></label>
+              <label>N° Chasis (VIN)<input value={chassisNo} onChange={(event) => setChassisNo(event.target.value)} placeholder="Ej: 9HV-2A-1122-89" /></label>
+              <label>Color<input value={color} onChange={(event) => setColor(event.target.value)} placeholder="Ej: Blanco" /></label>
+
+              <label>Capacidad (kg)<NumInput required min={100} max={20000} value={capacityKg} onChange={setCapacityKg} /></label>
+
+              <label>Año<NumInput required min={2000} max={2030} value={year} onChange={setYear} /></label>
+              <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
+              <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
+              <label>Precio de compra (C$)<NumInput min={0} step={1000} value={priceCs} onChange={setPriceCs} placeholder="Ej: 1850000" /></label>
+              <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
+              <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+              <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+              <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
+              {acquisitionMode !== 'cash' && <>
+                <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
+                <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
+                <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
+                <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
+                <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
+                <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
+              </>}
             </div>
-          </div>
-          <div className="modal-actions"><button className="secondary-button" onClick={() => openEconomicEditor(detailVehicle)}><Icon name="fuel" size={13} /> Editar datos económicos</button><button className="secondary-button" onClick={() => setDetailVehicle(null)}>Cerrar</button></div>
+            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>Cancelar</button><button className="primary-button" disabled={busy === 'create'}>{busy === 'create' ? 'Registrando…' : 'Registrar vehículo'}</button></div>
+          </form>
         </div>
-      </div>
-    )}
+      )}
+      {editVehicle && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditVehicle(null) }}>
+          <form className="modal-card wide vehicle-form-modal" onSubmit={submitEconomicData}>
+            <div className="modal-header"><div><span className="eyebrow">Datos económicos y financiamiento · {editVehicle.plate}</span><h2>{editVehicle.model}</h2><p>Consumo, precio de compra (C$), kilometraje inicial, función, meta opcional y financiamiento. El costo por km se recalcula con el precio de combustible de configuración.</p></div><button type="button" className="icon-button" onClick={() => setEditVehicle(null)} aria-label="Cerrar">×</button></div>
+            <div className="form-grid">
+              <label>Combustible<select value={fuelType} onChange={(event) => setFuelType(event.target.value as FuelType)}><option>Gasolina</option><option>Diésel</option><option>Eléctrico</option><option>Híbrido</option></select></label>
+              <label>Consumo (L por km)<NumInput required min={0} step={0.01} value={consumptionLPerKm} onChange={setConsumptionLPerKm} /></label>
+              <label>Capacidad del tanque (L)<NumInput min={0} step={5} value={tankCapacityL} onChange={setTankCapacityL} /></label>
+              <label>Precio combustible propio (C$/L)<NumInput min={0} step={0.5} value={fuelPriceCs} onChange={setFuelPriceCs} /></label>
+              <label>Precio de compra (C$)<NumInput required min={0} step={1000} value={priceCs} onChange={setPriceCs} /></label>
+              <label>Kilometraje inicial (km)<NumInput min={0} value={odometerKm} onChange={setOdometerKm} /></label><label className="full-field check-field"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /> Vehículo tercerizado (3P · de proveedor u otro transportista)</label>
+              <label>Función del vehículo<select value={vehicleFunction} onChange={(event) => setVehicleFunction(event.target.value as Vehicle['vehicleFunction'])}>{FUNCTION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+              <label>Mínimo de viajes / mes <span className="optional-label">opcional</span><NumInput min={0} max={5000} value={minTripsMonth} onChange={setMinTripsMonth} /></label>
+              <label className="full-field">Forma de adquisición<select value={acquisitionMode} onChange={(event) => { const next = event.target.value as Vehicle['acquisitionMode']; setAcquisitionMode(next); setFinanced(next !== 'cash') }}><option value="cash">Contado · sin deuda</option><option value="financed">Crédito financiado · cuota y deuda</option><option value="leasing">Leasing · renta y valor residual</option></select><small className="field-help">Financiado implica compra a crédito; leasing es arrendamiento con condiciones de devolución o valor residual.</small></label>
+              {acquisitionMode !== 'cash' && <>
+                <label>Cuota inicial (C$)<NumInput min={0} step={1000} value={downPaymentCs} onChange={setDownPaymentCs} /></label>
+                <label>Inicio del leasing<input type="date" value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} /></label>
+                <label>Plazo (meses)<NumInput min={1} max={240} value={leaseTermMonths} onChange={setLeaseTermMonths} /></label>
+                <label>Pago mensual (C$)<NumInput min={0} step={500} value={leaseMonthlyPaymentCs} onChange={setLeaseMonthlyPaymentCs} /></label>
+                <label>Valor residual / pago final (C$)<NumInput min={0} step={1000} value={residualValueCs} onChange={setResidualValueCs} /></label>
+                <label>Depreciación anual (%)<NumInput min={0} max={90} value={depreciationPct} onChange={setDepreciationPct} /></label>
+              </>}
+              <div className="full-field conversion-note"><span>Equivalente en dólares:</span><strong>US$ {csToUsd(priceCs, dollarRate).toLocaleString('es-NI')} · tasa {dollarRate}</strong></div>
+            </div>
+            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setEditVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `edit-${editVehicle.id}`}>{busy === `edit-${editVehicle.id}` ? 'Guardando…' : 'Guardar datos'}</button></div>
+          </form>
+        </div>
+      )}
+      {maintenanceVehicle && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setMaintenanceVehicle(null) }}>
+          <form className="modal-card" onSubmit={submitMaintenance}>
+            <div className="modal-header"><div><span className="eyebrow">Mantenimiento · {maintenanceVehicle.plate}</span><h2>{maintenanceVehicle.model}</h2><p>Al registrar el mantenimiento, el vehículo pasa a estado Mantenimiento.</p></div><button type="button" className="icon-button" onClick={() => setMaintenanceVehicle(null)} aria-label="Cerrar">×</button></div>
+            <div className="form-grid"><label className="full-field">Descripción del servicio<textarea required value={maintenanceNote} onChange={(event) => setMaintenanceNote(event.target.value)} placeholder="Ej: Cambio de aceite, frenos y alineación" rows={3} /></label><label>Proveedor<input value={maintenanceProvider} onChange={(event) => setMaintenanceProvider(event.target.value)} placeholder="Taller o proveedor" /></label><label>Duración (días)<NumInput min={0} value={maintenanceDurationDays} onChange={setMaintenanceDurationDays} /></label><label>Costo (C$)<NumInput min={0} value={maintenanceCost} onChange={setMaintenanceCost} placeholder="Ej: 7420" /></label><span className="full-field conversion-note">Costo en córdobas: {formatCs(maintenanceCost)} · US$ {csToUsd(maintenanceCost, dollarRate).toFixed(2)}</span></div>
+            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setMaintenanceVehicle(null)}>Cancelar</button><button className="primary-button" disabled={busy === `mt-${maintenanceVehicle.id}`}>{busy === `mt-${maintenanceVehicle.id}` ? 'Guardando…' : 'Registrar mantenimiento'}</button></div>
+          </form>
+        </div>
+      )}
+      {detailVehicle && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailVehicle(null) }}>
+          <div className="modal-card vehicle-detail-modal">
+            <div className="modal-header"><div><span className="eyebrow">Detalle de flota · {detailVehicle.plate}</span><h2>{detailVehicle.model}</h2><p>{detailVehicle.type} · capacidad {detailVehicle.capacityKg.toLocaleString('es-NI')} kg · {detailVehicle.year}</p></div><button type="button" className="icon-button" onClick={() => setDetailVehicle(null)} aria-label="Cerrar">×</button></div>
+            <div className="vehicle-detail-body">
+              <div className="vehicle-photo">{detailVehicle.imageUrl ? <img src={resolveImageUrl(detailVehicle.imageUrl)} alt={detailVehicle.model} /> : <div className="vehicle-photo-empty"><Icon name="vehicles" size={28} />Sin foto registrada</div>}<button className="secondary-button photo-change" onClick={() => { setPhotoTargetId(detailVehicle.id); photoInputRef.current?.click() }}><Icon name="camera" size={12} /> {detailVehicle.imageUrl ? 'Cambiar foto' : 'Subir foto'}</button></div>
+              <div className="vehicle-detail-info">
+                <div className="trip-detail-grid">
+                  <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailVehicle.status} /></div>
+                  <div className="trip-detail-field"><span>Conductor</span><strong>{detailVehicle.driver}</strong></div>
+                  <div className="trip-detail-field"><span>Combustible</span><strong>{detailVehicle.fuelType}</strong></div>
+                  <div className="trip-detail-field"><span>Consumo</span><strong>{detailVehicle.consumptionLPerKm} L/km</strong></div>
+                  <div className="trip-detail-field"><span>Precio de compra</span><strong>{formatCs(detailVehicle.priceCs)}<small className="cell-sub">US$ {detailVehicle.priceUsd.toLocaleString('es-NI')}</small></strong></div>
+                  <div className="trip-detail-field"><span>Costo por km</span><strong>{formatCs(detailVehicle.fuelCostPerKmC$)}<small className="cell-sub">solo combustible</small></strong></div>
+                  <div className="trip-detail-field"><span>Autonomía del tanque</span><strong>{detailVehicle.tankCapacityL && detailVehicle.consumptionLPerKm > 0 ? Math.round(detailVehicle.tankCapacityL / detailVehicle.consumptionLPerKm).toLocaleString('es-NI') + ' km' : '—'}</strong></div>
+                  <div className="trip-detail-field"><span>Kilometraje inicial</span><strong>{detailVehicle.odometerKm.toLocaleString('es-NI')} km</strong></div>
+                  <div className="trip-detail-field"><span>Viajes realizados</span><strong>{detailVehicle.totalTrips}<small className="cell-sub">meta {detailVehicle.minTripsMonth || '—'} / mes</small></strong></div>
+                  <div className="trip-detail-field"><span>Función</span><strong>{FUNCTION_LABELS[detailVehicle.vehicleFunction] ?? '—'}</strong></div>
+                  <div className="trip-detail-field"><span>Marca / Color</span><strong>{detailVehicle.brand || '—'}{detailVehicle.color ? ' · ' + detailVehicle.color : ''}</strong></div>
+                  <div className="trip-detail-field"><span>N° Motor</span><strong>{detailVehicle.motorNo || '—'}</strong></div>
+                  <div className="trip-detail-field"><span>N° Chasis (VIN)</span><strong>{detailVehicle.chassisNo || '—'}</strong></div>
+                  <div className="trip-detail-field"><span>Último mantenimiento</span><strong>{detailVehicle.lastMaintenance}</strong></div>
+                  <div className="trip-detail-field"><span>Próximo mantenimiento</span><strong>{detailVehicle.nextMaintenance}</strong></div>
+                </div>
+                <div className="finance-card">
+                  <div className="finance-card-head"><span className="eyebrow">ADQUISICIÓN Y RENTABILIDAD</span>{detailVehicle.acquisitionMode === 'leasing' ? <span className="financed-badge">Leasing</span> : detailVehicle.acquisitionMode === 'financed' ? <span className="financed-badge">Financiado</span> : <span className="financed-badge cash">Al contado</span>}</div>
+                  <div className="finance-grid">
+                    <div className="finance-cell"><span>Pago mensual</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.leaseMonthlyPaymentCs) : '—'}</strong></div>
+                    <div className="finance-cell"><span>Deuda restante</span><strong className={detailVehicle.financing.remainingDebtCs > 0 ? 'text-danger' : ''}>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.remainingDebtCs) : '—'}</strong></div>
+                    <div className="finance-cell"><span>Meses restantes</span><strong>{detailVehicle.financing.financed ? `${detailVehicle.financing.monthsRemaining} de ${detailVehicle.financing.leaseTermMonths}` : '—'}</strong></div>
+                    <div className="finance-cell"><span>Total pagado</span><strong>{detailVehicle.financing.financed ? formatCs(detailVehicle.financing.totalPaidCs) : '—'}</strong></div>
+                    <div className="finance-cell"><span>Depreciación / mes</span><strong>{formatCs(detailVehicle.financing.monthlyDepreciationCs)}</strong></div>
+                    <div className="finance-cell"><span>Depreciación anual</span><strong>{formatCs(detailVehicle.financing.annualDepreciationCs)}<small className="cell-sub">{detailVehicle.financing.depreciationPct}% / año</small></strong></div>
+                    <div className="finance-cell"><span>Costo fijo mensual</span><strong>{formatCs(detailVehicle.financing.monthlyCostCs)}<small className="cell-sub">cuota + depreciación</small></strong></div>
+                    <div className="finance-cell"><span>Punto de equilibrio</span><strong>{detailVehicle.minTripsMonth ? `~${detailVehicle.minTripsMonth} viajes/mes` : 'sin meta'}<small className="cell-sub">cubre cuota y depreciación</small></strong></div>
+                  </div>
+                  <p className="chart-note">Con el leasing, cada viaje del mes debe cubrir su parte de la cuota, el combustible y la depreciación. El módulo de Reportes → Flota y financiamiento proyecta mes a mes si cada vehículo es rentable.</p>
+                </div>
+                <div className="maintenance-mini"><span className="eyebrow">HISTORIAL DE MANTENIMIENTO</span>{maintenance.filter((record) => record.vehicleId === detailVehicle.id).length === 0 && <p className="muted">Sin registros para este vehículo.</p>}{maintenance.filter((record) => record.vehicleId === detailVehicle.id).map((record) => <div className="maintenance-row" key={record.id}><span>{record.date}</span><p><b>{record.description}</b><small className="cell-sub">{record.provider || 'Proveedor no indicado'}{record.durationDays ? ` · ${record.durationDays} días` : ''}</small></p><b>{formatCs(record.cost)}</b></div>)}</div>
+              </div>
+            </div>
+            <div className="modal-actions"><button className="secondary-button" onClick={() => openEconomicEditor(detailVehicle)}><Icon name="fuel" size={13} /> Editar datos económicos</button><button className="secondary-button" onClick={() => setDetailVehicle(null)}>Cerrar</button></div>
+          </div>
+        </div>
+      )}
     </>}
   </>
 }
@@ -2886,10 +2886,10 @@ function UsersView({ users, roles, onNotice, onChanged, onCreated, onDeleted, on
       setFormOpen(false)
       setName('')
       setEmail('')
-       setPhone('')
-       setPassword('')
-       setPasswordConfirm('')
-       onNotice('Usuario creado con contraseña personalizada')
+      setPhone('')
+      setPassword('')
+      setPasswordConfirm('')
+      onNotice('Usuario creado con contraseña personalizada')
     } catch {
       onNotice('No se pudo crear el usuario; verifica el correo y los datos')
     } finally {
@@ -3092,6 +3092,9 @@ function IncidentsView({ incidents, trips, onNotice, onChanged, onCreated }: { i
     if (!evidence) return ''
     if (evidence.startsWith('http') || evidence.startsWith('data:')) return evidence
     return `${getApiBase()}/uploads/evidence/${evidence}`
+  }
+  function resolveEvidenceSources(evidence: string | undefined) {
+    return (evidence ?? '').split('|').map((item) => item.trim()).filter(Boolean).map(resolveEvidenceSrc)
   }
   function exportExcelFile() {
     exportExcel(`incoex-incidencias-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Incidencias', incidents.map((incident) => ({ 'ID': incident.id, 'Viaje': incident.trip, 'Conductor': incident.driver, 'Cliente': incident.client, 'Tipo': incident.type, 'Prioridad': incident.priority, 'Estado': incident.status })))
@@ -3345,8 +3348,8 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
   return <>
     <div className="driver-summary"><SummaryValue label="Paquetes visibles" value={String(packageRows.length)} /><SummaryValue label="En tránsito" value={String(inTransit)} tone="blue" /><SummaryValue label="Entregados" value={String(packageRows.filter((pkg) => pkg.status === 'Completado').length)} tone="mint" /><SummaryValue label="Pendientes" value={String(packageRows.filter((pkg) => pkg.status === 'Pendiente').length)} tone="gold" /></div>
     <section className="panel table-panel"><div className="table-toolbar"><div className="summary-inline"><span className="green-dot" /> Cada paquete hereda el estado y la ruta de su viaje</div><div className="action-group toolbar-actions"><button className="secondary-button" onClick={exportExcelFile}><Icon name="download" size={13} /> Excel</button><button className="secondary-button" onClick={exportPdfFile}><Icon name="fileText" size={13} /> PDF</button></div></div>
-    <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`} onClick={() => setDetailPkg(pkg)}>{pkg.id}</strong>, pkg.trip, pkg.client, pkg.weightDisplay, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
-    <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · clic en la guía para ver el detalle · el peso puede registrarse en kg o libras según el cliente</span></div></section>
+      <DataTable columns={['Guía', 'Viaje', 'Cliente', 'Peso', 'Dimensiones', 'Estado']} rows={packageRows.map((pkg) => [<strong className="linkish" key={`${pkg.id}-id`} onClick={() => setDetailPkg(pkg)}>{pkg.id}</strong>, pkg.trip, pkg.client, pkg.weightDisplay, pkg.dimensions, <StatusPill key={`${pkg.id}-status`} status={pkg.status} />])} />
+      <div className="table-footer"><span>{packageRows.length} paquetes derivados de {trips.length} viajes · clic en la guía para ver el detalle · el peso puede registrarse en kg o libras según el cliente</span></div></section>
     {detailPkg && (
       <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailPkg(null) }}>
         <div className="modal-card trip-detail-modal">
@@ -3358,7 +3361,7 @@ function PackagesView({ trips, onNavigate }: { trips: Trip[]; onNavigate: (secti
             <div className="trip-detail-field"><span>Estado</span><StatusPill status={detailPkg.status} /></div>
           </div>
           <p className="trip-detail-note">El paquete sigue la ruta y el estado del viaje {detailPkg.trip}. Cuando la validación física de la tienda esté conectada, aquí se mostrarán fotos, peso real y la persona que recibió.</p>
-           <div className="modal-actions"><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('trips') }}><Icon name="trips" size={13} /> Ver viaje {detailPkg.trip}</button><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button><button className="secondary-button" onClick={() => setDetailPkg(null)}>Cerrar</button></div>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('trips') }}><Icon name="trips" size={13} /> Ver viaje {detailPkg.trip}</button><button className="secondary-button" onClick={() => { setDetailPkg(null); onNavigate('tracking') }}><Icon name="tracking" size={13} /> Ver tracking</button><button className="secondary-button" onClick={() => setDetailPkg(null)}>Cerrar</button></div>
         </div>
       </div>
     )}
@@ -3772,53 +3775,53 @@ function BillingContent({ trips, clients, drivers, vehicles, settings, onLock, o
 
     {tab === 'proyecto' && (<>
 
-    <div className="billing-summary-grid">
-      <BillingMetric icon="checkCircle" label="Pago recibido · 18 ago" value="$1,200.00" detail="20% · Diseño UI/UX · Pagado" tone="mint" />
-      <BillingMetric icon="calendar" label="Siguiente pago" value="$1,800.00" detail="28 de agosto · 30% · Desarrollo base" tone="blue" />
-      <BillingMetric icon="wallet" label="Saldo del proyecto" value="$4,800.00" detail="3 pagos restantes · cierre 18 sep" tone="gold" />
-    </div>
+      <div className="billing-summary-grid">
+        <BillingMetric icon="checkCircle" label="Pago recibido · 18 ago" value="$1,200.00" detail="20% · Diseño UI/UX · Pagado" tone="mint" />
+        <BillingMetric icon="calendar" label="Siguiente pago" value="$1,800.00" detail="28 de agosto · 30% · Desarrollo base" tone="blue" />
+        <BillingMetric icon="wallet" label="Saldo del proyecto" value="$4,800.00" detail="3 pagos restantes · cierre 18 sep" tone="gold" />
+      </div>
 
-    {received && (
-      <section className="panel invoice-panel">
-        <div className="invoice-head">
-          <div><span className="eyebrow">FACTURA DEL PAGO</span><h2>Pago recibido · 18 de agosto de 2026</h2><p>Comprobante del pago de <strong>$1,200.00 USD</strong> por el <strong>20% · Diseño UI/UX</strong> del proyecto INCOEX Apps. Documento privado, disponible solo para visualización y descarga desde este módulo.</p></div>
-          <span className="invoice-badge"><Icon name="check" size={12} /> Pagado</span>
-        </div>
-        <div className="invoice-body">
-          <img src={received.image} alt="Factura del pago del 18 de agosto de 2026" className="invoice-image" />
-          <div className="invoice-actions">
-            <span className="invoice-note"><Icon name="lock" size={12} /> La factura se muestra dentro del panel; no se abre en pestaña nueva.</span>
-            <button className="primary-button" onClick={downloadInvoice}><Icon name="download" size={13} /> Descargar factura</button>
+      {received && (
+        <section className="panel invoice-panel">
+          <div className="invoice-head">
+            <div><span className="eyebrow">FACTURA DEL PAGO</span><h2>Pago recibido · 18 de agosto de 2026</h2><p>Comprobante del pago de <strong>$1,200.00 USD</strong> por el <strong>20% · Diseño UI/UX</strong> del proyecto INCOEX Apps. Documento privado, disponible solo para visualización y descarga desde este módulo.</p></div>
+            <span className="invoice-badge"><Icon name="check" size={12} /> Pagado</span>
           </div>
+          <div className="invoice-body">
+            <img src={received.image} alt="Factura del pago del 18 de agosto de 2026" className="invoice-image" />
+            <div className="invoice-actions">
+              <span className="invoice-note"><Icon name="lock" size={12} /> La factura se muestra dentro del panel; no se abre en pestaña nueva.</span>
+              <button className="primary-button" onClick={downloadInvoice}><Icon name="download" size={13} /> Descargar factura</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="panel calendar-panel">
+        <div className="panel-header"><div><span className="eyebrow">CALENDARIO DE PAGOS</span><h2>Próximos pagos del proyecto</h2></div><span className="source-badge">Plan acordado</span></div>
+        <div className="billing-calendar-grid">
+          {upcoming.map((payment) => (
+            <article className={`billing-calendar-card ${payment.status}`} key={payment.id}>
+              <div className="billing-date-block"><span className="billing-date-day">{payment.label.split(' ')[0]}</span><span className="billing-date-month">{payment.label.split(' ').slice(1, 3).join(' ')}</span></div>
+              <div className="billing-calendar-info">
+                <strong>{payment.amount}</strong>
+                <span>{payment.concept}</span>
+                <small><Icon name="calendar" size={11} /> {payment.label}</small>
+              </div>
+              <span className={`billing-status ${payment.status}`}>{payment.status === 'next' ? 'Siguiente pago' : 'Pronosticado'}</span>
+            </article>
+          ))}
+        </div>
+        <div className="billing-timeline">
+          <span className="timeline-paid"><i /> 18 ago · Pagado $1,200.00</span>
+          <span className="timeline-arrow">→</span>
+          <span className="timeline-next"><i /> 28 ago · $1,800.00</span>
+          <span className="timeline-arrow">→</span>
+          <span><i /> 8 sep · $1,800.00</span>
+          <span className="timeline-arrow">→</span>
+          <span><i /> 18 sep · $1,200.00</span>
         </div>
       </section>
-    )}
-
-    <section className="panel calendar-panel">
-      <div className="panel-header"><div><span className="eyebrow">CALENDARIO DE PAGOS</span><h2>Próximos pagos del proyecto</h2></div><span className="source-badge">Plan acordado</span></div>
-      <div className="billing-calendar-grid">
-        {upcoming.map((payment) => (
-          <article className={`billing-calendar-card ${payment.status}`} key={payment.id}>
-            <div className="billing-date-block"><span className="billing-date-day">{payment.label.split(' ')[0]}</span><span className="billing-date-month">{payment.label.split(' ').slice(1, 3).join(' ')}</span></div>
-            <div className="billing-calendar-info">
-              <strong>{payment.amount}</strong>
-              <span>{payment.concept}</span>
-              <small><Icon name="calendar" size={11} /> {payment.label}</small>
-            </div>
-            <span className={`billing-status ${payment.status}`}>{payment.status === 'next' ? 'Siguiente pago' : 'Pronosticado'}</span>
-          </article>
-        ))}
-      </div>
-      <div className="billing-timeline">
-        <span className="timeline-paid"><i /> 18 ago · Pagado $1,200.00</span>
-        <span className="timeline-arrow">→</span>
-        <span className="timeline-next"><i /> 28 ago · $1,800.00</span>
-        <span className="timeline-arrow">→</span>
-        <span><i /> 8 sep · $1,800.00</span>
-        <span className="timeline-arrow">→</span>
-        <span><i /> 18 sep · $1,200.00</span>
-      </div>
-    </section>
     </>)}
 
     {tab === 'clientes' && <OperationsInvoices kind="clients" trips={trips} clients={clients} drivers={drivers} vehicles={vehicles} settings={settings} onNotice={onNotice} />}
@@ -3880,7 +3883,7 @@ function printCorteReceipt(corte: Corte, client?: Client) {
   const rowHtml = corte.items.map((item) => '<tr><td>' + item.id + '</td><td>' + item.date + '</td><td>' + item.origin + ' &rarr; ' + item.destination + '</td><td style="text-align:right">C$ ' + item.priceCs.toFixed(2) + '</td></tr>').join('')
   const doc = [
     '<!doctype html><html><head><meta charset="utf-8"><title>Recibo de corte - ' + (client?.name ?? corte.client) + '</title>',
-    '<style>@page{margin:14mm} body{font:13px "Acumin Pro",Arial,sans-serif;color:#101230} .head{display:flex;justify-content:space-between;border-bottom:3px solid #32AAF0;padding-bottom:12px} .brand{font-size:23px;font-weight:800;letter-spacing:.16em;color:#0d75b3} .brand span{display:block;color:#6e6a78;font-size:11px;letter-spacing:.06em} h1{font-size:19px;margin:16px 0 2px} .meta{font-size:12px;color:#6e6a78} table{width:100%;border-collapse:collapse;margin-top:12px} th{padding:8px;border-top:1px solid #DED9E2;border-bottom:2px solid #DED9E2;color:#6e6a78;font-size:10px;letter-spacing:.08em;text-align:left} td{padding:7px 8px;border-bottom:1px solid #ECE8F0;font-size:12px} .totals{margin:14px 0 0 auto;width:300px} .totals div{display:flex;justify-content:space-between;padding:6px 4px;color:#504b59;font-size:12.5px} .totals .grand{border-top:2px solid #32AAF0;color:#101230;font-weight:800} .stamp{margin-top:8px;font-size:10px;color:#6e6a78}</style></head><body>',
+    '<style>@page{margin:14mm} body{font:13px "Figtree",Arial,sans-serif;color:#101230} .head{display:flex;justify-content:space-between;border-bottom:3px solid #32AAF0;padding-bottom:12px} .brand{font-size:23px;font-weight:800;letter-spacing:.16em;color:#0d75b3} .brand span{display:block;color:#6e6a78;font-size:11px;letter-spacing:.06em} h1{font-size:19px;margin:16px 0 2px} .meta{font-size:12px;color:#6e6a78} table{width:100%;border-collapse:collapse;margin-top:12px} th{padding:8px;border-top:1px solid #DED9E2;border-bottom:2px solid #DED9E2;color:#6e6a78;font-size:10px;letter-spacing:.08em;text-align:left} td{padding:7px 8px;border-bottom:1px solid #ECE8F0;font-size:12px} .totals{margin:14px 0 0 auto;width:300px} .totals div{display:flex;justify-content:space-between;padding:6px 4px;color:#504b59;font-size:12.5px} .totals .grand{border-top:2px solid #32AAF0;color:#101230;font-weight:800} .stamp{margin-top:8px;font-size:10px;color:#6e6a78}</style></head><body>',
     '<div class="head"><div class="brand">INCOEX<span>LOGISTICS &middot; MANAGUA</span></div><div><h1>Recibo de corte</h1><div class="meta">Periodo ' + formatCorteDate(corte.periodStart) + ' al ' + formatCorteDate(corte.periodEnd) + ' &middot; ' + (corte.periodLabel || periodLabelOf(client)) + '</div></div></div>',
     '<p><b>' + (client?.name ?? corte.client) + '</b> <span class="meta">(' + (client?.type ?? '') + ')</span><br><span class="meta">' + (client?.address ?? '') + '</span></p>',
     '<table><thead><tr><th>Viaje</th><th>Fecha</th><th>Ruta</th><th>Monto</th></tr></thead><tbody>' + rowHtml + '</tbody></table>',
