@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import targetGaugeSvg from './assets/kpi/target-gauge.svg?raw'
 import incomeBarsSvg from './assets/kpi/income-bars.svg?raw'
@@ -77,6 +77,7 @@ import { Icon, type IconName } from './lib/icons'
 import { TarifasView } from './TarifasView'
 import { LiveMap } from './components/LiveMap'
 import { DashboardMap } from './components/DashboardMap'
+import { DashboardGoogle3DMap } from './components/DashboardGoogle3DMap'
 import { incoexPin, INCOEX_MAP_STYLE, loadGoogleMaps, MANAGUA_CENTER, nicaraguaRestriction, rationalizePoint, requestRoadRoute, resetGoogleMapsLoader } from './lib/googleMaps'
 import type { AppSettings, AppUser, BillingPeriod, Client, ClientProfile, Corte, DashboardSummary, Deliverable, DeliverableStatus, DeliverableSummary, Driver, FinanceSummary, FuelType, HistoryEvent, Incident, MaintenanceRecord, ReportsSummary, Role, Section, TrackingLive, TrackingOverview, Trip, TripStatus, UserRole, Vehicle, VehicleStatus } from './types'
 import { csToUsd, formatCs, formatFareCs, roundFareCs } from './types'
@@ -404,6 +405,16 @@ function App() {
     }
   }
 
+  async function refreshLiveOperations() {
+    try {
+      const [nextTracking, nextTrips] = await Promise.all([getTrackingOverview(), getTrips()])
+      setTracking(nextTracking)
+      setTrips(nextTrips)
+    } catch {
+      // Conserva la última posición válida mientras el siguiente ciclo reintenta.
+    }
+  }
+
   async function refreshDashboardData(startDate?: string, endDate?: string, silent = false) {
     try {
       const [nextSummary, nextTrips, nextDrivers, nextHistory, nextFinance, nextTracking] = await Promise.all([
@@ -442,12 +453,18 @@ function App() {
   useEffect(() => {
     if (!authed || section !== 'dashboard') return
     const timer = window.setInterval(() => {
-      void refreshTracking()
       const hasValidRange = dashboardPeriod === 'range' && dashboardRangeStart && dashboardRangeEnd && dashboardRangeStart <= dashboardRangeEnd
       void refreshDashboardData(hasValidRange ? dashboardRangeStart : undefined, hasValidRange ? dashboardRangeEnd : undefined, true)
     }, 15000)
     return () => window.clearInterval(timer)
   }, [authed, section, dashboardPeriod, dashboardRangeStart, dashboardRangeEnd])
+
+  useEffect(() => {
+    if (!authed || section !== 'dashboard') return
+    void refreshLiveOperations()
+    const timer = window.setInterval(() => { void refreshLiveOperations() }, 5000)
+    return () => window.clearInterval(timer)
+  }, [authed, section])
 
   useEffect(() => {
     if (!authed || section === 'tarifas' || section === 'settings') return
@@ -588,7 +605,7 @@ function App() {
           </div>
         </main>
         {notice && <div className="toast" role="status" aria-live="polite"><span className="toast-check">✓</span>{notice}</div>}
-        {newTripOpen && <NewTripDialog settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
+        {newTripOpen && <NewTripDialog clients={clients} settings={settings} onClose={() => setNewTripOpen(false)} onCreated={(trip) => { setTrips((current) => [trip, ...current]); setNewTripOpen(false); setNotice(`Solicitud ${trip.id} creada · tarifa estimada ${formatCs(trip.estimatedCostCs ?? 0)}`); void refreshSummary(setSummary, setNotice) }} onError={setNotice} />}
         {driverFormOpen && <DriverFormDialog onClose={() => setDriverFormOpen(false)} onCreated={(driver) => { setDrivers((current) => [...current, driver]); setDriverFormOpen(false); setNotice(`Conductor ${driver.name} registrado y disponible`) }} onError={setNotice} />}
         {clientFormOpen && <ClientFormDialog onClose={() => setClientFormOpen(false)} onCreated={(client) => { setClients((current) => [...current, client]); setClientFormOpen(false); setNotice(`Cliente ${client.name} registrado y activo`) }} onError={setNotice} />}
         {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onNavigate={(target) => { setHelpOpen(false); navigate(target) }} />}
@@ -744,6 +761,7 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
   const [driverStatusFilter, setDriverStatusFilter] = useState<'Todos' | Driver['status']>('Todos')
   const statusFilterRef = useRef<HTMLSelectElement>(null)
   const [mapMode, setMapMode] = useState<'all' | 'routes' | 'demand'>('all')
+  const [operationsMapPresentation, setOperationsMapPresentation] = useState<'maquette' | 'real'>('maquette')
   const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today
   const periodName = period === 'today' ? 'Hoy' : period === 'week' ? 'Esta semana' : 'Rango seleccionado'
   const trackingDrivers = tracking?.drivers?.length ? tracking.drivers : drivers
@@ -817,7 +835,7 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
   const focusedDriver = liveDrivers.find((driver) => driver.name === selectedDriver)
   const focusFeature = featureCards.find((card) => card.id === feature)
   const openFeature = (next: DashboardFeatureKey) => { setWorkspaceView('incoex'); setFeature(next); setMetric(null) }
-  const openMetric = (next: DashboardMetric) => { setWorkspaceView('incoex'); setMetric(metric === next ? null : next); setFeature(null) }
+  const openMetric = (next: DashboardMetric) => { setWorkspaceView('fleet'); setMetric(metric === next ? null : next); setFeature(null) }
   const changeWorkspaceView = (next: DashboardWorkspaceView) => { setWorkspaceView(next); if (next !== 'incoex') { setFeature(null); setMetric(null) } }
   const sideKpis = <aside className="dashboard-side-kpis">{featureCards.map((card) => <DashboardFeatureCard key={card.id} card={card} selected={feature === card.id} onClick={() => openFeature(card.id)} />)}</aside>
   return <div className="dashboard-clean">
@@ -825,15 +843,25 @@ function Dashboard({ summary, trips, drivers, incidents, vehicles, maintenance, 
     <div className="dashboard-workspace-switcher">
       <div className={`dashboard-workspace dashboard-workspace-${workspaceView} ${workspaceView === 'incoex' ? 'dashboard-map-workspace' : ''}`}>
         <main className="dashboard-workspace-main">
-          <nav className="dashboard-workspace-tabs" aria-label="Vistas del dashboard">
+          {!metric && <nav className="dashboard-workspace-tabs" aria-label="Vistas del dashboard">
             <button type="button" className={workspaceView === 'fleet' ? 'active' : ''} onClick={() => changeWorkspaceView('fleet')}>Flota de vehículos</button>
             <button type="button" className={workspaceView === 'operations' ? 'active' : ''} onClick={() => changeWorkspaceView('operations')}>Mapa de operaciones</button>
             <button type="button" className={workspaceView === 'incoex' ? 'active' : ''} onClick={() => changeWorkspaceView('incoex')}>Mapa de Incoex app</button>
-          </nav>
-          {workspaceView === 'fleet' && <DashboardFleetView vehicles={vehicles} trips={trips} onNavigate={onNavigate} />}
-          {workspaceView === 'operations' && <section className="dashboard-empty-workspace" aria-label="Mapa de operaciones vacío" />}
-          {workspaceView === 'incoex' && <section className="panel dashboard-map-stage">
-            {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : metric ? <DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} onNavigate={onNavigate} /> : <>
+          </nav>}
+          {metric && <section className="panel dashboard-map-stage dashboard-metric-stage"><DashboardMetricView metric={metric} cards={cards} finance={finance} trips={trips} incidents={incidents} vehicles={vehicles} maintenance={maintenance} period={period} periodName={periodName} pendingAvailable={summary.availableDrivers} pendingPressure={pendingPressure} onNavigate={onNavigate} /></section>}
+          {!metric && workspaceView === 'fleet' && <DashboardFleetView vehicles={vehicles} trips={trips} onNavigate={onNavigate} />}
+          {!metric && workspaceView === 'operations' && <section className="panel dashboard-map-stage dashboard-operations-3d-stage" aria-label="Mapa 3D de operaciones">
+            <div className="operations-map dashboard-map dashboard-map-3d">
+              {operationsMapPresentation === 'maquette' ? <DashboardGoogle3DMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} onDriverSelect={setSelectedDriver} /> : <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} threeDimensional />}
+              <div className="dashboard-map-top-overlay"><div><span className="map-live-badge"><i className="pulse-dot" /> {operationsMapPresentation === 'maquette' ? 'Mapa 3D de Nicaragua' : 'Mapa real 3D'}</span><strong className="dashboard-map-3d-title">Mapa de operaciones</strong></div><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => setOperationsMapPresentation((current) => current === 'maquette' ? 'real' : 'maquette')}>{operationsMapPresentation === 'maquette' ? 'Mapa real' : 'Mapa 3D'}</button><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter"><span>Estado</span><select ref={statusFilterRef} aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
+              <div className="map-overlay-stats"><button type="button" className={mapMode === 'all' ? 'active' : ''} onClick={() => setMapMode('all')}><i className="legend mint" />{visibleDrivers.length} conductores</button><button type="button" className={mapMode === 'routes' ? 'active' : ''} onClick={() => setMapMode('routes')}><i className="legend cyan" />{visibleTrips.length} rutas activas</button><button type="button" disabled={!demandPoint} className={mapMode === 'demand' ? 'active' : ''} onClick={() => setMapMode('demand')}><i className="legend gold" />Mayor demanda: {demandZone ? `${demandZone[0]} (${demandZone[1]})` : 'sin datos'}</button></div>
+              <div className="dashboard-driver-selector map-driver-selector"><span>Ruta por conductor</span><button type="button" className={!selectedDriver ? 'active' : ''} onClick={() => setSelectedDriver('')}>Todos</button>{liveDrivers.filter((driver) => driver.name !== 'Sin asignar').slice(0, 6).map((driver) => <button type="button" className={selectedDriver === driver.name ? 'active' : ''} key={driver.id} onClick={() => setSelectedDriver(driver.name)}><i className={`driver-state-dot ${statusClass(driver.status)}`} />{driver.name}</button>)}</div>
+              <div className="map-legend"><span><i className="legend mint" />Disponible</span><span><i className="legend blue" />En ruta</span><span><i className="legend violet" />En entrega</span><span><i className="legend gold" />Mayor demanda</span><span><i className="legend red" />Incidencia</span></div>
+              {focusedDriver && <div className="selected-route-note map-selected-route"><strong>{focusedDriver.name}</strong><span>{focusedDriver.status} · {focusedDriver.vehicle} · {focusedDriver.plate}</span></div>}
+            </div>
+          </section>}
+          {!metric && workspaceView === 'incoex' && <section className="panel dashboard-map-stage">
+            {focusFeature ? <DashboardFeatureView feature={focusFeature} period={period} periodName={periodName} finance={finance} incidents={incidents} vehicles={vehicles} maintenance={maintenance} onNavigate={onNavigate} onShowMap={() => setFeature(null)} /> : <>
               <div className="operations-map dashboard-map">
                 <DashboardMap drivers={visibleDrivers} trips={visibleTrips} highlightDriver={selectedDriver} demandZone={demandPoint} mode={mapMode} />
                 <div className="dashboard-map-top-overlay"><span className="map-live-badge"><i className="pulse-dot" /> Mapa en vivo</span><div className="map-overlay-controls"><button className="map-tool-button" onClick={() => onNavigate('tracking')}><Icon name="tracking" size={13} /> Ver tracking</button><label className="map-filter" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); statusFilterRef.current?.showPicker?.() } }}><span>Estado</span><select ref={statusFilterRef} aria-label="Filtrar conductores por estado" value={driverStatusFilter} onChange={(event) => setDriverStatusFilter(event.target.value as 'Todos' | Driver['status'])}><option>Todos</option><option>Disponible</option><option>En viaje</option><option>En entrega</option><option>Fuera de servicio</option></select></label></div></div>
@@ -893,7 +921,7 @@ function DashboardFleetView({ vehicles, trips, onNavigate }: { vehicles: Vehicle
     <div className="dashboard-fleet-selected">
       <div className="dashboard-fleet-selected-head"><div><small>UNIDAD SELECCIONADA</small><h2>{selectedVehicle ? `${selectedVehicle.type} · ${selectedVehicle.plate}` : 'Sin vehículos registrados'}</h2><p>{selectedVehicle ? `${selectedVehicle.model} · ${selectedVehicle.year}` : 'Registra un vehículo para comenzar'}</p></div><div className="fleet-chevron"><button type="button" aria-label="Vehículo anterior" onClick={() => { if (!selectedVehicle) return; const index = vehicles.findIndex((vehicle) => vehicle.id === selectedVehicle.id); setSelectedVehicleId(vehicles[(index - 1 + vehicles.length) % vehicles.length]?.id ?? '') }}>‹</button><button type="button" aria-label="Vehículo siguiente" onClick={() => { if (!selectedVehicle) return; const index = vehicles.findIndex((vehicle) => vehicle.id === selectedVehicle.id); setSelectedVehicleId(vehicles[(index + 1) % vehicles.length]?.id ?? '') }}>›</button></div></div>
       <div className="dashboard-fleet-hero">{vehicleImage ? <img src={vehicleImage} alt={selectedVehicle?.model ?? 'Vehículo'} /> : <span className="dashboard-fleet-placeholder"><Icon name="vehicles" size={58} /><small>Icono de vehículo pendiente</small></span>}<span className="dashboard-fleet-plate">{selectedVehicle?.plate ?? '—'}</span></div>
-      {selectedVehicle && <div className="dashboard-fleet-stats"><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-fuel.png" alt="" /></span><span>Combustible</span><strong>{selectedVehicle.fuelType}</strong><img className="dashboard-fleet-fuel-bar" src="/dashboard-icons/fleet-stat-fuel-bar.png" alt="" /></div><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-mileage.png" alt="" /></span><span>Kilometraje</span><strong>{selectedVehicle.odometerKm.toLocaleString('es-NI')}</strong><small>km</small></div><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-deliveries.png" alt="" /></span><span>Viajes registrados</span><strong>{selectedVehicle.totalTrips.toLocaleString('es-NI')}</strong><small>entregas</small></div></div>}
+      {selectedVehicle && <div className="dashboard-fleet-stats"><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-fuel.png" alt="" /></span><span>Combustible</span><strong>{selectedVehicle.fuelType}</strong></div><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-mileage.png" alt="" /></span><span>Kilometraje</span><strong>{selectedVehicle.odometerKm.toLocaleString('es-NI')}</strong><small>km</small></div><div><span className="dashboard-fleet-stat-icon"><img src="/dashboard-icons/fleet-stat-deliveries.png" alt="" /></span><span>Viajes registrados</span><strong>{selectedVehicle.totalTrips.toLocaleString('es-NI')}</strong><small>entregas</small></div></div>}
       <div className="dashboard-fleet-actions-head"><strong>Accesos directos</strong><small>6 módulos</small></div>
       <div className="dashboard-fleet-actions">{actions.map((action) => <button type="button" key={action.label} onClick={() => onNavigate(action.section)}>{action.image ? <img className="dashboard-fleet-action-icon" src={action.image} alt="" /> : <Icon name={action.icon} size={15} />}<span><strong>{action.label}</strong><small>{action.detail}</small></span><b>→</b></button>)}</div>
       <button type="button" className="dashboard-fleet-complete" onClick={() => onNavigate('vehicles')}>Ver ficha completa del vehículo <span>→</span></button>
@@ -913,13 +941,164 @@ function DashboardFeatureCard({ card, selected, onClick }: { card: DashboardFeat
   </button>
 }
 
+function DashboardFuelGauge({ title, subtitle, value, caption, progress, tone, scale }: { title: string; subtitle: string; value: string; caption: string; progress: number; tone: 'cyan' | 'green' | 'orange'; scale: string[] }) {
+  const safeProgress = Math.max(0, Math.min(100, progress))
+  const needleAngle = Math.PI - (safeProgress / 100) * Math.PI
+  const centerX = 90
+  const centerY = 102
+  const radius = 65
+  const needleRadius = 51
+  const needleX = centerX + Math.cos(needleAngle) * needleRadius
+  const needleY = centerY - Math.sin(needleAngle) * needleRadius
+  const ticks = Array.from({ length: 21 }, (_, index) => index)
+  const labels = scale.map((label, index) => {
+    const angle = Math.PI - (index / Math.max(scale.length - 1, 1)) * Math.PI
+    return { label, x: centerX + Math.cos(angle) * 49, y: centerY - Math.sin(angle) * 49 }
+  })
+  return <div className={`dashboard-fuel-gauge gauge-${tone}`}>
+    <div className="dashboard-fuel-gauge-label"><strong>{title}</strong><small>{subtitle}</small></div>
+    <svg className="dashboard-fuel-gauge-svg" viewBox="0 0 180 150" role="img" aria-label={`${title}: ${value}`}>
+      <path className="dashboard-fuel-gauge-track" pathLength="100" d="M25 102 A65 65 0 0 1 155 102" />
+      <path className="dashboard-fuel-gauge-active" pathLength="100" strokeDasharray={`${safeProgress} 100`} d="M25 102 A65 65 0 0 1 155 102" />
+      {ticks.map((tick) => {
+        const angle = Math.PI - (tick / 20) * Math.PI
+        const inner = tick % 5 === 0 ? 54 : 58
+        const outer = 64
+        return <line className={`dashboard-fuel-gauge-tick ${tick % 5 === 0 ? 'major' : ''}`} key={tick} x1={centerX + Math.cos(angle) * inner} y1={centerY - Math.sin(angle) * inner} x2={centerX + Math.cos(angle) * outer} y2={centerY - Math.sin(angle) * outer} />
+      })}
+      {labels.map((label) => <text className="dashboard-fuel-gauge-scale" key={label.label} x={label.x} y={label.y + 3} textAnchor="middle">{label.label}</text>)}
+      <line className="dashboard-fuel-gauge-needle-line" x1={centerX} y1={centerY} x2={needleX} y2={needleY} />
+      <circle className="dashboard-fuel-gauge-needle-cap" cx={centerX} cy={centerY} r="6" />
+      <text className="dashboard-fuel-gauge-value" x={centerX} y="126" textAnchor="middle">{value}</text>
+      <text className="dashboard-fuel-gauge-caption" x={centerX} y="141" textAnchor="middle">{caption}</text>
+    </svg>
+  </div>
+}
+
+function DashboardFuelFeatureView({ feature, period, periodName, finance, onNavigate, onShowMap }: { feature: DashboardFeatureCard; period: DashboardPeriod; periodName: string; finance: FinanceSummary | null; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const selectedPeriod = period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today
+  const dailyFuel = finance?.daily ?? []
+  const totalFuel = selectedPeriod?.fuelCs ?? 0
+  const averageFuelPerKm = finance?.fleet.avgFuelPerKmCs ?? 0
+  const distanceKm = selectedPeriod?.km ?? 0
+  const consumedDays = dailyFuel.filter((day) => day.fuelCs > 0).length
+  const fuelShare = selectedPeriod?.incomeCs ? Math.round((totalFuel / selectedPeriod.incomeCs) * 100) : 0
+  const highestDailyFuel = Math.max(...dailyFuel.map((day) => day.fuelCs), 0)
+  const costGaugeMax = Math.max(200, totalFuel, highestDailyFuel)
+  const costProgress = costGaugeMax > 0 ? (totalFuel / costGaugeMax) * 100 : 0
+  const efficiencyProgress = Math.min(100, (averageFuelPerKm / 20) * 100)
+  const dateRange = dailyFuel.length > 1 ? `${dailyFuel[0].label} - ${dailyFuel[dailyFuel.length - 1].label}` : periodName
+  return <div className="dashboard-insight-view dashboard-fuel-view">
+    <div className="dashboard-insight-head"><div><span className="eyebrow">DETALLE DE GESTIÓN · {periodName.toUpperCase()}</span><h2>{feature.label}</h2><p>Información operativa conectada a la API. Usa los filtros para revisar el detalle sin salir del dashboard.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <div className="dashboard-fuel-period"><span>{dateRange}</span></div>
+    <section className="dashboard-fuel-metrics" aria-label="Indicadores de combustible">
+      <div className="dashboard-fuel-selected"><small>Indicador seleccionado</small><strong>{formatCs(totalFuel)}</strong><span>{periodName} · {formatCs(averageFuelPerKm)}/km</span><button type="button"><Icon name="trendingUp" size={12} /> Seguimiento del gasto real de la flota</button></div>
+      <DashboardFuelGauge title="Costo de combustible" subtitle={periodName} value={formatCs(totalFuel)} caption="Costo total del periodo" progress={costProgress} tone="cyan" scale={['0', '50', '100', '150', '200']} />
+      <DashboardFuelGauge title="Eficiencia de consumo" subtitle="Costo por kilómetro" value={formatCs(averageFuelPerKm)} caption="por km" progress={efficiencyProgress} tone="green" scale={['0', '5', '10', '15', '20']} />
+      <DashboardFuelGauge title="Rendimiento de la flota" subtitle="Uso de combustible" value={`${fuelShare}%`} caption="Capacidad utilizada" progress={fuelShare} tone="orange" scale={['0', '25', '50', '75', '100']} />
+    </section>
+    <div className="dashboard-fuel-lower">
+      <section className="dashboard-fuel-chart-panel"><div className="dashboard-fuel-section-title"><div><strong>Consumo registrado</strong><small>Costos de combustible de los últimos 14 días</small></div><span>{formatCs(totalFuel)} <small>{periodName.toLowerCase()}</small></span></div><DashboardAnalyticsChart series={dailyFuel.map((day) => ({ label: day.label, value: day.fuelCs }))} tone="cyan" formatter={formatCs} /></section>
+      <aside className="dashboard-fuel-summary"><strong>Resumen del periodo</strong><div><small>Costo del periodo</small><b>{formatCs(totalFuel)}</b><span>{formatCs(averageFuelPerKm)} por km · seguimiento del gasto real de la flota.</span></div><div><small>Distancia estimada</small><b>{distanceKm.toLocaleString('es-NI')} km</b></div><div><small>Días con consumo</small><b>{consumedDays} días</b></div></aside>
+    </div>
+    <div className="dashboard-fuel-footer"><span>Periodo seleccionado · {selectedPeriod?.label ?? periodName}</span><button onClick={() => onNavigate('vehicles')}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+  </div>
+}
+
+function DashboardDepreciationFeatureView({ feature, periodName, vehicles, onNavigate, onShowMap }: { feature: DashboardFeatureCard; periodName: string; vehicles: Vehicle[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredVehicles = vehicles.filter((vehicle) => `${vehicle.plate} ${vehicle.model} ${vehicle.driver}`.toLowerCase().includes(normalizedQuery))
+  const rows = filteredVehicles.filter((vehicle) => (vehicle.financing?.monthlyDepreciationCs ?? 0) > 0)
+  const total = vehicles.reduce((sum, vehicle) => sum + (vehicle.financing?.monthlyDepreciationCs ?? 0), 0)
+  const count = vehicles.filter((vehicle) => (vehicle.financing?.monthlyDepreciationCs ?? 0) > 0).length
+  const average = count > 0 ? total / count : 0
+  const series = rows.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.monthlyDepreciationCs ?? 0 }))
+  return <div className="dashboard-insight-view dashboard-depreciation-view">
+    <div className="dashboard-insight-head"><div><span className="eyebrow">DETALLE DE GESTIÓN · {periodName.toUpperCase()}</span><h2>{feature.label}</h2><p>Información operativa conectada a la API. La depreciación se calcula por vehículo.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <section className="dashboard-depreciation-summary" aria-label="Resumen de depreciación"><div><small>Depreciación</small><strong>{formatCs(total)}</strong><span>mensual de la flota</span></div><div><small>Vehículos</small><strong>{count}</strong><span>con depreciación registrada</span></div><div><small>Promedio</small><strong>{formatCs(average)}</strong><span>por vehículo</span></div></section>
+    <section className="dashboard-depreciation-chart"><div className="dashboard-depreciation-section-title"><div><strong>Depreciación por vehículo</strong><small>Comparación visual por unidad</small></div><span>{formatCs(total)} <small>mensual</small></span></div><div className="dashboard-depreciation-horizontal-chart">{series.map((point) => { const isComplete = point.value > 0 && point.value >= Math.max(...series.map((item) => item.value)); const width = Math.max(0, Math.min(100, series.length ? (point.value / Math.max(...series.map((item) => item.value), 1)) * 100 : 0)); return <div className={`dashboard-depreciation-bar-row ${isComplete ? 'is-complete' : ''}`} key={point.label}><span>{point.label}</span><div className="dashboard-depreciation-bar-track"><i className={isComplete ? 'is-complete' : ''} style={{ width: `${width}%` }} /></div><b>{formatCs(point.value)}</b></div> })}</div></section>
+    <section className="dashboard-depreciation-detail"><div className="dashboard-depreciation-detail-head"><strong>Detalle de vehículos</strong><span>{rows.length} vehículos</span></div><label className="dashboard-depreciation-search"><Icon name="search" size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por vehículo, placa o conductor..." /></label><div className="dashboard-depreciation-table-head"><span>Vehículo</span><span>Placa</span><span>Conductor</span><span>Depreciación</span></div><div className="dashboard-depreciation-rows">{rows.map((vehicle) => <div className="dashboard-depreciation-row" key={vehicle.id}><strong>{vehicle.model}</strong><span>{vehicle.plate}</span><span>{vehicle.driver || 'Sin asignar'}</span><b>{formatCs(vehicle.financing?.monthlyDepreciationCs ?? 0)}</b></div>)}{rows.length === 0 && <div className="dashboard-depreciation-empty">No hay vehículos con depreciación para este filtro.</div>}</div></section>
+    <div className="dashboard-fuel-footer"><span>Periodo seleccionado · {periodName}</span><button onClick={() => onNavigate('vehicles')}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+  </div>
+}
+
+function DashboardMaintenanceFeatureView({ feature, periodName, maintenance, vehicles, onNavigate, onShowMap }: { feature: DashboardFeatureCard; periodName: string; maintenance: MaintenanceRecord[]; vehicles: Vehicle[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const [query, setQuery] = useState('')
+  const [vehicleFilter, setVehicleFilter] = useState('Todos')
+  const [monthFilter, setMonthFilter] = useState('Todos')
+  const normalizedQuery = query.trim().toLowerCase()
+  const plates = Array.from(new Set(maintenance.map((record) => record.plate))).sort()
+  const dates = Array.from(new Set(maintenance.map((record) => record.date))).sort().reverse()
+  const filtered = maintenance.filter((record) => {
+    const haystack = `${record.plate} ${record.description} ${record.provider}`.toLowerCase()
+    return (!normalizedQuery || haystack.includes(normalizedQuery)) && (vehicleFilter === 'Todos' || record.plate === vehicleFilter) && (monthFilter === 'Todos' || record.date === monthFilter)
+  })
+  const total = maintenance.reduce((sum, record) => sum + record.cost, 0)
+  const average = maintenance.length > 0 ? total / maintenance.length : 0
+  return <div className="dashboard-insight-view dashboard-maintenance-view">
+    <div className="dashboard-insight-head"><div><h2>{feature.label}</h2><p>Información operativa conectada a la API. Usa los filtros para revisar el detalle sin salir del dashboard.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <section className="dashboard-maintenance-summary" aria-label="Resumen de mantenimiento"><div><small>Total histórico</small><strong>{formatCs(total)}</strong><span>acumulado de mantenimiento</span></div><div><small>Registros</small><strong>{maintenance.length}</strong><span>servicios registrados</span></div><div><small>Promedio</small><strong>{formatCs(average)}</strong><span>por servicio</span></div></section>
+    <div className="dashboard-maintenance-filters"><label className="dashboard-maintenance-search"><Icon name="search" size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar vehículo o mantenimiento" /></label><label className="dashboard-maintenance-select"><Icon name="vehicles" size={13} /><select value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="Todos">Todos los vehículos</option>{plates.map((plate) => <option key={plate}>{plate}</option>)}</select></label><label className="dashboard-maintenance-select"><Icon name="calendar" size={13} /><select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)}><option value="Todos">Todos los periodos</option>{dates.map((date) => <option key={date}>{date}</option>)}</select></label></div>
+    <section className="dashboard-maintenance-cards" aria-label="Vehículos con mantenimiento">{filtered.map((record) => { const vehicle = vehicles.find((item) => item.id === record.vehicleId || item.plate === record.plate); const category = vehicle ? dashboardFleetCategory(vehicle) : ''; const image = vehicle?.imageUrl ? resolveImageUrl(vehicle.imageUrl) : vehicle ? dashboardVehicleCategoryImages[category] : ''; return <article className="dashboard-maintenance-card" key={record.id}><div className={`dashboard-maintenance-card-image maintenance-image-${category.toLowerCase()}`}>{image ? <img src={image} alt={vehicle?.model ?? record.plate} /> : <Icon name="vehicles" size={52} />}<span><i />Registrado</span></div><strong>{record.plate}</strong><h3>{record.description}</h3><small className="dashboard-maintenance-provider"><Icon name="wrench" size={11} /> {record.provider || 'Proveedor pendiente de registrar'}</small><small className="dashboard-maintenance-date"><Icon name="calendar" size={11} /> {record.date}</small><b className="dashboard-maintenance-cost">{formatCs(record.cost)}</b><button type="button" onClick={() => onNavigate('vehicles')}>Ver detalle <span>→</span></button></article> })}{filtered.length === 0 && <div className="dashboard-maintenance-empty">No hay mantenimientos para los filtros seleccionados.</div>}</section>
+    <div className="dashboard-fuel-footer"><span>Periodo seleccionado · {periodName}</span><button onClick={() => onNavigate('vehicles')}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+  </div>
+}
+
+function DashboardLeasingFeatureView({ feature, periodName, vehicles, onNavigate, onShowMap }: { feature: DashboardFeatureCard; periodName: string; vehicles: Vehicle[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLowerCase()
+  const rows = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing' && vehicle.financing?.leaseMonthlyPaymentCs > 0 && `${vehicle.plate} ${vehicle.model} ${vehicle.driver}`.toLowerCase().includes(normalizedQuery)).sort((a, b) => (b.financing?.leaseMonthlyPaymentCs ?? 0) - (a.financing?.leaseMonthlyPaymentCs ?? 0))
+  const allLeasing = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing' && vehicle.financing?.leaseMonthlyPaymentCs > 0)
+  const total = allLeasing.reduce((sum, vehicle) => sum + (vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 0)
+  const average = allLeasing.length > 0 ? total / allLeasing.length : 0
+  const maxPayment = Math.max(...allLeasing.map((vehicle) => vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 1)
+  return <div className="dashboard-insight-view dashboard-leasing-view">
+    <div className="dashboard-insight-head"><div><h2>{feature.label}</h2><p>Información operativa conectada a la API. Usa los filtros para revisar el detalle sin salir del dashboard.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <section className="dashboard-leasing-summary" aria-label="Resumen de leasing"><div><small>Cuotas mensuales</small><strong>{formatCs(total)}</strong><span>compromiso activo de la flota</span></div><div><small>Vehículos</small><strong>{allLeasing.length}</strong><span>con leasing activo</span></div><div><small>Cuota promedio</small><strong>{formatCs(average)}</strong><span>por vehículo</span></div></section>
+    <section className="dashboard-leasing-chart"><div className="dashboard-leasing-section-title"><div><strong>Compromisos mensuales por vehículo</strong><small>Cuotas mensuales activas de la flota, ordenadas de mayor a menor.</small></div><span>Cuota mensual⌄</span></div><div className="dashboard-leasing-bars">{rows.map((vehicle, index) => { const payment = vehicle.financing?.leaseMonthlyPaymentCs ?? 0; return <div className="dashboard-leasing-bar-row" key={vehicle.id}><span className="dashboard-leasing-rank">{index + 1}</span><strong>{vehicle.plate}</strong><div className="dashboard-leasing-bar-track"><i style={{ width: `${Math.max(4, (payment / maxPayment) * 100)}%` }} /></div><b>{formatCs(payment)}</b></div> })}{rows.length === 0 && <div className="dashboard-leasing-empty">No hay vehículos de leasing para este filtro.</div>}</div></section>
+    <section className="dashboard-leasing-detail"><div className="dashboard-leasing-detail-head"><div><strong>Detalle de contratos</strong><small>Lista de vehículos en leasing y sus condiciones actuales.</small></div><label><Icon name="search" size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por nombre, placa o cliente" /></label><select aria-label="Filtrar modalidad"><option>Leasing</option></select></div><div className="dashboard-leasing-table-head"><span>Vehículo</span><span>Placa</span><span>Meses restantes</span><span>Cuota mensual</span></div>{rows.map((vehicle) => <div className="dashboard-leasing-row" key={vehicle.id}><strong>{vehicle.model}</strong><span>{vehicle.plate}</span><span><Icon name="calendar" size={11} /> {vehicle.financing?.monthsRemaining ?? 0} meses restantes</span><b>{formatCs(vehicle.financing?.leaseMonthlyPaymentCs ?? 0)}</b><button type="button" onClick={() => onNavigate('vehicles')} aria-label={`Ver contrato de ${vehicle.model}`}>›</button></div>)}{rows.length === 0 && <div className="dashboard-leasing-empty">No hay contratos para este filtro.</div>}</section>
+    <div className="dashboard-fuel-footer"><span>Periodo seleccionado · {periodName}</span><button onClick={() => onNavigate('vehicles')}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+  </div>
+}
+
+function DashboardIncidentsFeatureView({ feature, periodName, incidents, onNavigate, onShowMap }: { feature: DashboardFeatureCard; periodName: string; incidents: Incident[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('Todos')
+  const normalizedQuery = query.trim().toLowerCase()
+  const filtered = incidents.filter((incident) => {
+    const matchesFilter = filter === 'Todos' || incident.status === filter || incident.priority === filter
+    const haystack = `${incident.id} ${incident.driver} ${incident.client} ${incident.type}`.toLowerCase()
+    return matchesFilter && (!normalizedQuery || haystack.includes(normalizedQuery))
+  })
+  const active = incidents.filter((incident) => incident.status !== 'Resuelta').length
+  const resolved = incidents.filter((incident) => incident.status === 'Resuelta').length
+  const statuses: Array<{ label: Incident['status']; tone: string }> = [{ label: 'Abierta', tone: 'red' }, { label: 'En proceso', tone: 'gold' }, { label: 'Resuelta', tone: 'mint' }]
+  const priorities: Array<{ label: Incident['priority']; tone: string }> = [{ label: 'Alta', tone: 'red' }, { label: 'Media', tone: 'gold' }, { label: 'Baja', tone: 'blue' }, { label: 'Crítica', tone: 'red' }]
+  const toneForStatus = (status: Incident['status']) => status === 'Resuelta' ? 'mint' : status === 'En proceso' ? 'gold' : 'red'
+  const maxStatus = Math.max(...statuses.map((item) => incidents.filter((incident) => incident.status === item.label).length), 1)
+  const maxPriority = Math.max(...priorities.map((item) => incidents.filter((incident) => incident.priority === item.label).length), 1)
+  return <div className="dashboard-insight-view dashboard-incidents-view">
+    <div className="dashboard-incidents-head"><div><span className="eyebrow">CENTRO DE OPERACIONES</span><h2>Centro de incidencias</h2><p>Gestión y seguimiento operativo de incidencias reportadas.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
+    <div className="dashboard-incidents-period">{periodName}</div>
+    <section className="dashboard-incidents-summary"><div><small>Total incidencias</small><strong>{String(incidents.length).padStart(2, '0')}</strong><span>{incidents.length} registros totales</span><i className="summary-line blue" /></div><div><small>Incidencias activas</small><strong>{String(active).padStart(2, '0')}</strong><span>{incidents.length ? Math.round((active / incidents.length) * 100) : 0}% del total</span><i className="summary-line red" /></div><div><small>Incidencias resueltas</small><strong>{String(resolved).padStart(2, '0')}</strong><span>{incidents.length ? Math.round((resolved / incidents.length) * 100) : 0}% del total</span><i className="summary-line mint" /></div></section>
+    <div className="dashboard-incidents-distributions"><section><strong>Incidencias por estado</strong><small>Distribución de los registros</small>{statuses.map((item) => { const count = incidents.filter((incident) => incident.status === item.label).length; return <div className="dashboard-incident-distribution-row" key={item.label}><span><i className={`incident-dot ${item.tone}`} />{item.label}</span><b>{count}</b><em><i className={`incident-fill ${item.tone}`} style={{ width: `${(count / maxStatus) * 100}%` }} /></em></div> })}</section><section><strong>Distribución de prioridades</strong><small>Clasificación por nivel de atención</small>{priorities.filter((item, index, list) => list.findIndex((other) => other.label === item.label) === index).map((item) => { const count = incidents.filter((incident) => incident.priority === item.label).length; return <div className="dashboard-incident-distribution-row" key={item.label}><span><i className={`incident-dot ${item.tone}`} />{item.label}</span><b>{count} casos</b><em><i className={`incident-fill ${item.tone}`} style={{ width: `${(count / maxPriority) * 100}%` }} /></em></div> })}</section></div>
+    <section className="dashboard-incidents-list"><div className="dashboard-incidents-list-head"><div><strong>Listado de incidencias</strong><small>{filtered.length} de {incidents.length} registros encontrados</small></div><label><Icon name="search" size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nombre, reporte o cliente..." /></label><select value={filter} onChange={(event) => setFilter(event.target.value)}><option>Todos</option><option>Abierta</option><option>En proceso</option><option>Resuelta</option><option>Alta</option><option>Media</option><option>Baja</option><option>Crítica</option></select></div><div className="dashboard-incidents-table-head"><span>Incidencia</span><span>ID / cliente</span><span>Estado</span><span>Prioridad</span><span>Acciones</span></div>{filtered.map((incident) => <div className="dashboard-incidents-row" key={incident.id}><strong><i className={`incident-dot ${toneForStatus(incident.status)}`} />{incident.type}</strong><span>{incident.id} · {incident.driver} · {incident.client}</span><em className={`status-pill ${statusClass(incident.status)}`}>{incident.status}</em><em className={`priority-pill ${statusClass(incident.priority)}`}>{incident.priority}</em><button type="button" onClick={() => onNavigate('incidents')} aria-label={`Abrir incidencia ${incident.id}`}>•••</button></div>)}{filtered.length === 0 && <div className="dashboard-incidents-empty">No hay incidencias para este filtro.</div>}</section>
+    <div className="dashboard-fuel-footer"><span>Periodo seleccionado · {periodName}</span><button onClick={() => onNavigate('incidents')}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
+  </div>
+}
+
 function DashboardFeatureView({ feature, period, periodName, finance, incidents, vehicles, maintenance, onNavigate, onShowMap }: { feature: DashboardFeatureCard; period: DashboardPeriod; periodName: string; finance: FinanceSummary | null; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; onNavigate: (section: Section) => void; onShowMap: () => void }) {
+  if (feature.id === 'fuel') return <DashboardFuelFeatureView feature={feature} period={period} periodName={periodName} finance={finance} onNavigate={onNavigate} onShowMap={onShowMap} />
+  if (feature.id === 'depreciation') return <DashboardDepreciationFeatureView feature={feature} periodName={periodName} vehicles={vehicles} onNavigate={onNavigate} onShowMap={onShowMap} />
+  if (feature.id === 'maintenance') return <DashboardMaintenanceFeatureView feature={feature} periodName={periodName} maintenance={maintenance} vehicles={vehicles} onNavigate={onNavigate} onShowMap={onShowMap} />
+  if (feature.id === 'leasing') return <DashboardLeasingFeatureView feature={feature} periodName={periodName} vehicles={vehicles} onNavigate={onNavigate} onShowMap={onShowMap} />
+  if (feature.id === 'incidents') return <DashboardIncidentsFeatureView feature={feature} periodName={periodName} incidents={incidents} onNavigate={onNavigate} onShowMap={onShowMap} />
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('Todos')
   const [selectedPoint, setSelectedPoint] = useState<DashboardSeriesPoint | null>(null)
   useEffect(() => { setQuery(''); setFilter('Todos'); setSelectedPoint(null) }, [feature.id])
   const normalizedQuery = query.trim().toLowerCase()
-  const selectedPeriod = feature.id === 'fuel' ? period === 'week' ? finance?.periods.week : period === 'range' ? finance?.periods.range ?? finance?.periods.all : finance?.periods.today : undefined
   const featureAction: Section = feature.id === 'incidents' ? 'incidents' : 'vehicles'
   const filteredIncidents = incidents.filter((incident) => {
     const matchesFilter = filter === 'Todos' || incident.status === filter || incident.priority === filter
@@ -931,25 +1110,13 @@ function DashboardFeatureView({ feature, period, periodName, finance, incidents,
     const haystack = `${vehicle.plate} ${vehicle.model} ${vehicle.driver}`.toLowerCase()
     return (!mode || vehicle.acquisitionMode === mode) && (!normalizedQuery || haystack.includes(normalizedQuery))
   })
-  const filteredMaintenance = maintenance.filter((record) => `${record.plate} ${record.description} ${record.provider}`.toLowerCase().includes(normalizedQuery))
-  const dailyFuel = finance?.daily ?? []
-  const depreciationTotal = vehicles.reduce((sum, vehicle) => sum + (vehicle.financing?.monthlyDepreciationCs ?? 0), 0)
-  const leasingTotal = vehicles.filter((vehicle) => vehicle.acquisitionMode === 'leasing').reduce((sum, vehicle) => sum + (vehicle.financing?.leaseMonthlyPaymentCs ?? 0), 0)
-  const maintenanceTotal = maintenance.reduce((sum, record) => sum + record.cost, 0)
   const incidentSeries: DashboardSeriesPoint[] = ['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: incidents.filter((incident) => incident.status === status).length }))
-  const depreciationSeries: DashboardSeriesPoint[] = filteredVehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.monthlyDepreciationCs ?? 0 }))
-  const maintenanceSeries: DashboardSeriesPoint[] = filteredMaintenance.slice(0, 8).map((record) => ({ label: `${record.date} · ${record.plate}`, value: record.cost }))
-  const leasingSeries: DashboardSeriesPoint[] = filteredVehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.leaseMonthlyPaymentCs ?? 0 }))
-  const toolbar = <div className="insight-toolbar"><label className="insight-search"><Icon name="search" size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por nombre, placa o cliente" /></label>{feature.id === 'incidents' && <select value={filter} onChange={(event) => setFilter(event.target.value)}><option>Todos</option><option>Abierta</option><option>En proceso</option><option>Resuelta</option><option>Alta</option><option>Crítica</option></select>}{(feature.id === 'depreciation' || feature.id === 'leasing') && <select value={feature.id === 'leasing' ? 'leasing' : filter} onChange={(event) => setFilter(event.target.value)} disabled={feature.id === 'leasing'}><option value="Todos">Todos los vehículos</option><option value="cash">Compra directa</option><option value="financed">Financiados</option><option value="leasing">Leasing</option></select>}<span className="insight-result">{feature.id === 'incidents' ? `${filteredIncidents.length} registros` : feature.id === 'maintenance' ? `${filteredMaintenance.length} registros` : `${filteredVehicles.length} vehículos`}</span></div>
+  const toolbar = <div className="insight-toolbar"><label className="insight-search"><Icon name="search" size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por nombre, placa o cliente" /></label>{feature.id === 'incidents' && <select value={filter} onChange={(event) => setFilter(event.target.value)}><option>Todos</option><option>Abierta</option><option>En proceso</option><option>Resuelta</option><option>Alta</option><option>Crítica</option></select>}<span className="insight-result">{feature.id === 'incidents' ? `${filteredIncidents.length} registros` : `${filteredVehicles.length} vehículos`}</span></div>
   return <div className="dashboard-insight-view">
     <div className="dashboard-insight-head"><div><span className="eyebrow">DETALLE DE GESTIÓN · {periodName.toUpperCase()}</span><h2>{feature.label}</h2><p>Información operativa conectada a la API. Usa los filtros para revisar el detalle sin salir del dashboard.</p></div><button className="insight-back" onClick={onShowMap}><Icon name="map" size={14} /> Volver al mapa</button></div>
     <div className={`insight-summary ${feature.tone}`}><div><small>Indicador seleccionado</small><strong>{feature.value}</strong><span>{feature.detail}</span></div><div className="insight-summary-art"><img src={feature.image} alt="" width="74" height="74" /></div><button type="button" onClick={() => onNavigate(featureAction)}>Abrir módulo <Icon name="arrowRight" size={13} /></button></div>
     {selectedPoint && <div className="analytics-selection" aria-live="polite"><span>Punto seleccionado</span><strong>{selectedPoint.label}</strong><b>{feature.id === 'incidents' ? selectedPoint.value.toLocaleString('es-NI') : formatCs(selectedPoint.value)}</b></div>}
     {feature.id === 'incidents' && <><div className="insight-section-head"><div><strong>Incidencias activas y resueltas</strong><small>Distribución por estado · cambia con los filtros de la API</small></div></div><DashboardAnalyticsChart series={['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: filteredIncidents.filter((incident) => incident.status === status).length }))} kind="bars" tone="red" formatter={(value) => value.toLocaleString('es-NI')} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list">{filteredIncidents.length === 0 && <div className="empty-column">No hay incidencias con esos filtros.</div>}{filteredIncidents.slice(0, 7).map((incident) => <div className="insight-row" key={incident.id}><span className={`insight-status ${statusClass(incident.status)}`} /> <div><strong>{incident.type}</strong><small>{incident.id} · {incident.driver} · {incident.client}</small></div><span className={`status-pill ${statusClass(incident.status)}`}>{incident.status}</span><span className={`priority-pill ${statusClass(incident.priority)}`}>{incident.priority}</span></div>)}</div></>}
-    {feature.id === 'fuel' && <><div className="insight-section-head"><div><strong>Consumo registrado</strong><small>Costos de combustible de los últimos 14 días</small></div><span className="insight-total">{formatCs(selectedPeriod?.fuelCs ?? 0)} <small>{periodName.toLowerCase()}</small></span></div><div className="insight-fuel-grid"><DashboardAnalyticsChart series={dailyFuel.map((day) => ({ label: day.label, value: day.fuelCs }))} tone="cyan" formatter={formatCs} onSelect={setSelectedPoint} /><div className="insight-callout"><span className="insight-callout-icon"><Icon name="fuel" size={18} /></span><small>Costo del periodo</small><strong>{formatCs(selectedPeriod?.fuelCs ?? 0)}</strong><p>{formatCs(finance?.fleet.avgFuelPerKmCs ?? 0)} por km · seguimiento del gasto real de la flota.</p><button onClick={() => onNavigate('vehicles')}>Revisar flota <Icon name="arrowRight" size={13} /></button></div></div></>}
-    {feature.id === 'depreciation' && <><div className="insight-section-head"><div><strong>Valor mensual por vehículo</strong><small>Distribución de depreciación de la flota</small></div><span className="insight-total">{formatCs(depreciationTotal)} <small>mensual</small></span></div><DashboardAnalyticsChart series={depreciationSeries} kind="bars" tone="violet" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredVehicles.slice(0, 7).map((vehicle) => <div className="insight-row" key={vehicle.id}><span className="insight-vehicle-chip">{vehicle.plate.slice(-2)}</span><div><strong>{vehicle.model}</strong><small>{vehicle.plate} · {vehicle.driver || 'Sin conductor'}</small></div><span className="insight-row-money">{formatCs(vehicle.financing?.monthlyDepreciationCs ?? 0)}</span></div>)}</div></>}
-    {feature.id === 'maintenance' && <><div className="insight-section-head"><div><strong>Historial de mantenimiento</strong><small>Registros y costos acumulados</small></div><span className="insight-total">{formatCs(maintenanceTotal)} <small>histórico</small></span></div><DashboardAnalyticsChart series={maintenanceSeries} kind="bars" tone="gold" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredMaintenance.slice(0, 7).map((record) => <div className="insight-row" key={record.id}><span className="insight-vehicle-chip wrench-chip"><Icon name="wrench" size={13} /></span><div><strong>{record.description}</strong><small>{record.plate} · {record.provider} · {record.date}</small></div><span className="insight-row-money">{formatCs(record.cost)}</span></div>)}</div></>}
-    {feature.id === 'leasing' && <><div className="insight-section-head"><div><strong>Compromisos de leasing</strong><small>Cuotas mensuales activas de la flota</small></div><span className="insight-total">{formatCs(leasingTotal)} <small>mensual</small></span></div><DashboardAnalyticsChart series={leasingSeries} kind="bars" tone="violet" formatter={formatCs} onSelect={setSelectedPoint} />{toolbar}<div className="insight-list compact-list">{filteredVehicles.slice(0, 7).map((vehicle) => <div className="insight-row" key={vehicle.id}><span className="insight-vehicle-chip lease-chip"><Icon name="billing" size={13} /></span><div><strong>{vehicle.model}</strong><small>{vehicle.plate} · {vehicle.financing?.monthsRemaining ?? 0} meses restantes</small></div><span className="insight-row-money">{formatCs(vehicle.financing?.leaseMonthlyPaymentCs ?? 0)}</span></div>)}</div></>}
   </div>
 }
 
@@ -1015,7 +1182,20 @@ function DashboardKpi({ card, selected, compact = false, onClick }: { card: { id
   return <button className={`dashboard-kpi kpi-${card.id} ${compact ? 'compact' : ''} tone-${card.tone} ${selected ? 'selected' : ''}`} onClick={onClick} type="button"><span className="dashboard-kpi-copy"><small>{card.label}</small><strong>{card.value}</strong><em>{card.detail}</em></span><DashboardKpiVisual card={card} /></button>
 }
 
-function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicles, maintenance, period, periodName, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; trips: Trip[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; period: DashboardPeriod; periodName: string; onNavigate: (section: Section) => void }) {
+function DashboardTargetMetricView({ card, finance, periodName, onNavigate }: { card: { label: string; value: string; detail: string; icon: IconName }; finance: FinanceSummary | null; periodName: string; onNavigate: (section: Section) => void }) {
+  const target = Number(card.value.replace(/[^0-9]/g, '')) || 0
+  const completed = finance?.periods.month.trips ?? 0
+  const progress = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0
+  return <div className="dashboard-target-view">
+    <div className="dashboard-target-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{card.label}</h2><p>{card.detail}. La visualización se recalcula con el periodo y los datos recibidos.</p></div><span className="dashboard-target-head-icon"><Icon name="trendingUp" size={24} /></span></div>
+    <div className="dashboard-target-main"><div className="dashboard-target-readings"><div className="dashboard-target-total"><strong>{card.value}</strong><span>valor seleccionado</span></div><div className="dashboard-target-reading"><small>Meta mensual</small><strong>{target.toLocaleString('es-NI')}</strong></div><div className="dashboard-target-reading"><small>Completados</small><strong>{completed.toLocaleString('es-NI')}</strong></div><div className="dashboard-target-reading"><small>Avance</small><strong>{progress}%</strong></div></div><div className="dashboard-target-gauge"><InlineKpiSvg markup={dynamicTargetGaugeSvg(progress, card.value)} /><span>avance mensual</span></div></div>
+    <div className="dashboard-target-breakdown"><div><span>Periodo seleccionado</span><strong>{periodName}</strong></div><div><span>Lectura del KPI</span><strong>Completados vs. meta mensual</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate('trips')}>Abrir módulo →</button></div></div><div className="dashboard-target-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>Los datos y la aguja se recalculan con el periodo seleccionado.</small></div>
+  </div>
+}
+
+function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicles, maintenance, period, periodName, pendingAvailable, pendingPressure, onNavigate }: { metric: DashboardMetric; cards: Array<{ id: DashboardMetric; label: string; value: string; detail: string; icon: IconName; tone: string }>; finance: FinanceSummary | null; trips: Trip[]; incidents: Incident[]; vehicles: Vehicle[]; maintenance: MaintenanceRecord[]; period: DashboardPeriod; periodName: string; pendingAvailable: number; pendingPressure: number; onNavigate: (section: Section) => void }) {
+  const targetCard = cards.find((card) => card.id === 'target')
+  if (metric === 'target' && targetCard) return <DashboardTargetMetricView card={targetCard} finance={finance} periodName={periodName} onNavigate={onNavigate} />
   const [selectedPoint, setSelectedPoint] = useState<DashboardSeriesPoint | null>(null)
   useEffect(() => { setSelectedPoint(null) }, [metric, period])
   const current = cards.find((card) => card.id === metric) ?? cards[0]
@@ -1023,15 +1203,13 @@ function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicle
     ? (period === 'today' ? finance?.periods.today : period === 'week' ? finance?.periods.week : finance?.periods.range ?? finance?.periods.all)
     : null
   const daily = finance?.daily ?? []
-  const dailyCompleted = daily.map((day) => ({ label: day.label, value: trips.filter((trip) => trip.date === day.label && trip.status === 'Completado').length }))
   const dailyPending = daily.map((day) => ({ label: day.label, value: trips.filter((trip) => trip.date === day.label && trip.status === 'Pendiente').length }))
   let series: DashboardSeriesPoint[] = []
   let chartKind: 'line' | 'bars' = 'line'
   let tone = current.tone
   let formatter: (value: number) => string = (value) => value.toLocaleString('es-NI')
-  if (metric === 'target') series = dailyCompleted
-  if (metric === 'income') { series = daily.map((day) => ({ label: day.label, value: day.incomeCs })); formatter = formatCs }
-  if (metric === 'pending') { series = dailyPending; tone = 'slate' }
+  if (metric === 'income') { series = daily.map((day) => ({ label: day.label, value: day.incomeCs })); chartKind = 'bars'; formatter = formatCs }
+  if (metric === 'pending') { series = dailyPending; chartKind = 'bars'; tone = 'slate' }
   if (metric === 'incidents') { series = ['Abierta', 'En proceso', 'Resuelta'].map((status) => ({ label: status, value: incidents.filter((incident) => incident.status === status).length })); chartKind = 'bars' }
   if (metric === 'fuel') { series = daily.map((day) => ({ label: day.label, value: day.fuelCs })); formatter = formatCs; tone = 'cyan' }
   if (metric === 'depreciation') { series = vehicles.map((vehicle) => ({ label: vehicle.plate, value: vehicle.financing?.monthlyDepreciationCs ?? 0 })); chartKind = 'bars'; tone = 'violet'; formatter = formatCs }
@@ -1041,14 +1219,13 @@ function DashboardMetricView({ metric, cards, finance, trips, incidents, vehicle
   const seriesTotal = seriesValues.reduce((sum, value) => sum + value, 0)
   const seriesAverage = seriesValues.length > 0 ? seriesTotal / seriesValues.length : 0
   const seriesPeak = seriesValues.length > 0 ? Math.max(...seriesValues) : 0
-  const targetValue = Number(current.value.replace(/[^0-9]/g, ''))
-  const metricStats: Array<{ label: string; value: string }> = metric === 'target'
-    ? [{ label: 'Meta mensual', value: current.value }, { label: 'Completados', value: seriesTotal.toLocaleString('es-NI') }, { label: 'Avance', value: `${targetValue > 0 ? Math.round((seriesTotal / targetValue) * 100) : 0}%` }]
-    : metric === 'incidents'
+  const metricStats: Array<{ label: string; value: string }> = metric === 'incidents'
       ? [{ label: 'Reportadas', value: current.value }, { label: 'Abiertas', value: (incidents.filter((incident) => incident.status !== 'Resuelta').length).toLocaleString('es-NI') }, { label: 'Resueltas', value: incidents.filter((incident) => incident.status === 'Resuelta').length.toLocaleString('es-NI') }]
       : [{ label: 'Valor seleccionado', value: current.value }, { label: 'Promedio visible', value: formatter(seriesAverage) }, { label: 'Pico visible', value: formatter(seriesPeak) }]
-  const action: Section = metric === 'incidents' ? 'incidents' : metric === 'pending' ? 'requests' : metric === 'target' || metric === 'income' ? 'trips' : 'vehicles'
-  return <div className="dashboard-focus-view"><div className="dashboard-focus-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{current.label}</h2><p>{current.detail}. La visualización se recalcula con el periodo y los datos recibidos.</p></div><span className={`dashboard-focus-icon tone-${current.tone}`}><Icon name={current.icon} size={22} /></span></div><div className="dashboard-focus-total"><strong>{current.value}</strong><span>valor seleccionado</span></div><div className="dashboard-focus-insights">{metricStats.map((stat) => <div key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong></div>)}</div><div className="dashboard-focus-chart analytics-focus-chart"><DashboardAnalyticsChart series={series} kind={chartKind} tone={tone} formatter={formatter} onSelect={setSelectedPoint} /></div>{selectedPoint && <div className="analytics-selection" aria-live="polite"><span>Punto seleccionado</span><strong>{selectedPoint.label}</strong><b>{formatter(selectedPoint.value)}</b></div>}<div className="dashboard-focus-breakdown"><div><span>Periodo seleccionado</span><strong>{selectedPeriod?.label ?? periodName}</strong></div><div><span>Lectura del KPI</span><strong>{metric === 'target' ? 'Completados vs. meta mensual' : metric === 'pending' ? 'Solicitudes frente a capacidad disponible' : current.detail}</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate(action)}>Abrir módulo →</button></div></div><div className="dashboard-focus-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>La tarjeta y el gráfico se recalculan con el periodo y los datos recibidos.</small></div></div>
+  const action: Section = metric === 'incidents' ? 'incidents' : metric === 'pending' ? 'requests' : metric === 'income' ? 'trips' : 'vehicles'
+  const pendingCount = Number(current.value.replace(/[^0-9]/g, '')) || 0
+  const pendingChart = metric === 'pending' ? <div className="dashboard-pending-chart-grid"><div className="dashboard-pending-capacity"><div><strong>Capacidad del periodo</strong><small>{pendingAvailable.toLocaleString('es-NI')} disponibles · {pendingPressure}% de capacidad usada.</small></div><InlineKpiSvg markup={dynamicPendingGaugeSvg(pendingPressure, `${pendingPressure}`)} className="dashboard-pending-gauge" /><div className="dashboard-pending-capacity-legend"><span><i className="pending-dot" />{pendingCount} pendientes</span><span><i className="available-dot" />{pendingAvailable} disponibles</span></div></div><div className="dashboard-pending-daily"><strong>Solicitudes pendientes por día</strong><DashboardAnalyticsChart series={series} kind="bars" tone={tone} formatter={formatter} onSelect={setSelectedPoint} /></div></div> : <DashboardAnalyticsChart series={series} kind={chartKind} tone={tone} formatter={formatter} onSelect={setSelectedPoint} />
+  return <div className={`dashboard-focus-view dashboard-focus-${metric}`}><div className="dashboard-focus-head"><div><span className="eyebrow">INDICADOR SELECCIONADO · {periodName.toUpperCase()}</span><h2>{current.label}</h2><p>{current.detail}. La visualización se recalcula con el periodo y los datos recibidos.</p></div><span className={`dashboard-focus-icon tone-${current.tone}`}><Icon name={current.icon} size={22} /></span></div><div className="dashboard-focus-total"><strong>{current.value}</strong><span>valor seleccionado</span></div><div className="dashboard-focus-insights">{metricStats.map((stat) => <div key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong></div>)}</div><div className={`dashboard-focus-chart analytics-focus-chart ${metric === 'pending' ? 'dashboard-pending-chart' : ''}`}>{pendingChart}</div>{selectedPoint && <div className="analytics-selection" aria-live="polite"><span>Punto seleccionado</span><strong>{selectedPoint.label}</strong><b>{formatter(selectedPoint.value)}</b></div>}<div className="dashboard-focus-breakdown"><div><span>Periodo seleccionado</span><strong>{selectedPeriod?.label ?? periodName}</strong></div><div><span>Lectura del KPI</span><strong>{metric === 'pending' ? 'Solicitudes frente a capacidad disponible' : current.detail}</strong></div><div><span>Acción relacionada</span><button onClick={() => onNavigate(action)}>Abrir módulo →</button></div></div><div className="dashboard-focus-footer"><span><i className="pulse-dot" /> Endpoint conectado</span><small>La tarjeta y el gráfico se recalculan con el periodo y los datos recibidos.</small></div></div>
 }
 
 function inputDate(date: Date) { return date.toISOString().slice(0, 10) }
@@ -1413,11 +1590,29 @@ function PlaceInput({ value, onChange, onPlace, placeholder, required }: { value
   return <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete="off" />
 }
 
+function ClientPicker({ clients, value, onChange }: { clients: Client[]; value: string; onChange: (name: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const activeClients = clients.filter((client) => client.status === 'Activo')
+  const selected = clients.find((client) => client.name === value)
+  const filtered = activeClients.filter((client) => `${client.name} ${client.contact ?? ''} ${client.phone}`.toLowerCase().includes(query.toLowerCase())).slice(0, 12)
+  return <div className="client-picker">
+    <button type="button" className={`client-picker-trigger ${selected ? 'selected' : ''}`} onClick={() => setOpen((current) => !current)} aria-haspopup="listbox" aria-expanded={open} disabled={activeClients.length === 0}>
+      <span>{selected?.name ?? (clients.length === 0 ? 'Cargando clientes registrados…' : activeClients.length === 0 ? 'No hay clientes activos' : 'Selecciona un cliente registrado')}</span><Icon name="chevronDown" size={15} />
+    </button>
+    {open && <div className="client-picker-menu" role="listbox" aria-label="Clientes registrados">
+      <div className="client-picker-search"><Icon name="search" size={14} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente…" /></div>
+      <div className="client-picker-options">{filtered.map((client) => <button type="button" role="option" aria-selected={client.name === value} key={client.id} onClick={() => { onChange(client.name); setQuery(''); setOpen(false) }}><span><strong>{client.name}</strong><small>{client.contact || 'Contacto pendiente'} · {client.phone || 'Teléfono pendiente'}</small></span><i>{client.type}</i></button>)}{filtered.length === 0 && <p className="client-picker-empty">No hay coincidencias entre los clientes activos.</p>}</div>
+      <small className="client-picker-hint">Los clientes se registran y administran desde el módulo Clientes.</small>
+    </div>}
+  </div>
+}
+
 const TRIP_STEPS = ['Cliente y servicio', 'Ruta en el mapa', 'Destinatario y carga', 'Confirmar']
 const TRIP_TRANSPORTS: NonNullable<Trip['transport']>[] = ['Moto', 'Vehículo', 'Camión']
 const TRIP_SERVICE_FEE_CS = 15
 
-function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: AppSettings | null; onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
+function NewTripDialog({ clients, settings, onClose, onCreated, onError }: { clients: Client[]; settings: AppSettings | null; onClose: () => void; onCreated: (trip: Trip) => void; onError: (message: string) => void }) {
   const [step, setStep] = useState(0)
   const [client, setClient] = useState('')
   const [contactName, setContactName] = useState('')
@@ -1436,6 +1631,15 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
   const [recipientName, setRecipientName] = useState('')
   const [recipientPhone, setRecipientPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  function selectClient(name: string) {
+    setClient(name)
+    const registered = clients.find((candidate) => candidate.name === name)
+    if (registered) {
+      setContactName(registered.contact ?? '')
+      setContactPhone(registered.phone ?? '')
+    }
+  }
 
   function placeOnMap(place: { label: string; lat: number; lng: number }, type: 'origin' | 'destination') {
     if (type === 'origin') {
@@ -1507,7 +1711,7 @@ function NewTripDialog({ settings, onClose, onCreated, onError }: { settings: Ap
         <div className="wizard-body">
           {step === 0 && (
             <div className="form-grid">
-              <label className="full-field">Cliente *<input required value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nombre o empresa" /></label>
+              <label className="full-field client-picker-label">Cliente *<ClientPicker clients={clients} value={client} onChange={selectClient} /></label>
               <label>Contacto *<input required value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Quién solicita" /></label>
               <label>Teléfono de contacto *<input required type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="8XXX-XXXX" /></label>
               <label>Tipo de servicio *<select required value={serviceType} onChange={(event) => setServiceType(event.target.value as Trip['serviceType'])}><option value="Urbano">Urbano</option><option value="Express">Express</option><option value="Programado">Programado</option></select></label>
@@ -4068,24 +4272,11 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
   const [dollarRate, setDollarRate] = useState(settings?.dollarRate ?? 36.5)
   const [gasoline, setGasoline] = useState(settings?.fuelPriceGasolineCs ?? 61.5)
   const [diesel, setDiesel] = useState(settings?.fuelPriceDieselCs ?? 54)
-  const [baseFee, setBaseFee] = useState(settings?.baseFeeCs ?? 80)
-  const [fareKm, setFareKm] = useState(settings?.farePerKmCs ?? 8.5)
-  const [motoBase, setMotoBase] = useState(settings?.vehicleRates?.Moto?.baseFeeCs ?? 60)
-  const [motoKm, setMotoKm] = useState(settings?.vehicleRates?.Moto?.farePerKmCs ?? 6.5)
-  const [vehiculoBase, setVehiculoBase] = useState(settings?.vehicleRates?.Vehículo?.baseFeeCs ?? 80)
-  const [vehiculoKm, setVehiculoKm] = useState(settings?.vehicleRates?.Vehículo?.farePerKmCs ?? 8.5)
-  const [camionBase, setCamionBase] = useState(settings?.vehicleRates?.Camión?.baseFeeCs ?? 130)
-  const [camionKm, setCamionKm] = useState(settings?.vehicleRates?.Camión?.farePerKmCs ?? 13.5)
-  const [prioritario, setPrioritario] = useState(settings?.prioritySurchargePct ?? 25)
-  const [programado, setProgramado] = useState(settings?.scheduledSurchargePct ?? 0)
   const [companyName, setCompanyName] = useState(settings?.companyName ?? 'INCOEX Logistics')
   const [companyPhone, setCompanyPhone] = useState(settings?.companyPhone ?? '')
   const [companyEmail, setCompanyEmail] = useState(settings?.companyEmail ?? '')
   const [companyAddress, setCompanyAddress] = useState(settings?.companyAddress ?? '')
   const [saving, setSaving] = useState(false)
-
-  const exampleTrip = Number((baseFee + 10 * fareKm).toFixed(2))
-  const rateExample = (base: number, km: number) => Number((base + 10 * km).toFixed(2))
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -4095,22 +4286,13 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
         dollarRate: Number(dollarRate),
         fuelPriceGasolineCs: Number(gasoline),
         fuelPriceDieselCs: Number(diesel),
-        baseFeeCs: Number(baseFee),
-        farePerKmCs: Number(fareKm),
-        vehicleRates: {
-          Moto: { ...(settings?.vehicleRates?.Moto ?? { includedKm: 4 }), baseFeeCs: Number(motoBase), farePerKmCs: Number(motoKm) },
-          'Vehículo': { ...(settings?.vehicleRates?.Vehículo ?? { includedKm: 4 }), baseFeeCs: Number(vehiculoBase), farePerKmCs: Number(vehiculoKm) },
-          'Camión': { ...(settings?.vehicleRates?.Camión ?? { includedKm: 4 }), baseFeeCs: Number(camionBase), farePerKmCs: Number(camionKm) },
-        },
-        prioritySurchargePct: Number(prioritario),
-        scheduledSurchargePct: Number(programado),
         companyName,
         companyPhone,
         companyEmail,
         companyAddress,
       })
       onSaved(next)
-      onNotice('Configuración guardada: tasa, tarifas por vehículo y datos de la empresa actualizados')
+      onNotice('Configuración guardada: moneda, combustible y datos de la empresa actualizados')
     } catch {
       onNotice('No se pudo guardar la configuración; revisa la conexión con la API')
     } finally {
@@ -4141,21 +4323,9 @@ function SettingsView({ connection, settings, onSaved, onNotice }: { connection:
           <label>Tasa de cambio · C$ por US$ 1<NumInput required min={1} step={0.01} value={dollarRate} onChange={setDollarRate} /></label>
           <label>Gasolina · C$ por litro<NumInput required min={0} step={0.01} value={gasoline} onChange={setGasoline} /></label>
           <label>Diésel · C$ por litro<NumInput required min={0} step={0.01} value={diesel} onChange={setDiesel} /></label>
-          <label>Tarifa base por viaje · C$<NumInput required min={0} step={0.01} value={baseFee} onChange={setBaseFee} /></label>
-          <label>Tarifa por kilómetro · C$<NumInput required min={0} step={0.01} value={fareKm} onChange={setFareKm} /></label>
-        </div>
-        <div className="vehicle-rates">
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon moto"><Icon name="moto" size={17} /></span><div><strong>Moto</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={motoBase} onChange={setMotoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={motoKm} onChange={setMotoKm} /><em>10 km ≈ {formatCs(rateExample(motoBase, motoKm))}</em></div></div>
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon vehiculo"><Icon name="car" size={17} /></span><div><strong>Vehículo</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={vehiculoBase} onChange={setVehiculoBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={vehiculoKm} onChange={setVehiculoKm} /><em>10 km ≈ {formatCs(rateExample(vehiculoBase, vehiculoKm))}</em></div></div>
-          <div className="vehicle-rate-card"><span className="vehicle-rate-icon camion"><Icon name="truck" size={17} /></span><div><strong>Camíon</strong><small>Tarifa base · C$</small><NumInput required min={0} step={0.01} value={camionBase} onChange={setCamionBase} /><small>Por kilómetro · C$</small><NumInput required min={0} step={0.01} value={camionKm} onChange={setCamionKm} /><em>10 km ≈ {formatCs(rateExample(camionBase, camionKm))}</em></div></div>
-        </div>
-        <div className="service-type-rates">
-          <div className="service-rate-card"><strong>Prioritario</strong><small>Recargo sobre la tarifa · %</small><NumInput required min={0} max={300} step={1} value={prioritario} onChange={setPrioritario} /><em>Viaje de 10 km ≈ {formatCs(Number((rateExample(vehiculoBase, vehiculoKm) * (1 + prioritario / 100)).toFixed(2)))}</em></div>
-          <div className="service-rate-card"><strong>Programado</strong><small>Recargo sobre la tarifa · %</small><NumInput required min={0} max={300} step={1} value={programado} onChange={setProgramado} /><em>Viaje de 10 km ≈ {formatCs(Number((rateExample(vehiculoBase, vehiculoKm) * (1 + programado / 100)).toFixed(2)))}</em></div>
         </div>
         <div className="conversion-strip">
           <span><b>1 USD</b> = {formatCs(dollarRate)}</span>
-          <span>Viaje de 10 km ≈ <b>{formatCs(exampleTrip)}</b> <small>(US$ {csToUsd(exampleTrip, dollarRate).toFixed(2)})</small></span>
           <span>1 L gasolina = <b>{formatCs(gasoline)}</b> <small>(US$ {csToUsd(gasoline, dollarRate).toFixed(2)})</small></span>
         </div>
         <div className="settings-form-actions"><span className="settings-saved-hint">{settings ? `Última actualización: ${new Date(settings.updatedAt).toLocaleString('es-NI')}` : 'Cargando configuración…'}</span><button className="primary-button" disabled={saving || !settings}>{saving ? 'Guardando…' : 'Guardar tarifas'}</button></div>

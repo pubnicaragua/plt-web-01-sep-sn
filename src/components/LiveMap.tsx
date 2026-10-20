@@ -11,6 +11,7 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone, se
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const objectsRef = useRef<any[]>([])
+  const viewportInitializedRef = useRef(false)
   const navigateRef = useRef(onNavigate)
   const selectDriverRef = useRef(onDriverSelect)
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -33,7 +34,7 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone, se
         setMapState('ready')
       } catch { if (!cancelled) setMapState('error') }
     }).catch(() => { if (!cancelled) setMapState('error') })
-    return () => { cancelled = true; objectsRef.current.forEach((object) => object.setMap?.(null)); objectsRef.current = []; mapRef.current = null }
+    return () => { cancelled = true; objectsRef.current.forEach((object) => object.setMap?.(null)); objectsRef.current = []; mapRef.current = null; viewportInitializedRef.current = false }
   }, [])
 
   useEffect(() => {
@@ -111,8 +112,11 @@ export function LiveMap({ tracking, onNavigate, showDemo = false, demandZone, se
         add(new maps.Marker({ position: destination, title: `Entrega · ${trip.id}`, icon: { path: maps.SymbolPath.CIRCLE, scale: 6, fillColor: '#8067dc', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 } }))
         bounds.extend(origin); bounds.extend(destination); hasBounds = true
       }
-      if (hasBounds) map.fitBounds(bounds, { top: 38, right: 38, bottom: 38, left: 38 })
-      else map.setCenter(MANAGUA_CENTER)
+      if (!viewportInitializedRef.current) {
+        if (hasBounds) map.fitBounds(bounds, { top: 38, right: 38, bottom: 38, left: 38 })
+        else map.setCenter(MANAGUA_CENTER)
+        viewportInitializedRef.current = true
+      }
     }
     for (const incident of tracking.incidents) {
       if (!Number.isFinite(incident.latitude) || !Number.isFinite(incident.longitude)) continue

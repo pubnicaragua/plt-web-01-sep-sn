@@ -14,10 +14,13 @@ function popupHtml(title: string, rows: string[]) {
   return `<div class="dashboard-map-popup"><strong>${escapeHtml(title)}</strong>${rows.map((row) => `<span>${row}</span>`).join('')}</div>`
 }
 
-export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone, mode = 'all' }: { drivers: Driver[]; trips: Trip[]; highlightDriver?: string; demandZone?: DemandZone; mode?: MapMode }) {
+export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone, mode = 'all', threeDimensional = false }: { drivers: Driver[]; trips: Trip[]; highlightDriver?: string; demandZone?: DemandZone; mode?: MapMode; threeDimensional?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const objectsRef = useRef<any[]>([])
+  const viewportInitializedRef = useRef(false)
+  const previousModeRef = useRef<MapMode | null>(null)
+  const previousDemandKeyRef = useRef('')
   const [mapState, setMapState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
 
@@ -39,9 +42,17 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
           mapTypeControl: false,
           gestureHandling: 'greedy',
           styles: INCOEX_MAP_STYLE,
+          renderingType: threeDimensional ? 'VECTOR' : undefined,
+          tilt: threeDimensional ? 45 : 0,
+          heading: threeDimensional ? 320 : 0,
+          isFractionalZoomEnabled: threeDimensional,
           restriction: { latLngBounds: { north: 15.5, south: 10.6, east: -82.5, west: -88 }, strictBounds: false },
         })
         mapRef.current = map
+        if (threeDimensional) {
+          map.setTilt?.(45)
+          map.setHeading?.(320)
+        }
         setMapState('ready')
         window.requestAnimationFrame(() => maps.event.trigger(map, 'resize'))
       } catch {
@@ -53,14 +64,21 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
       objectsRef.current.forEach((object) => object.setMap?.(null))
       objectsRef.current = []
       mapRef.current = null
+      viewportInitializedRef.current = false
+      previousModeRef.current = null
+      previousDemandKeyRef.current = ''
     }
-  }, [attempt])
+  }, [attempt, threeDimensional])
 
   useEffect(() => {
     const maps = window.google?.maps
     const map = mapRef.current
     if (!maps || !map || mapState !== 'ready') return
     let cancelled = false
+    const demandKey = demandZone && Number.isFinite(demandZone.lat) && Number.isFinite(demandZone.lng) ? `${demandZone.lat}:${demandZone.lng}` : ''
+    const shouldReframe = !viewportInitializedRef.current || previousModeRef.current !== mode || previousDemandKeyRef.current !== demandKey
+    previousModeRef.current = mode
+    previousDemandKeyRef.current = demandKey
     objectsRef.current.forEach((object) => object.setMap?.(null))
     objectsRef.current = []
     const bounds = new maps.LatLngBounds()
@@ -114,8 +132,11 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
           bounds.extend(destination)
           hasBounds = true
         }
-        if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
-        else map.setCenter(MANAGUA_CENTER)
+        if (shouldReframe) {
+          if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
+          else map.setCenter(MANAGUA_CENTER)
+          viewportInitializedRef.current = true
+        }
       }
       void drawRoutes()
     } else if (mode === 'demand' && demandZone) {
@@ -132,15 +153,23 @@ export function DashboardMap({ drivers, trips, highlightDriver = '', demandZone,
       if (mode === 'demand') map.setCenter(demand)
     }
 
-    if (mode === 'demand' && demandZone) map.setZoom(14)
-    else if (mode === 'demand' || !trips.some((item) => Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng))) {
-      if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
-      else map.setCenter(MANAGUA_CENTER)
+    if (mode === 'demand' && demandZone) {
+      if (shouldReframe) {
+        map.setZoom(14)
+        if (Number.isFinite(demandZone.lat) && Number.isFinite(demandZone.lng)) map.setCenter({ lat: demandZone.lat, lng: demandZone.lng })
+        viewportInitializedRef.current = true
+      }
+    } else if (mode === 'demand' || !trips.some((item) => Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng))) {
+      if (shouldReframe) {
+        if (hasBounds) map.fitBounds(bounds, { top: 88, right: 38, bottom: 76, left: 38 })
+        else map.setCenter(MANAGUA_CENTER)
+        viewportInitializedRef.current = true
+      }
     }
     return () => { cancelled = true }
   }, [drivers, trips, highlightDriver, demandZone, mode, mapState])
 
-  return <div className="dashboard-google-map" aria-label="Mapa operativo de Google Maps con posiciones, rutas y demanda de la API">
+  return <div className={`dashboard-google-map ${threeDimensional ? 'dashboard-google-map-3d' : ''}`} aria-label={`${threeDimensional ? 'Mapa 3D' : 'Mapa'} operativo de Google Maps con posiciones, rutas y demanda de la API`}>
     <div ref={containerRef} className="google-map-canvas" />
     {mapState === 'loading' && <div className="map-status"><span className="map-status-card"><span className="map-spinner" />Cargando Google Maps…</span></div>}
     {mapState === 'error' && <div className="map-status error"><span className="map-status-card"><strong>No se pudo cargar Google Maps</strong><small>Verifica la API key de Google Maps y la conexión.</small><button type="button" onClick={() => { resetGoogleMapsLoader(); setAttempt((current) => current + 1) }}>Reintentar</button></span></div>}

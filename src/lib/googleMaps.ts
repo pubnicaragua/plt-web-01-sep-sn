@@ -1,6 +1,7 @@
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? 'AIzaSyCMwxArmM-BEJuxgbjOiON8KdH_IsNH1F4'
 
 export const MANAGUA_CENTER = { lat: 12.114993, lng: -86.236174 }
+export const NICARAGUA_CENTER = { lat: 12.865416, lng: -85.207229 }
 
 declare global {
   interface Window {
@@ -23,7 +24,7 @@ export function loadGoogleMaps(): Promise<any | null> {
     }
     const script = document.createElement('script')
     script.id = 'google-maps-js'
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly&libraries=places&loading=async`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly&libraries=places,maps3d&loading=async`
     script.async = true
     script.defer = true
     const timeout = window.setTimeout(() => {
